@@ -67,7 +67,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# 🚀 메인 제목 수정 (현재 월 자동 계산 적용 완료)
+# 메인 제목 수정
 current_month = datetime.now().month
 st.markdown(f"<div class='title-box'><h1>📊 충청호남팀 영업사원 주차별 VDT 목표 관리 ({current_month}월)</h1></div>", unsafe_allow_html=True)
 
@@ -137,7 +137,8 @@ def load_vdt_data():
                 if dealer in ['대리점', '대리점명', '구분'] or hc_name in ['HC', 'HC명', '영업사원', '이름']:
                     continue
                     
-                sales_target = clean_val(row[3])
+                # [수정] 목표액을 천원 단위로 변경하기 위해 1000으로 나눔
+                sales_target = clean_val(row[3]) / 1000.0
                 
                 if (dealer, hc_name) not in [(d, h) for d, h, _ in hc_info]:
                     hc_info.append((dealer, hc_name, sales_target))
@@ -177,9 +178,10 @@ def load_vdt_data():
                 d_name = str(row[0]).strip()
                 dealer_targets[d_name] = {}
                 for wk, cols in week_cols.items():
-                    t_amt = clean_val(row[cols['amt']]) if len(row) > cols['amt'] else 0 
-                    t_est = clean_val(row[cols['est']]) if len(row) > cols['est'] else 0
-                    t_cnt = clean_val(row[cols['cnt']]) if len(row) > cols['cnt'] else 0
+                    # [수정] 금액(amt) 목표치만 천원 단위로 변경하기 위해 1000으로 나눔 (건수는 그대로)
+                    t_amt = (clean_val(row[cols['amt']]) / 1000.0) if len(row) > cols['amt'] else 0.0 
+                    t_est = clean_val(row[cols['est']]) if len(row) > cols['est'] else 0.0
+                    t_cnt = clean_val(row[cols['cnt']]) if len(row) > cols['cnt'] else 0.0
                     dealer_targets[d_name][wk] = {'amt': t_amt, 'est': t_est, 'cnt': t_cnt}
 
         targets = {}
@@ -306,7 +308,7 @@ def calculate_subtotals(df):
             
         subtotal = group.select_dtypes(include=[np.number]).sum()
         subtotal[dealer_col] = dealer
-        subtotal[hc_col] = f"🔵 [{dealer}] 소계"
+        subtotal[hc_col] = "합계" # [수정] '소계' 문구를 '합계'로 변경
         
         for col in df.columns[2:]:
             if col[2] == '달성율(%)':
@@ -393,7 +395,7 @@ if not df_raw.empty:
             dealer = row[dealer_col]
             hc = row[hc_col]
             
-            if "🔵" in str(hc):
+            if str(hc) == "합계": # [수정] 합계 문구 서식 적용
                 row_bg = "style='background-color: #e2e8f0; font-weight: bold;'"
             elif "🌟" in str(hc):
                 row_bg = "style='background-color: #cbd5e1; font-weight: bold;'"
