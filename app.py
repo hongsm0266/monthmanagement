@@ -67,8 +67,9 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# 메인 제목 수정 (소제목 제거 완료)
-st.markdown("<div class='title-box'><h1>📊 충청호남팀 영업사원 주차별 VDT 목표 관리</h1></div>", unsafe_allow_html=True)
+# 🚀 메인 제목 수정 (현재 월 자동 계산 적용 완료)
+current_month = datetime.now().month
+st.markdown(f"<div class='title-box'><h1>📊 충청호남팀 영업사원 주차별 VDT 목표 관리 ({current_month}월)</h1></div>", unsafe_allow_html=True)
 
 def clean_val(v):
     if not v or pd.isna(v) or str(v).strip() == '': return 0.0
