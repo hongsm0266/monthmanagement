@@ -64,6 +64,15 @@ st.markdown("""
     .vdt-table td.text-center { text-align: center; }
     .title-box { background: linear-gradient(90deg, #1e3a8a 0%, #3b82f6 100%); color: white; padding: 20px; border-radius: 12px; margin-bottom: 20px; }
     h1 { font-weight: 900 !important; color: white !important; font-size: 24px !important; margin: 0; }
+    
+    /* 요약 지표 카드 스타일 */
+    div[data-testid="metric-container"] {
+        background-color: #f8fafc;
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+        padding: 15px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -324,16 +333,95 @@ def calculate_subtotals(df):
     
     return pd.DataFrame(result_rows)
 
-col_btn1, col_btn2 = st.columns([6, 1])
-with col_btn2:
-    if st.button("🔄 실적 데이터 새로고침", use_container_width=True):
-        st.cache_data.clear()
-        st.rerun()
 
 df_raw, date_headers = load_vdt_data()
 
 if not df_raw.empty:
     final_df = calculate_subtotals(df_raw)
+    
+    # ---------------------------------------------------------
+    # 🚀 추가된 부분: 개인/대리점 선택 및 실적 차트 대시보드
+    # ---------------------------------------------------------
+    col_blank, col_sel, col_btn = st.columns([3, 4, 2])
+    
+    with col_sel:
+        # 선택창에 넣을 목록 만들기
+        valid_choices = ["🔍 선택 안함 (전체 표만 보기)"]
+        for r_idx in range(len(final_df)):
+            dealer = final_df.iloc[r_idx][('기본정보', '대리점', '대리점')]
+            hc = final_df.iloc[r_idx][('기본정보', 'HC명', 'HC명')]
+            if hc == "🌟 총계": continue
+            if hc == "합계":
+                valid_choices.append(f"🏢 [{dealer}] 대리점 합계")
+            else:
+                valid_choices.append(f"👤 {dealer} - {hc}")
+        
+        selected_option = st.selectbox("🎯 개별 인원 및 대리점 요약 보기", options=valid_choices)
+        
+    with col_btn:
+        st.write("") # 버튼 줄맞춤용 공백
+        if st.button("🔄 실적 데이터 새로고침", use_container_width=True):
+            st.cache_data.clear()
+            st.rerun()
+
+    # 인원이나 대리점을 선택했을 때만 나타나는 단독 대시보드
+    if selected_option != "🔍 선택 안함 (전체 표만 보기)":
+        st.markdown("---")
+        st.markdown(f"### ✨ **{selected_option.split(' ', 1)[1]}** 실적 요약 (당월 & {CURRENT_WEEK})")
+        
+        # 선택한 데이터 찾기
+        if "대리점 합계" in selected_option:
+            target_dealer = selected_option.replace("🏢 [", "").replace("] 대리점 합계", "")
+            target_hc = "합계"
+        else:
+            parts = selected_option.replace("👤 ", "").split(" - ")
+            target_dealer = parts[0]
+            target_hc = parts[1]
+            
+        t_row = final_df[(final_df[('기본정보', '대리점', '대리점')] == target_dealer) & (final_df[('기본정보', 'HC명', 'HC명')] == target_hc)].iloc[0]
+        
+        # 현재 주차 컬럼 찾기
+        curr_wk_cols = [c[0] for c in final_df.columns if CURRENT_WEEK in c[0]]
+        cw_col = curr_wk_cols[0] if curr_wk_cols else None
+        
+        # 핵심 지표 (Metrics) 4개 배치
+        mc1, mc2, mc3, mc4 = st.columns(4)
+        with mc1:
+            act1 = t_row[('🎯 당월매출', '인별매출(천)', 'ACT')]
+            pct1 = t_row[('🎯 당월매출', '인별매출(천)', '달성율(%)')]
+            st.metric("🌲 당월매출 (천원)", f"{act1:,.0f}", f"{pct1:.1f}% 달성")
+        with mc2:
+            act2 = t_row[('🌟 당월 합계', '계약액(천)', 'ACT')]
+            pct2 = t_row[('🌟 당월 합계', '계약액(천)', '달성율(%)')]
+            st.metric("🌟 당월 전체 계약액 (천원)", f"{act2:,.0f}", f"{pct2:.1f}% 달성")
+        with mc3:
+            act3 = t_row[(cw_col, '계약액(천)', 'ACT')] if cw_col else 0
+            pct3 = t_row[(cw_col, '계약액(천)', '달성율(%)')] if cw_col else 0
+            st.metric(f"🌊 {CURRENT_WEEK} 계약액 (천원)", f"{act3:,.0f}", f"{pct3:.1f}% 달성")
+        with mc4:
+            act4 = t_row[(cw_col, '계약건', 'ACT')] if cw_col else 0
+            pct4 = t_row[(cw_col, '계약건', '달성율(%)')] if cw_col else 0
+            st.metric(f"🌊 {CURRENT_WEEK} 계약건 (건)", f"{act4:,.0f}", f"{pct4:.1f}% 달성")
+            
+        # 목표 vs 실적 비교 차트 생성
+        st.markdown("##### 📈 주요 항목 목표 대비 실적(ACT)")
+        chart_df = pd.DataFrame({
+            "항목": ["당월매출", "당월 합계 계약액", f"{CURRENT_WEEK} 계약액"],
+            "🎯 목표": [
+                t_row[('🎯 당월매출', '인별매출(천)', '목표')],
+                t_row[('🌟 당월 합계', '계약액(천)', '목표')],
+                t_row[(cw_col, '계약액(천)', '목표')] if cw_col else 0
+            ],
+            "🔥 실적(ACT)": [
+                t_row[('🎯 당월매출', '인별매출(천)', 'ACT')],
+                t_row[('🌟 당월 합계', '계약액(천)', 'ACT')],
+                t_row[(cw_col, '계약액(천)', 'ACT')] if cw_col else 0
+            ]
+        }).set_index("항목")
+        
+        st.bar_chart(chart_df, height=350)
+        st.markdown("---")
+    # ---------------------------------------------------------
     
     def render_custom_html_table(df):
         dealer_col = ('기본정보', '대리점', '대리점')
@@ -454,7 +542,6 @@ if not df_raw.empty:
                 is_last_monthly = "🌟 당월 합계" in col_obj[0] and col_obj[1] == '계약건' and col_obj[2] == '달성율(%)'
                 
                 style_parts = []
-                # 데이터 배경음영 및 테두리 처리
                 if is_curr:
                     style_parts.append("background-color: rgba(37, 99, 235, 0.12)") 
                     if is_first_of_week: style_parts.append("border-left: 3px solid #3b82f6")
@@ -464,10 +551,9 @@ if not df_raw.empty:
                     
                 if is_last_monthly: style_parts.append("border-right: 4px solid #94a3b8")
                     
-                # 텍스트 포맷 및 달성율 강조 처리
                 if col_obj[2] == '달성율(%)':
                     val_str = f"{val:.1f}%"
-                    if val >= 100: # 100% 달성 시 색상 강조
+                    if val >= 100:
                         val_str = f"<span style='color: #047857; font-weight: 900;'>{val_str}</span>" if is_monthly else f"<span style='color: #1d4ed8; font-weight: 900;'>{val_str}</span>"
                     elif val > 0:
                         val_str = f"<span style='font-weight: 600;'>{val_str}</span>"
