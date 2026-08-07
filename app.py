@@ -137,7 +137,7 @@ def load_vdt_data():
                 if dealer in ['대리점', '대리점명', '구분'] or hc_name in ['HC', 'HC명', '영업사원', '이름']:
                     continue
                     
-                # [수정] 목표액을 천원 단위로 변경하기 위해 1000으로 나눔
+                # 목표액을 천원 단위로 변경하기 위해 1000으로 나눔
                 sales_target = clean_val(row[3]) / 1000.0
                 
                 if (dealer, hc_name) not in [(d, h) for d, h, _ in hc_info]:
@@ -178,7 +178,7 @@ def load_vdt_data():
                 d_name = str(row[0]).strip()
                 dealer_targets[d_name] = {}
                 for wk, cols in week_cols.items():
-                    # [수정] 금액(amt) 목표치만 천원 단위로 변경하기 위해 1000으로 나눔 (건수는 그대로)
+                    # 금액(amt) 목표치만 천원 단위로 변경하기 위해 1000으로 나눔 (건수는 그대로)
                     t_amt = (clean_val(row[cols['amt']]) / 1000.0) if len(row) > cols['amt'] else 0.0 
                     t_est = clean_val(row[cols['est']]) if len(row) > cols['est'] else 0.0
                     t_cnt = clean_val(row[cols['cnt']]) if len(row) > cols['cnt'] else 0.0
@@ -237,13 +237,14 @@ def load_vdt_data():
 
         status_box.info("✅ 데이터 구성 완료! 표 출력 중...")
         
+        # [수정] 열 제목 문구 변경 적용 (당월매출, 당월 합계)
         col_tuples = [
             ('기본정보', '대리점', '대리점'),
             ('기본정보', 'HC명', 'HC명'),
-            ('🎯 당월 총 누적', '인별매출(천)', '목표'), ('🎯 당월 총 누적', '인별매출(천)', 'ACT'), ('🎯 당월 총 누적', '인별매출(천)', '달성율(%)'),
-            ('🌟 월 합산', '계약액(천)', '목표'), ('🌟 월 합산', '계약액(천)', 'ACT'), ('🌟 월 합산', '계약액(천)', '달성율(%)'),
-            ('🌟 월 합산', '견적건', '목표'), ('🌟 월 합산', '견적건', 'ACT'), ('🌟 월 합산', '견적건', '달성율(%)'),
-            ('🌟 월 합산', '계약건', '목표'), ('🌟 월 합산', '계약건', 'ACT'), ('🌟 월 합산', '계약건', '달성율(%)')
+            ('🎯 당월매출', '인별매출(천)', '목표'), ('🎯 당월매출', '인별매출(천)', 'ACT'), ('🎯 당월매출', '인별매출(천)', '달성율(%)'),
+            ('🌟 당월 합계', '계약액(천)', '목표'), ('🌟 당월 합계', '계약액(천)', 'ACT'), ('🌟 당월 합계', '계약액(천)', '달성율(%)'),
+            ('🌟 당월 합계', '견적건', '목표'), ('🌟 당월 합계', '견적건', 'ACT'), ('🌟 당월 합계', '견적건', '달성율(%)'),
+            ('🌟 당월 합계', '계약건', '목표'), ('🌟 당월 합계', '계약건', 'ACT'), ('🌟 당월 합계', '계약건', '달성율(%)')
         ]
         
         for wk in week_keys:
@@ -308,7 +309,7 @@ def calculate_subtotals(df):
             
         subtotal = group.select_dtypes(include=[np.number]).sum()
         subtotal[dealer_col] = dealer
-        subtotal[hc_col] = "합계" # [수정] '소계' 문구를 '합계'로 변경
+        subtotal[hc_col] = "합계"
         
         for col in df.columns[2:]:
             if col[2] == '달성율(%)':
@@ -395,7 +396,7 @@ if not df_raw.empty:
             dealer = row[dealer_col]
             hc = row[hc_col]
             
-            if str(hc) == "합계": # [수정] 합계 문구 서식 적용
+            if str(hc) == "합계":
                 row_bg = "style='background-color: #e2e8f0; font-weight: bold;'"
             elif "🌟" in str(hc):
                 row_bg = "style='background-color: #cbd5e1; font-weight: bold;'"
