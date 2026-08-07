@@ -456,35 +456,69 @@ if not df_raw.empty:
 
         text_targets = [f"{v:,.0f}건" if "건" in c else f"{v:,.0f}" for v, c in zip(targets, categories)]
         text_acts = [f"{v:,.0f}건<br>({p:.1f}%)" if "건" in c else f"{v:,.0f}<br>({p:.1f}%)" for v, p, c in zip(acts, pcts, categories)]
+        act_colors = ['#10b981' if p >= 100 else '#3b82f6' for p in pcts]
+
+        # ----------------------------------------------------
+        # 🚀 [업그레이드] 이중 축(Secondary Y-axis) 처리 및 색상 적용
+        # ----------------------------------------------------
+        # 1. 금액 데이터 (왼쪽 Y축 사용)
+        cat_amt = categories[:3]
+        tgt_amt = targets[:3]
+        act_amt = acts[:3]
+        tt_amt = text_targets[:3]
+        ta_amt = text_acts[:3]
+        ac_amt = act_colors[:3]
+        
+        # 2. 건수 데이터 (오른쪽 Y2축 사용)
+        cat_cnt = categories[3:]
+        tgt_cnt = targets[3:]
+        act_cnt = acts[3:]
+        tt_cnt = text_targets[3:]
+        ta_cnt = text_acts[3:]
+        ac_cnt = act_colors[3:]
 
         fig = go.Figure()
         
-        # 목표 막대
+        # 금액 목표 (왼쪽 축)
         fig.add_trace(go.Bar(
-            x=categories, y=targets, name='🎯 목표',
-            marker_color='#cbd5e1',
-            text=text_targets,
-            textposition='outside', 
-            textfont=dict(size=14, color='#1e293b') 
+            x=cat_amt, y=tgt_amt, name='🎯 목표',
+            marker_color='#cbd5e1', text=tt_amt, textposition='outside', 
+            textfont=dict(size=14, color='#1e293b'), yaxis='y1'
         ))
         
-        # 실적 막대 
-        act_colors = ['#10b981' if p >= 100 else '#3b82f6' for p in pcts]
+        # 금액 실적 (왼쪽 축)
         fig.add_trace(go.Bar(
-            x=categories, y=acts, name='🔥 실적(ACT)',
-            marker_color=act_colors,
-            text=text_acts,
-            textposition='outside', 
-            textfont=dict(size=15, color='#0f172a') 
+            x=cat_amt, y=act_amt, name='🔥 실적(ACT)',
+            marker_color=ac_amt, text=ta_amt, textposition='outside', 
+            textfont=dict(size=15, color='#0f172a'), yaxis='y1'
         ))
         
-        # [수정] 최신 문법으로 업데이트된 차트 레이아웃 
+        # 건수 목표 (오른쪽 축 - 범례 중복 방지를 위해 showlegend=False)
+        fig.add_trace(go.Bar(
+            x=cat_cnt, y=tgt_cnt, name='🎯 목표(건수)',
+            marker_color='#cbd5e1', text=tt_cnt, textposition='outside', 
+            textfont=dict(size=14, color='#1e293b'), yaxis='y2', showlegend=False
+        ))
+        
+        # 건수 실적 (오른쪽 축 - 범례 중복 방지)
+        fig.add_trace(go.Bar(
+            x=cat_cnt, y=act_cnt, name='🔥 실적(건수)',
+            marker_color=ac_cnt, text=ta_cnt, textposition='outside', 
+            textfont=dict(size=15, color='#0f172a'), yaxis='y2', showlegend=False
+        ))
+        
+        # 이중 축 레이아웃 설정
         fig.update_layout(
             barmode='group', height=450,
             xaxis=dict(tickangle=0, tickfont=dict(size=16, color='black')), 
             yaxis=dict(
-                title=dict(text="<b>수치 (천원 / 건)</b>", font=dict(size=15, color='black')), 
-                tickfont=dict(size=14, color='black')
+                title=dict(text="<b>금액 (천원)</b>", font=dict(size=15, color='#1e3a8a')), 
+                tickfont=dict(size=14, color='#1e3a8a')
+            ),
+            yaxis2=dict(
+                title=dict(text="<b>건수 (건)</b>", font=dict(size=15, color='#ea580c')), 
+                tickfont=dict(size=14, color='#ea580c'),
+                overlaying='y', side='right'
             ),
             margin=dict(l=20, r=20, t=70, b=20),
             legend=dict(
@@ -631,7 +665,7 @@ if not df_raw.empty:
                 is_first_of_week = is_curr and col_obj[1] == '계약액(천)' and col_obj[2] == '목표'
                 is_last_of_week = is_curr and col_obj[1] == '계약건' and col_obj[2] == '달성율(%)'
                 is_last_of_sales = col_obj[0] == '🎯 당월매출' and col_obj[2] == '달성율(%)'
-                is_last_monthly = "🌟 당월 합계" in col_obj[0] and col_obj[1] == '계약건' and col_obj[2] == '달성율(%)'
+                is_last_monthly = "🌟 당월 합계" in col[0] and col[1] == '계약건' and col[2] == '달성율(%)'
                 
                 style_parts = []
                 if is_curr:
