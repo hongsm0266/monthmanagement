@@ -372,42 +372,62 @@ if not df_raw.empty:
 
     if selected_option != valid_choices[0]:
         st.markdown("---")
-        st.markdown(f"### ✨ **{selected_option.split(' ', 1)[1]}** 실적 요약 (당월 & {CURRENT_WEEK})")
         
-        if "대리점 합계" in selected_option:
+        # 선택한 데이터 찾기
+        is_dealer_total = "대리점 합계" in selected_option
+        if is_dealer_total:
             target_dealer = selected_option.replace("🏢 [", "").replace("] 대리점 합계", "")
             target_hc = "합계"
+            comp_df = final_df[final_df[('기본정보', 'HC명', 'HC명')] == "합계"]
+            unit_str = "팀"
         else:
             parts = selected_option.replace("👤 ", "").split(" - ")
             target_dealer = parts[0]
             target_hc = parts[1]
+            comp_df = final_df[~final_df[('기본정보', 'HC명', 'HC명')].str.contains("합계|총계", na=False)]
+            unit_str = "명"
             
         t_row = final_df[(final_df[('기본정보', '대리점', '대리점')] == target_dealer) & (final_df[('기본정보', 'HC명', 'HC명')] == target_hc)].iloc[0]
         
+        # 순위(등수) 계산 함수
+        total_competitors = len(comp_df)
+        def get_rank_str(col_tuple, val):
+            if val == 0: return f"순위 제외"
+            ranks = comp_df[col_tuple].rank(method='min', ascending=False)
+            target_idx = comp_df[(comp_df[('기본정보', '대리점', '대리점')] == target_dealer) & (comp_df[('기본정보', 'HC명', 'HC명')] == target_hc)].index[0]
+            return f"🏆 {int(ranks.loc[target_idx])}등 / {total_competitors}{unit_str}"
+
         curr_wk_cols = [c[0] for c in final_df.columns if CURRENT_WEEK in c[0]]
         cw_col = curr_wk_cols[0] if curr_wk_cols else None
         
+        # 메인 요약 문구
+        st.markdown(f"### ✨ **{selected_option.split(' ', 1)[1]}** 실적 요약 (당월 & {CURRENT_WEEK})")
+        
+        # 지표별 값 및 등수 계산
+        act1 = t_row[('🎯 당월매출', '인별매출(천)', 'ACT')]
+        pct1 = t_row[('🎯 당월매출', '인별매출(천)', '달성율(%)')]
+        rk1 = get_rank_str(('🎯 당월매출', '인별매출(천)', '달성율(%)'), pct1)
+        
+        act2 = t_row[('🌟 당월 합계', '계약액(천)', 'ACT')]
+        pct2 = t_row[('🌟 당월 합계', '계약액(천)', '달성율(%)')]
+        rk2 = get_rank_str(('🌟 당월 합계', '계약액(천)', '달성율(%)'), pct2)
+        
+        act3 = t_row[(cw_col, '계약액(천)', 'ACT')] if cw_col else 0
+        pct3 = t_row[(cw_col, '계약액(천)', '달성율(%)')] if cw_col else 0
+        rk3 = get_rank_str((cw_col, '계약액(천)', '달성율(%)'), pct3) if cw_col else ""
+        
+        act4 = t_row[(cw_col, '계약건', 'ACT')] if cw_col else 0
+        pct4 = t_row[(cw_col, '계약건', '달성율(%)')] if cw_col else 0
+        rk4 = get_rank_str((cw_col, '계약건', '달성율(%)'), pct4) if cw_col else ""
+
         mc1, mc2, mc3, mc4 = st.columns(4)
-        with mc1:
-            act1 = t_row[('🎯 당월매출', '인별매출(천)', 'ACT')]
-            pct1 = t_row[('🎯 당월매출', '인별매출(천)', '달성율(%)')]
-            st.metric("🌲 당월매출 (천원)", f"{act1:,.0f}", f"{pct1:.1f}% 달성")
-        with mc2:
-            act2 = t_row[('🌟 당월 합계', '계약액(천)', 'ACT')]
-            pct2 = t_row[('🌟 당월 합계', '계약액(천)', '달성율(%)')]
-            st.metric("🌟 당월 전체 계약액 (천원)", f"{act2:,.0f}", f"{pct2:.1f}% 달성")
-        with mc3:
-            act3 = t_row[(cw_col, '계약액(천)', 'ACT')] if cw_col else 0
-            pct3 = t_row[(cw_col, '계약액(천)', '달성율(%)')] if cw_col else 0
-            st.metric(f"🌊 {CURRENT_WEEK} 계약액 (천원)", f"{act3:,.0f}", f"{pct3:.1f}% 달성")
-        with mc4:
-            act4 = t_row[(cw_col, '계약건', 'ACT')] if cw_col else 0
-            pct4 = t_row[(cw_col, '계약건', '달성율(%)')] if cw_col else 0
-            st.metric(f"🌊 {CURRENT_WEEK} 계약건 (건)", f"{act4:,.0f}", f"{pct4:.1f}% 달성")
+        with mc1: st.metric("🌲 당월매출 (천원)", f"{act1:,.0f}", f"{pct1:.1f}% 달성 | {rk1}", delta_color="off")
+        with mc2: st.metric("🌟 당월 합계 계약액 (천원)", f"{act2:,.0f}", f"{pct2:.1f}% 달성 | {rk2}", delta_color="off")
+        with mc3: st.metric(f"🌊 {CURRENT_WEEK} 계약액 (천원)", f"{act3:,.0f}", f"{pct3:.1f}% 달성 | {rk3}", delta_color="off")
+        with mc4: st.metric(f"🌊 {CURRENT_WEEK} 계약건 (건)", f"{act4:,.0f}", f"{pct4:.1f}% 달성 | {rk4}", delta_color="off")
             
         st.markdown("##### 📈 주요 항목 목표 대비 실적(ACT)")
         
-        # [수정] 1주차(해당 주차) 견적건, 계약건 항목 추가
         categories = [
             "당월매출", 
             "당월 합계 계약액", 
@@ -432,15 +452,8 @@ if not df_raw.empty:
             t_row[(cw_col, '계약건', 'ACT')] if cw_col else 0
         ]
         
-        pcts = [
-            t_row[('🎯 당월매출', '인별매출(천)', '달성율(%)')],
-            t_row[('🌟 당월 합계', '계약액(천)', '달성율(%)')],
-            t_row[(cw_col, '계약액(천)', '달성율(%)')] if cw_col else 0,
-            t_row[(cw_col, '견적건', '달성율(%)')] if cw_col else 0,
-            t_row[(cw_col, '계약건', '달성율(%)')] if cw_col else 0
-        ]
+        pcts = [pct1, pct2, pct3, t_row[(cw_col, '견적건', '달성율(%)')] if cw_col else 0, pct4]
 
-        # 건수 데이터와 금액 데이터 텍스트 포맷 분리 생성
         text_targets = [f"{v:,.0f}건" if "건" in c else f"{v:,.0f}" for v, c in zip(targets, categories)]
         text_acts = [f"{v:,.0f}건<br>({p:.1f}%)" if "건" in c else f"{v:,.0f}<br>({p:.1f}%)" for v, p, c in zip(acts, pcts, categories)]
 
@@ -451,8 +464,8 @@ if not df_raw.empty:
             x=categories, y=targets, name='🎯 목표',
             marker_color='#cbd5e1',
             text=text_targets,
-            textposition='outside', # [수정] 수치가 작아도 잘 보이도록 글씨를 막대 위로 뺌
-            textfont=dict(size=14, color='#1e293b', weight='bold')
+            textposition='outside', 
+            textfont=dict(size=14, color='#1e293b') # 에러를 일으켰던 weight='bold' 부분 삭제!
         ))
         
         # 실적 막대 
@@ -461,25 +474,32 @@ if not df_raw.empty:
             x=categories, y=acts, name='🔥 실적(ACT)',
             marker_color=act_colors,
             text=text_acts,
-            textposition='outside', # [수정] 수치가 작아도 잘 보이도록 글씨를 막대 위로 뺌
-            textfont=dict(size=15, color='#0f172a', weight='bold') # 짙은 색으로 가독성 상향
+            textposition='outside', 
+            textfont=dict(size=15, color='#0f172a') 
         ))
         
-        # [수정] 축, 글자 크기, 진하기, 범례 크기 대폭 상향
+        # 차트 레이아웃
         fig.update_layout(
             barmode='group', height=450,
-            xaxis=dict(tickangle=0, tickfont=dict(size=16, color='black', weight='bold')), 
-            yaxis=dict(title="수치 (천원 / 건)", titlefont=dict(size=15, color='black', weight='bold'), tickfont=dict(size=14, color='black', weight='bold')),
+            xaxis=dict(tickangle=0, tickfont=dict(size=16, color='black')), 
+            yaxis=dict(title="<b>수치 (천원 / 건)</b>", titlefont=dict(size=15, color='black'), tickfont=dict(size=14, color='black')),
             margin=dict(l=20, r=20, t=70, b=20),
             legend=dict(
                 orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1,
-                font=dict(size=18, color='black', weight='bold') # 범례 눈에 띄게 키움
+                font=dict(size=18, color='black') 
             ),
             plot_bgcolor='white'
         )
         st.plotly_chart(fig, use_container_width=True)
         st.markdown("---")
     # ---------------------------------------------------------
+    
+    # [수정] 8월 1주차 VDT 현황 타이틀로 변경 
+    st.markdown(f"""
+    <div style='background-color: #f8fafc; padding: 15px; border-left: 5px solid #3b82f6; border-radius: 5px; margin-bottom: 20px;'>
+        <h2 style='margin:0; color: #1e3a8a;'>📌 {current_month}월 {CURRENT_WEEK} VDT 현황</h2>
+    </div>
+    """, unsafe_allow_html=True)
     
     def render_custom_html_table(df):
         dealer_col = ('기본정보', '대리점', '대리점')
@@ -638,8 +658,6 @@ if not df_raw.empty:
             
         html.append("</tbody></table></div>")
         return "".join(html)
-
-    st.info(f"💡 현재 진행 주차: **'{CURRENT_WEEK}'** (해당 주차 두꺼운 테두리 및 배경 음영 강조 적용 완료)")
     
     table_html = render_custom_html_table(final_df)
     st.markdown(table_html, unsafe_allow_html=True)
