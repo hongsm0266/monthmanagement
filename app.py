@@ -343,7 +343,7 @@ if not df_raw.empty:
     # 🚀 개인/대리점 선택 및 실적 차트 대시보드
     # ---------------------------------------------------------
     st.markdown("---")
-    col_sel, col_btn = st.columns([7, 2]) # 버튼과 선택창 비율 조정
+    col_sel, col_btn = st.columns([7, 2]) 
     
     with col_sel:
         st.markdown("### 🔎 **인별 / 대리점별 상세 실적 확인**")
@@ -407,22 +407,42 @@ if not df_raw.empty:
             
         st.markdown("##### 📈 주요 항목 목표 대비 실적(ACT)")
         
-        categories = ["당월매출", "당월 합계 계약액", f"{CURRENT_WEEK} 계약액"]
+        # [수정] 1주차(해당 주차) 견적건, 계약건 항목 추가
+        categories = [
+            "당월매출", 
+            "당월 합계 계약액", 
+            f"{CURRENT_WEEK} 계약액", 
+            f"{CURRENT_WEEK} 견적건", 
+            f"{CURRENT_WEEK} 계약건"
+        ]
+        
         targets = [
             t_row[('🎯 당월매출', '인별매출(천)', '목표')],
             t_row[('🌟 당월 합계', '계약액(천)', '목표')],
-            t_row[(cw_col, '계약액(천)', '목표')] if cw_col else 0
+            t_row[(cw_col, '계약액(천)', '목표')] if cw_col else 0,
+            t_row[(cw_col, '견적건', '목표')] if cw_col else 0,
+            t_row[(cw_col, '계약건', '목표')] if cw_col else 0
         ]
+        
         acts = [
             t_row[('🎯 당월매출', '인별매출(천)', 'ACT')],
             t_row[('🌟 당월 합계', '계약액(천)', 'ACT')],
-            t_row[(cw_col, '계약액(천)', 'ACT')] if cw_col else 0
+            t_row[(cw_col, '계약액(천)', 'ACT')] if cw_col else 0,
+            t_row[(cw_col, '견적건', 'ACT')] if cw_col else 0,
+            t_row[(cw_col, '계약건', 'ACT')] if cw_col else 0
         ]
+        
         pcts = [
             t_row[('🎯 당월매출', '인별매출(천)', '달성율(%)')],
             t_row[('🌟 당월 합계', '계약액(천)', '달성율(%)')],
-            t_row[(cw_col, '계약액(천)', '달성율(%)')] if cw_col else 0
+            t_row[(cw_col, '계약액(천)', '달성율(%)')] if cw_col else 0,
+            t_row[(cw_col, '견적건', '달성율(%)')] if cw_col else 0,
+            t_row[(cw_col, '계약건', '달성율(%)')] if cw_col else 0
         ]
+
+        # 건수 데이터와 금액 데이터 텍스트 포맷 분리 생성
+        text_targets = [f"{v:,.0f}건" if "건" in c else f"{v:,.0f}" for v, c in zip(targets, categories)]
+        text_acts = [f"{v:,.0f}건<br>({p:.1f}%)" if "건" in c else f"{v:,.0f}<br>({p:.1f}%)" for v, p, c in zip(acts, pcts, categories)]
 
         fig = go.Figure()
         
@@ -430,9 +450,9 @@ if not df_raw.empty:
         fig.add_trace(go.Bar(
             x=categories, y=targets, name='🎯 목표',
             marker_color='#cbd5e1',
-            text=[f"{v:,.0f}" for v in targets],
-            textposition='auto',
-            textfont=dict(size=13, color='#475569')
+            text=text_targets,
+            textposition='outside', # [수정] 수치가 작아도 잘 보이도록 글씨를 막대 위로 뺌
+            textfont=dict(size=14, color='#1e293b', weight='bold')
         ))
         
         # 실적 막대 
@@ -440,17 +460,21 @@ if not df_raw.empty:
         fig.add_trace(go.Bar(
             x=categories, y=acts, name='🔥 실적(ACT)',
             marker_color=act_colors,
-            text=[f"{v:,.0f}<br>({p:.1f}%)" for v, p in zip(acts, pcts)],
-            textposition='auto',
-            textfont=dict(size=14, color='white', weight='bold')
+            text=text_acts,
+            textposition='outside', # [수정] 수치가 작아도 잘 보이도록 글씨를 막대 위로 뺌
+            textfont=dict(size=15, color='#0f172a', weight='bold') # 짙은 색으로 가독성 상향
         ))
         
+        # [수정] 축, 글자 크기, 진하기, 범례 크기 대폭 상향
         fig.update_layout(
-            barmode='group', height=400,
-            xaxis=dict(tickangle=0, tickfont=dict(size=15, weight='bold')),
-            yaxis=dict(title="금액 (천원)"),
-            margin=dict(l=20, r=20, t=40, b=20),
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+            barmode='group', height=450,
+            xaxis=dict(tickangle=0, tickfont=dict(size=16, color='black', weight='bold')), 
+            yaxis=dict(title="수치 (천원 / 건)", titlefont=dict(size=15, color='black', weight='bold'), tickfont=dict(size=14, color='black', weight='bold')),
+            margin=dict(l=20, r=20, t=70, b=20),
+            legend=dict(
+                orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1,
+                font=dict(size=18, color='black', weight='bold') # 범례 눈에 띄게 키움
+            ),
             plot_bgcolor='white'
         )
         st.plotly_chart(fig, use_container_width=True)
@@ -489,7 +513,6 @@ if not df_raw.empty:
                 style_parts.append("color: #a7f3d0") 
                 style_parts.append("border-top: 2px solid #047857")
             
-            # [수정] 당월매출 우측에 굵은 세로선 추가하여 구획 분리
             if h1 == '🎯 당월매출':
                 style_parts.append("border-right: 3px solid #1e293b")
                 
@@ -517,7 +540,6 @@ if not df_raw.empty:
                 style_parts.append("background-color: #065f46")
                 style_parts.append("color: #a7f3d0")
             
-            # [수정] 당월매출 우측에 굵은 세로선 추가
             if h1 == '🎯 당월매출':
                 style_parts.append("border-right: 3px solid #1e293b")
                 
@@ -553,7 +575,6 @@ if not df_raw.empty:
                 style_parts.append("background-color: #047857")
                 style_parts.append("color: #a7f3d0")
             
-            # [수정] 당월매출 우측에 굵은 세로선 추가
             if is_last_of_sales:
                 style_parts.append("border-right: 3px solid #1e293b")
                 
@@ -597,7 +618,6 @@ if not df_raw.empty:
                 elif is_monthly:
                     style_parts.append("background-color: rgba(5, 150, 105, 0.08)") 
                 
-                # [수정] 당월매출 우측 데이터 칸에도 굵은 세로선 추가
                 if is_last_of_sales:
                     style_parts.append("border-right: 3px solid #1e293b")
                     
