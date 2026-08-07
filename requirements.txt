@@ -1,1 +1,6 @@
-streamlitpandasnumpygspreadgoogle-auth
+streamlit
+pandas
+numpy
+gspread
+google-auth
+plotly
