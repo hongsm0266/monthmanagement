@@ -9,7 +9,7 @@ import gspread
 from google.oauth2.service_account import Credentials
 import traceback
 from datetime import datetime
-import plotly.graph_objects as go # 🚀 고급 차트를 위한 라이브러리 추가
+import plotly.graph_objects as go 
 
 # 1. 화면 기본 설정
 st.set_page_config(page_title="충청호남팀 영업사원 주차별 VDT 목표 관리", layout="wide")
@@ -66,7 +66,6 @@ st.markdown("""
     .title-box { background: linear-gradient(90deg, #1e3a8a 0%, #3b82f6 100%); color: white; padding: 20px; border-radius: 12px; margin-bottom: 20px; }
     h1 { font-weight: 900 !important; color: white !important; font-size: 24px !important; margin: 0; }
     
-    /* 요약 지표 카드 스타일 */
     div[data-testid="metric-container"] {
         background-color: #f8fafc;
         border: 1px solid #e2e8f0;
@@ -343,10 +342,12 @@ if not df_raw.empty:
     # ---------------------------------------------------------
     # 🚀 개인/대리점 선택 및 실적 차트 대시보드
     # ---------------------------------------------------------
-    col_blank, col_sel, col_btn = st.columns([3, 4, 2])
+    st.markdown("---")
+    col_sel, col_btn = st.columns([7, 2]) # 버튼과 선택창 비율 조정
     
     with col_sel:
-        valid_choices = ["🔍 선택 안함 (전체 표만 보기)"]
+        st.markdown("### 🔎 **인별 / 대리점별 상세 실적 확인**")
+        valid_choices = ["✨ 여기를 클릭하여 인원 또는 대리점을 선택하세요 (전체 표만 보기)"]
         for r_idx in range(len(final_df)):
             dealer = final_df.iloc[r_idx][('기본정보', '대리점', '대리점')]
             hc = final_df.iloc[r_idx][('기본정보', 'HC명', 'HC명')]
@@ -356,15 +357,20 @@ if not df_raw.empty:
             else:
                 valid_choices.append(f"👤 {dealer} - {hc}")
         
-        selected_option = st.selectbox("🎯 개별 인원 및 대리점 요약 보기", options=valid_choices)
+        selected_option = st.selectbox(
+            "👇 아래 입력창을 클릭(선택)하면 해당 인원의 실적 차트가 나타납니다.", 
+            options=valid_choices
+        )
         
     with col_btn:
-        st.write("") # 버튼 줄맞춤용 공백
+        st.write("") 
+        st.write("") 
+        st.write("") 
         if st.button("🔄 실적 데이터 새로고침", use_container_width=True):
             st.cache_data.clear()
             st.rerun()
 
-    if selected_option != "🔍 선택 안함 (전체 표만 보기)":
+    if selected_option != valid_choices[0]:
         st.markdown("---")
         st.markdown(f"### ✨ **{selected_option.split(' ', 1)[1]}** 실적 요약 (당월 & {CURRENT_WEEK})")
         
@@ -399,7 +405,6 @@ if not df_raw.empty:
             pct4 = t_row[(cw_col, '계약건', '달성율(%)')] if cw_col else 0
             st.metric(f"🌊 {CURRENT_WEEK} 계약건 (건)", f"{act4:,.0f}", f"{pct4:.1f}% 달성")
             
-        # 📈 고급 Plotly 차트 적용 부분
         st.markdown("##### 📈 주요 항목 목표 대비 실적(ACT)")
         
         categories = ["당월매출", "당월 합계 계약액", f"{CURRENT_WEEK} 계약액"]
@@ -430,7 +435,7 @@ if not df_raw.empty:
             textfont=dict(size=13, color='#475569')
         ))
         
-        # 실적 막대 (100% 이상 달성 시 초록색, 미만 시 파란색)
+        # 실적 막대 
         act_colors = ['#10b981' if p >= 100 else '#3b82f6' for p in pcts]
         fig.add_trace(go.Bar(
             x=categories, y=acts, name='🔥 실적(ACT)',
@@ -442,7 +447,7 @@ if not df_raw.empty:
         
         fig.update_layout(
             barmode='group', height=400,
-            xaxis=dict(tickangle=0, tickfont=dict(size=15, weight='bold')), # 가로축 글씨 크게 및 수평 정렬
+            xaxis=dict(tickangle=0, tickfont=dict(size=15, weight='bold')),
             yaxis=dict(title="금액 (천원)"),
             margin=dict(l=20, r=20, t=40, b=20),
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
@@ -483,6 +488,10 @@ if not df_raw.empty:
                 style_parts.append("background-color: #064e3b") 
                 style_parts.append("color: #a7f3d0") 
                 style_parts.append("border-top: 2px solid #047857")
+            
+            # [수정] 당월매출 우측에 굵은 세로선 추가하여 구획 분리
+            if h1 == '🎯 당월매출':
+                style_parts.append("border-right: 3px solid #1e293b")
                 
             if "🌟 당월 합계" in h1:
                 style_parts.append("border-right: 4px solid #94a3b8")
@@ -507,6 +516,10 @@ if not df_raw.empty:
             elif is_monthly:
                 style_parts.append("background-color: #065f46")
                 style_parts.append("color: #a7f3d0")
+            
+            # [수정] 당월매출 우측에 굵은 세로선 추가
+            if h1 == '🎯 당월매출':
+                style_parts.append("border-right: 3px solid #1e293b")
                 
             if "🌟 당월 합계" in h1: style_parts.append("border-right: 4px solid #94a3b8")
                 
@@ -527,6 +540,7 @@ if not df_raw.empty:
             
             is_first_of_week = is_curr and col[1] == '계약액(천)' and col[2] == '목표'
             is_last_of_week = is_curr and col[1] == '계약건' and col[2] == '달성율(%)'
+            is_last_of_sales = col[0] == '🎯 당월매출' and col[2] == '달성율(%)'
             is_last_monthly = "🌟 당월 합계" in col[0] and col[1] == '계약건' and col[2] == '달성율(%)'
             
             style_parts = []
@@ -538,6 +552,10 @@ if not df_raw.empty:
             elif is_monthly:
                 style_parts.append("background-color: #047857")
                 style_parts.append("color: #a7f3d0")
+            
+            # [수정] 당월매출 우측에 굵은 세로선 추가
+            if is_last_of_sales:
+                style_parts.append("border-right: 3px solid #1e293b")
                 
             if is_last_monthly: style_parts.append("border-right: 4px solid #94a3b8")
                 
@@ -568,6 +586,7 @@ if not df_raw.empty:
                 
                 is_first_of_week = is_curr and col_obj[1] == '계약액(천)' and col_obj[2] == '목표'
                 is_last_of_week = is_curr and col_obj[1] == '계약건' and col_obj[2] == '달성율(%)'
+                is_last_of_sales = col_obj[0] == '🎯 당월매출' and col_obj[2] == '달성율(%)'
                 is_last_monthly = "🌟 당월 합계" in col_obj[0] and col_obj[1] == '계약건' and col_obj[2] == '달성율(%)'
                 
                 style_parts = []
@@ -577,6 +596,10 @@ if not df_raw.empty:
                     if is_last_of_week: style_parts.append("border-right: 3px solid #3b82f6")
                 elif is_monthly:
                     style_parts.append("background-color: rgba(5, 150, 105, 0.08)") 
+                
+                # [수정] 당월매출 우측 데이터 칸에도 굵은 세로선 추가
+                if is_last_of_sales:
+                    style_parts.append("border-right: 3px solid #1e293b")
                     
                 if is_last_monthly: style_parts.append("border-right: 4px solid #94a3b8")
                     
