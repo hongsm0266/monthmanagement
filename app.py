@@ -465,7 +465,7 @@ if not df_raw.empty:
             marker_color='#cbd5e1',
             text=text_targets,
             textposition='outside', 
-            textfont=dict(size=14, color='#1e293b') # 에러를 일으켰던 weight='bold' 부분 삭제!
+            textfont=dict(size=14, color='#1e293b') 
         ))
         
         # 실적 막대 
@@ -478,11 +478,14 @@ if not df_raw.empty:
             textfont=dict(size=15, color='#0f172a') 
         ))
         
-        # 차트 레이아웃
+        # [수정] 최신 문법으로 업데이트된 차트 레이아웃 
         fig.update_layout(
             barmode='group', height=450,
             xaxis=dict(tickangle=0, tickfont=dict(size=16, color='black')), 
-            yaxis=dict(title="<b>수치 (천원 / 건)</b>", titlefont=dict(size=15, color='black'), tickfont=dict(size=14, color='black')),
+            yaxis=dict(
+                title=dict(text="<b>수치 (천원 / 건)</b>", font=dict(size=15, color='black')), 
+                tickfont=dict(size=14, color='black')
+            ),
             margin=dict(l=20, r=20, t=70, b=20),
             legend=dict(
                 orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1,
@@ -494,7 +497,7 @@ if not df_raw.empty:
         st.markdown("---")
     # ---------------------------------------------------------
     
-    # [수정] 8월 1주차 VDT 현황 타이틀로 변경 
+    # 8월 1주차 VDT 현황 타이틀
     st.markdown(f"""
     <div style='background-color: #f8fafc; padding: 15px; border-left: 5px solid #3b82f6; border-radius: 5px; margin-bottom: 20px;'>
         <h2 style='margin:0; color: #1e3a8a;'>📌 {current_month}월 {CURRENT_WEEK} VDT 현황</h2>
