@@ -9,6 +9,7 @@ import gspread
 from google.oauth2.service_account import Credentials
 import traceback
 from datetime import datetime
+import plotly.graph_objects as go # 🚀 고급 차트를 위한 라이브러리 추가
 
 # 1. 화면 기본 설정
 st.set_page_config(page_title="충청호남팀 영업사원 주차별 VDT 목표 관리", layout="wide")
@@ -340,12 +341,11 @@ if not df_raw.empty:
     final_df = calculate_subtotals(df_raw)
     
     # ---------------------------------------------------------
-    # 🚀 추가된 부분: 개인/대리점 선택 및 실적 차트 대시보드
+    # 🚀 개인/대리점 선택 및 실적 차트 대시보드
     # ---------------------------------------------------------
     col_blank, col_sel, col_btn = st.columns([3, 4, 2])
     
     with col_sel:
-        # 선택창에 넣을 목록 만들기
         valid_choices = ["🔍 선택 안함 (전체 표만 보기)"]
         for r_idx in range(len(final_df)):
             dealer = final_df.iloc[r_idx][('기본정보', '대리점', '대리점')]
@@ -364,12 +364,10 @@ if not df_raw.empty:
             st.cache_data.clear()
             st.rerun()
 
-    # 인원이나 대리점을 선택했을 때만 나타나는 단독 대시보드
     if selected_option != "🔍 선택 안함 (전체 표만 보기)":
         st.markdown("---")
         st.markdown(f"### ✨ **{selected_option.split(' ', 1)[1]}** 실적 요약 (당월 & {CURRENT_WEEK})")
         
-        # 선택한 데이터 찾기
         if "대리점 합계" in selected_option:
             target_dealer = selected_option.replace("🏢 [", "").replace("] 대리점 합계", "")
             target_hc = "합계"
@@ -380,11 +378,9 @@ if not df_raw.empty:
             
         t_row = final_df[(final_df[('기본정보', '대리점', '대리점')] == target_dealer) & (final_df[('기본정보', 'HC명', 'HC명')] == target_hc)].iloc[0]
         
-        # 현재 주차 컬럼 찾기
         curr_wk_cols = [c[0] for c in final_df.columns if CURRENT_WEEK in c[0]]
         cw_col = curr_wk_cols[0] if curr_wk_cols else None
         
-        # 핵심 지표 (Metrics) 4개 배치
         mc1, mc2, mc3, mc4 = st.columns(4)
         with mc1:
             act1 = t_row[('🎯 당월매출', '인별매출(천)', 'ACT')]
@@ -403,23 +399,56 @@ if not df_raw.empty:
             pct4 = t_row[(cw_col, '계약건', '달성율(%)')] if cw_col else 0
             st.metric(f"🌊 {CURRENT_WEEK} 계약건 (건)", f"{act4:,.0f}", f"{pct4:.1f}% 달성")
             
-        # 목표 vs 실적 비교 차트 생성
+        # 📈 고급 Plotly 차트 적용 부분
         st.markdown("##### 📈 주요 항목 목표 대비 실적(ACT)")
-        chart_df = pd.DataFrame({
-            "항목": ["당월매출", "당월 합계 계약액", f"{CURRENT_WEEK} 계약액"],
-            "🎯 목표": [
-                t_row[('🎯 당월매출', '인별매출(천)', '목표')],
-                t_row[('🌟 당월 합계', '계약액(천)', '목표')],
-                t_row[(cw_col, '계약액(천)', '목표')] if cw_col else 0
-            ],
-            "🔥 실적(ACT)": [
-                t_row[('🎯 당월매출', '인별매출(천)', 'ACT')],
-                t_row[('🌟 당월 합계', '계약액(천)', 'ACT')],
-                t_row[(cw_col, '계약액(천)', 'ACT')] if cw_col else 0
-            ]
-        }).set_index("항목")
         
-        st.bar_chart(chart_df, height=350)
+        categories = ["당월매출", "당월 합계 계약액", f"{CURRENT_WEEK} 계약액"]
+        targets = [
+            t_row[('🎯 당월매출', '인별매출(천)', '목표')],
+            t_row[('🌟 당월 합계', '계약액(천)', '목표')],
+            t_row[(cw_col, '계약액(천)', '목표')] if cw_col else 0
+        ]
+        acts = [
+            t_row[('🎯 당월매출', '인별매출(천)', 'ACT')],
+            t_row[('🌟 당월 합계', '계약액(천)', 'ACT')],
+            t_row[(cw_col, '계약액(천)', 'ACT')] if cw_col else 0
+        ]
+        pcts = [
+            t_row[('🎯 당월매출', '인별매출(천)', '달성율(%)')],
+            t_row[('🌟 당월 합계', '계약액(천)', '달성율(%)')],
+            t_row[(cw_col, '계약액(천)', '달성율(%)')] if cw_col else 0
+        ]
+
+        fig = go.Figure()
+        
+        # 목표 막대
+        fig.add_trace(go.Bar(
+            x=categories, y=targets, name='🎯 목표',
+            marker_color='#cbd5e1',
+            text=[f"{v:,.0f}" for v in targets],
+            textposition='auto',
+            textfont=dict(size=13, color='#475569')
+        ))
+        
+        # 실적 막대 (100% 이상 달성 시 초록색, 미만 시 파란색)
+        act_colors = ['#10b981' if p >= 100 else '#3b82f6' for p in pcts]
+        fig.add_trace(go.Bar(
+            x=categories, y=acts, name='🔥 실적(ACT)',
+            marker_color=act_colors,
+            text=[f"{v:,.0f}<br>({p:.1f}%)" for v, p in zip(acts, pcts)],
+            textposition='auto',
+            textfont=dict(size=14, color='white', weight='bold')
+        ))
+        
+        fig.update_layout(
+            barmode='group', height=400,
+            xaxis=dict(tickangle=0, tickfont=dict(size=15, weight='bold')), # 가로축 글씨 크게 및 수평 정렬
+            yaxis=dict(title="금액 (천원)"),
+            margin=dict(l=20, r=20, t=40, b=20),
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+            plot_bgcolor='white'
+        )
+        st.plotly_chart(fig, use_container_width=True)
         st.markdown("---")
     # ---------------------------------------------------------
     
