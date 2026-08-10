@@ -145,7 +145,7 @@ if CURRENT_WEEK:
 
 @st.cache_data(ttl=60)
 def load_vdt_data():
-    if not client: return pd.DataFrame(), {}
+    if not client: return pd.DataFrame(), {}, {}
     
     status_box = st.empty()
     try:
@@ -156,7 +156,7 @@ def load_vdt_data():
         target_sheet_name = "주차별 목표 세팅"
         if target_sheet_name not in all_worksheets: 
             st.error(f"🚨 '{target_sheet_name}' 탭을 찾을 수 없습니다.")
-            return pd.DataFrame(), {}
+            return pd.DataFrame(), {}, {}
         
         target_ws = sh.worksheet(target_sheet_name)
         
@@ -234,7 +234,6 @@ def load_vdt_data():
         
         raw_daily_sheets = [ws for ws in sh.worksheets() if "/" in ws.title]
         
-        # 🚀 [오류 해결 로직 1] 날짜순으로 시트를 정확히 정렬 (오래된 날짜 -> 최신 날짜 순)
         def sort_key(ws):
             try:
                 parts = ws.title.replace('일', '').strip().split('/')
@@ -247,6 +246,10 @@ def load_vdt_data():
         acts = {hc: {wk: {'amt': 0, 'est': 0, 'cnt': 0} for wk in week_keys} for _, hc, _ in hc_info}
         month_acts = {hc: {'amt': 0, 'est': 0, 'cnt': 0} for _, hc, _ in hc_info}
         acts_sales = {hc: 0 for _, hc, _ in hc_info}
+        
+        # 🚀 [추가] 퇴사자 포함 전체 인원의 대리점 매핑 및 진짜 합계 저장용
+        hc_to_dealer = {hc: dealer for dealer, hc, _ in hc_info}
+        all_hc_sales = {} 
         
         for ws in daily_sheets:
             wk = get_week_name(ws.title)
@@ -269,14 +272,28 @@ def load_vdt_data():
                         month_acts[hc_name]['cnt'] += cnt_val
                         month_acts[hc_name]['amt'] += amt_val
                         
-                # 🚀 [오류 해결 로직 2] 당월매출 (S열, 인덱스 18) 처리
-                # max()를 제거하고, 최신 날짜로 올수록 값이 비어있지 않다면 무조건 덮어쓰기!
                 if len(row) > 18:
                     hc_name_s = str(row[3]).strip()
+                    s_str = str(row[18]).strip()
+                    dealer_s = str(row[2]).strip() if len(row) > 2 else ""
+                    
+                    # 1. 표에 나오는 현재 인원들의 당월매출 덮어쓰기
                     if hc_name_s in acts_sales:
-                        s_str = str(row[18]).strip()
-                        if s_str != '':  # 빈칸이 아니라면 취소/환불로 금액이 깎였어도 무조건 덮어씁니다.
+                        if s_str != '':
                             acts_sales[hc_name_s] = clean_val(s_str)
+                            
+                    # 2. 퇴사자 포함 모든 인원의 당월매출 추적 (합계 계산용)
+                    if s_str != '' and hc_name_s not in ['HC', 'HC명', '영업사원', '이름', '']:
+                        # 목표 시트에 있는 인원이면 정확한 대리점명 매핑, 퇴사자면 일보에 적힌 대리점명 사용
+                        actual_dealer = hc_to_dealer.get(hc_name_s, dealer_s)
+                        all_hc_sales[hc_name_s] = {'dealer': actual_dealer, 'sales': clean_val(s_str)}
+
+        # 🚀 [추가] 대리점별 '진짜' 당월매출 합계 계산 (퇴사자 포함)
+        real_dealer_sales = {}
+        for hc, info in all_hc_sales.items():
+            d = info['dealer']
+            if d:
+                real_dealer_sales[d] = real_dealer_sales.get(d, 0) + info['sales']
 
         status_box.info("✅ 데이터 구성 완료! 표 출력 중...")
         
@@ -330,15 +347,16 @@ def load_vdt_data():
                 df[col] = np.where(df[tgt_col] > 0, (df[act_col] / df[tgt_col] * 100).round(1), 0)
         
         status_box.empty()
-        return df, date_headers
+        return df, date_headers, real_dealer_sales # 🚀 찐 대리점 합계 데이터도 같이 반환!
 
     except Exception as e:
         status_box.empty()
         st.error("🚨 데이터 구성 중 에러가 발생했습니다!")
         with st.expander("🛠️ 상세 에러 보기"): st.code(traceback.format_exc())
-        return pd.DataFrame(), {}
+        return pd.DataFrame(), {}, {}
 
-def calculate_subtotals(df):
+# 🚀 [수정] 진짜 합계를 받아와서 소계 낼 때 덮어씌웁니다!
+def calculate_subtotals(df, real_dealer_sales):
     if df.empty: return df
     
     result_rows = []
@@ -352,6 +370,10 @@ def calculate_subtotals(df):
         subtotal[dealer_col] = dealer
         subtotal[hc_col] = "합계"
         
+        # 🚀 대리점 당월매출 ACT를 퇴사자 포함 전체 합계로 덮어쓰기!
+        if dealer in real_dealer_sales:
+            subtotal[('🎯 당월매출', '인별매출(천)', 'ACT')] = real_dealer_sales[dealer]
+        
         for col in df.columns[2:]:
             if col[2] == '달성율(%)':
                 tgt_col = (col[0], col[1], '목표')
@@ -363,6 +385,10 @@ def calculate_subtotals(df):
     grand_total[dealer_col] = "🌟 총계"
     grand_total[hc_col] = "🌟 총계"
     
+    # 🚀 총계 당월매출 ACT도 표에 있는 대리점들의 진짜 합계로 덮어쓰기!
+    total_real_sales = sum([real_dealer_sales.get(d, 0) for d in df[dealer_col].unique()])
+    grand_total[('🎯 당월매출', '인별매출(천)', 'ACT')] = total_real_sales
+    
     for col in df.columns[2:]:
         if col[2] == '달성율(%)':
             tgt_col = (col[0], col[1], '목표')
@@ -373,10 +399,10 @@ def calculate_subtotals(df):
     return pd.DataFrame(result_rows)
 
 
-df_raw, date_headers = load_vdt_data()
+df_raw, date_headers, real_dealer_sales = load_vdt_data()
 
 if not df_raw.empty:
-    final_df = calculate_subtotals(df_raw)
+    final_df = calculate_subtotals(df_raw, real_dealer_sales)
     
     # ---------------------------------------------------------
     # 🚀 개인/대리점 선택 및 실적 차트 대시보드
@@ -729,7 +755,7 @@ if not df_raw.empty:
                 is_monthly = "당월" in col_obj[0]
                 
                 is_first_of_week = is_curr and col_obj[1] == '계약액(천)' and col[2] == '목표'
-                is_last_of_week = is_curr and col_obj[1] == '계약건' and col[2] == '달성율(%)'
+                is_last_of_week = is_curr and col[1] == '계약건' and col[2] == '달성율(%)'
                 is_last_of_sales = col[0] == '🎯 당월매출' and col_obj[2] == '달성율(%)'
                 is_last_monthly = "🌟 당월 합계" in col[0] and col_obj[1] == '계약건' and col_obj[2] == '달성율(%)'
                 
