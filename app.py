@@ -234,6 +234,7 @@ def load_vdt_data():
         
         raw_daily_sheets = [ws for ws in sh.worksheets() if "/" in ws.title]
         
+        # 날짜순 정렬 보장
         def sort_key(ws):
             try:
                 parts = ws.title.replace('일', '').strip().split('/')
@@ -247,10 +248,7 @@ def load_vdt_data():
         month_acts = {hc: {'amt': 0, 'est': 0, 'cnt': 0} for _, hc, _ in hc_info}
         acts_sales = {hc: 0 for _, hc, _ in hc_info}
         
-        # 🚀 [추가] 퇴사자 포함 전체 인원의 대리점 매핑 및 진짜 합계 저장용
-        hc_to_dealer = {hc: dealer for dealer, hc, _ in hc_info}
-        all_hc_sales = {} 
-        
+        # 1. 계약액(P열) 및 건수는 기존처럼 전체 시트를 순회하며 '누적' 합산
         for ws in daily_sheets:
             wk = get_week_name(ws.title)
             d_data = ws.get_all_values()
@@ -271,29 +269,52 @@ def load_vdt_data():
                         month_acts[hc_name]['est'] += est_val
                         month_acts[hc_name]['cnt'] += cnt_val
                         month_acts[hc_name]['amt'] += amt_val
-                        
+
+        # 🚀 2. [완벽 해결] 당월매출(S열)은 무조건 "가장 최근 시트" 단 1개에서만 가져오기
+        real_dealer_sales = {}
+        if daily_sheets:
+            latest_sheet = daily_sheets[-1]
+            l_data = latest_sheet.get_all_values()
+            
+            valid_dealers = list(set([d for d, _, _ in hc_info]))
+            hc_to_dealer = {hc: dealer for dealer, hc, _ in hc_info}
+            
+            for row in l_data:
                 if len(row) > 18:
+                    dealer_s = str(row[2]).strip() if len(row) > 2 else ""
                     hc_name_s = str(row[3]).strip()
                     s_str = str(row[18]).strip()
-                    dealer_s = str(row[2]).strip() if len(row) > 2 else ""
                     
-                    # 1. 표에 나오는 현재 인원들의 당월매출 덮어쓰기
+                    if s_str == '': continue
+                    s_val = clean_val(s_str)
+                    
+                    # (A) 인별 당월매출 세팅 (현재 표에 있는 영업사원들)
                     if hc_name_s in acts_sales:
-                        if s_str != '':
-                            acts_sales[hc_name_s] = clean_val(s_str)
-                            
-                    # 2. 퇴사자 포함 모든 인원의 당월매출 추적 (합계 계산용)
-                    if s_str != '' and hc_name_s not in ['HC', 'HC명', '영업사원', '이름', '']:
-                        # 목표 시트에 있는 인원이면 정확한 대리점명 매핑, 퇴사자면 일보에 적힌 대리점명 사용
-                        actual_dealer = hc_to_dealer.get(hc_name_s, dealer_s)
-                        all_hc_sales[hc_name_s] = {'dealer': actual_dealer, 'sales': clean_val(s_str)}
-
-        # 🚀 [추가] 대리점별 '진짜' 당월매출 합계 계산 (퇴사자 포함)
-        real_dealer_sales = {}
-        for hc, info in all_hc_sales.items():
-            d = info['dealer']
-            if d:
-                real_dealer_sales[d] = real_dealer_sales.get(d, 0) + info['sales']
+                        acts_sales[hc_name_s] = s_val
+                    
+                    # (B) 대리점별 당월매출 진짜 합계 세팅 (퇴사자 포함 최근 시트의 "모든" 인원 합산)
+                    # 합계, 소계, 총계 등은 이중 합산 방지를 위해 철저히 제외
+                    if hc_name_s and not any(x in hc_name_s for x in ['HC', '영업사원', '이름', '합계', '소계', '총계', '목표']):
+                        
+                        matched_dealer = hc_to_dealer.get(hc_name_s, "")
+                        
+                        # 목표 리스트에 없는 사람(퇴사자 등)이면 텍스트 기반으로 대리점 매핑
+                        if not matched_dealer:
+                            for vd in valid_dealers:
+                                if vd in dealer_s:
+                                    matched_dealer = vd
+                                    break
+                                    
+                        # 그래도 못 찾으면 혹시나 이름 칸에 대리점을 적었을 경우 대비
+                        if not matched_dealer:
+                            for vd in valid_dealers:
+                                if vd in hc_name_s:
+                                    matched_dealer = vd
+                                    break
+                                    
+                        # 매핑된 대리점이 있으면 진짜 합계 장부에 더하기
+                        if matched_dealer in valid_dealers:
+                            real_dealer_sales[matched_dealer] = real_dealer_sales.get(matched_dealer, 0) + s_val
 
         status_box.info("✅ 데이터 구성 완료! 표 출력 중...")
         
@@ -347,7 +368,7 @@ def load_vdt_data():
                 df[col] = np.where(df[tgt_col] > 0, (df[act_col] / df[tgt_col] * 100).round(1), 0)
         
         status_box.empty()
-        return df, date_headers, real_dealer_sales # 🚀 찐 대리점 합계 데이터도 같이 반환!
+        return df, date_headers, real_dealer_sales 
 
     except Exception as e:
         status_box.empty()
@@ -355,7 +376,6 @@ def load_vdt_data():
         with st.expander("🛠️ 상세 에러 보기"): st.code(traceback.format_exc())
         return pd.DataFrame(), {}, {}
 
-# 🚀 [수정] 진짜 합계를 받아와서 소계 낼 때 덮어씌웁니다!
 def calculate_subtotals(df, real_dealer_sales):
     if df.empty: return df
     
@@ -370,7 +390,7 @@ def calculate_subtotals(df, real_dealer_sales):
         subtotal[dealer_col] = dealer
         subtotal[hc_col] = "합계"
         
-        # 🚀 대리점 당월매출 ACT를 퇴사자 포함 전체 합계로 덮어쓰기!
+        # 🚀 대리점 당월매출 합계를 "진짜 합계(퇴사자 포함)"로 덮어쓰기!
         if dealer in real_dealer_sales:
             subtotal[('🎯 당월매출', '인별매출(천)', 'ACT')] = real_dealer_sales[dealer]
         
@@ -385,7 +405,7 @@ def calculate_subtotals(df, real_dealer_sales):
     grand_total[dealer_col] = "🌟 총계"
     grand_total[hc_col] = "🌟 총계"
     
-    # 🚀 총계 당월매출 ACT도 표에 있는 대리점들의 진짜 합계로 덮어쓰기!
+    # 🚀 전체 총계의 당월매출도 "진짜 합계들의 총합"으로 덮어쓰기!
     total_real_sales = sum([real_dealer_sales.get(d, 0) for d in df[dealer_col].unique()])
     grand_total[('🎯 당월매출', '인별매출(천)', 'ACT')] = total_real_sales
     
