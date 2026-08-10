@@ -145,7 +145,7 @@ if CURRENT_WEEK:
 
 @st.cache_data(ttl=60)
 def load_vdt_data():
-    if not client: return pd.DataFrame(), {}, {}
+    if not client: return pd.DataFrame(), {}, {}, {}, {}
     
     status_box = st.empty()
     try:
@@ -156,7 +156,7 @@ def load_vdt_data():
         target_sheet_name = "주차별 목표 세팅"
         if target_sheet_name not in all_worksheets: 
             st.error(f"🚨 '{target_sheet_name}' 탭을 찾을 수 없습니다.")
-            return pd.DataFrame(), {}, {}
+            return pd.DataFrame(), {}, {}, {}, {}
         
         target_ws = sh.worksheet(target_sheet_name)
         
@@ -251,29 +251,60 @@ def load_vdt_data():
         hc_to_dealer = {hc: dealer for dealer, hc, _ in hc_info}
         valid_dealers = list(set([d for d, _, _ in hc_info]))
         
-        # 1️⃣ 주차별 실적은 과거부터 전체 시트를 순회하며 '누적' 합산
+        # 🚀 [완벽 수정 1] 계약액/견적건/계약건 대리점 찐 합계 장부 생성!
+        real_dealer_monthly = {d: {'amt': 0, 'est': 0, 'cnt': 0} for d in valid_dealers}
+        real_dealer_weekly = {d: {wk: {'amt': 0, 'est': 0, 'cnt': 0} for wk in week_keys} for d in valid_dealers}
+        
         for ws in daily_sheets:
             wk = get_week_name(ws.title)
             d_data = ws.get_all_values()
             
+            # 셀 병합 추적용 (대리점 이름)
+            current_remembered_dealer = ""
+            
             for row in d_data:
+                # 딜러 이름 찾기 로직 (행 첫 3열 훑기)
+                row_header_str = " ".join([str(x).strip() for x in row[:3]])
+                for vd in valid_dealers:
+                    if vd in row_header_str:
+                        current_remembered_dealer = vd
+                        break
+
                 if len(row) > 15: 
                     hc_name = str(row[3]).strip()
-                    if hc_name in acts:
+                    # 요약행(합계 등) 철저히 제외
+                    if hc_name and not any(x in hc_name for x in ['HC', 'HC명', '영업사원', '이름', '합계', '소계', '총계', '목표', '대리점']):
                         est_val = clean_val(row[4])
                         cnt_val = clean_val(row[5])
                         amt_val = clean_val(row[15])
                         
-                        if wk:
-                            acts[hc_name][wk]['est'] += est_val
-                            acts[hc_name][wk]['cnt'] += cnt_val
-                            acts[hc_name][wk]['amt'] += amt_val
+                        # (A) 인별 실적 누적 (표에 나오는 현원들)
+                        if hc_name in acts:
+                            if wk:
+                                acts[hc_name][wk]['est'] += est_val
+                                acts[hc_name][wk]['cnt'] += cnt_val
+                                acts[hc_name][wk]['amt'] += amt_val
+                            
+                            month_acts[hc_name]['est'] += est_val
+                            month_acts[hc_name]['cnt'] += cnt_val
+                            month_acts[hc_name]['amt'] += amt_val
                         
-                        month_acts[hc_name]['est'] += est_val
-                        month_acts[hc_name]['cnt'] += cnt_val
-                        month_acts[hc_name]['amt'] += amt_val
+                        # (B) 대리점 찐 합계 누적 (퇴사자 등 모든 사람 포함)
+                        matched_dealer = current_remembered_dealer
+                        if not matched_dealer:
+                            matched_dealer = hc_to_dealer.get(hc_name, "")
+                            
+                        if matched_dealer in valid_dealers:
+                            real_dealer_monthly[matched_dealer]['est'] += est_val
+                            real_dealer_monthly[matched_dealer]['cnt'] += cnt_val
+                            real_dealer_monthly[matched_dealer]['amt'] += amt_val
+                            
+                            if wk and wk in real_dealer_weekly[matched_dealer]:
+                                real_dealer_weekly[matched_dealer][wk]['est'] += est_val
+                                real_dealer_weekly[matched_dealer][wk]['cnt'] += cnt_val
+                                real_dealer_weekly[matched_dealer][wk]['amt'] += amt_val
                         
-        # 2️⃣ [완벽 해결 핵심] 당월매출(S열)은 무조건 "가장 최신 시트 1개"에서만 가져옴
+        # 🚀 [완벽 수정 2] 당월매출(S열) 대리점 찐 합계 장부 (가장 최신 시트 1개)
         acts_sales = {hc: 0 for _, hc, _ in hc_info}
         real_dealer_sales = {d: 0 for d in valid_dealers}
         
@@ -281,12 +312,10 @@ def load_vdt_data():
             latest_sheet = daily_sheets[-1] 
             l_data = latest_sheet.get_all_values()
             
-            # 💡 셀 병합으로 인해 대리점 이름이 비어있는 경우를 방지하기 위해 '현재 대리점'을 기억합니다!
             current_remembered_dealer = ""
             
             for row in l_data:
                 if len(row) > 18:
-                    # A열, B열, C열(0, 1, 2)에 대리점 이름이 등장하면 기억해둡니다.
                     row_header_str = " ".join([str(x).strip() for x in row[:3]])
                     for vd in valid_dealers:
                         if vd in row_header_str:
@@ -296,24 +325,19 @@ def load_vdt_data():
                     hc_name_s = str(row[3]).strip()
                     s_str = str(row[18]).strip()
                     
-                    # 합계, 소계 같은 요약 행은 제외
                     if hc_name_s and not any(x in hc_name_s for x in ['HC', 'HC명', '영업사원', '이름', '합계', '소계', '총계', '목표', '대리점']):
                         if s_str != '':
                             s_val = clean_val(s_str)
                             
-                            # (A) 인별 당월매출 ACT 세팅 (표에 있는 사람 기준)
+                            # (A) 인별 당월매출 ACT
                             if hc_name_s in acts_sales:
                                 acts_sales[hc_name_s] = s_val
                                 
-                            # (B) 대리점별 당월매출 찐 합계 
-                            # 퇴사자여서 빈칸으로 매핑되더라도, 위에서 기억해둔 대리점 소속으로 무조건 편입!
+                            # (B) 대리점별 당월매출 찐 합계
                             matched_dealer = current_remembered_dealer
-                            
-                            # 혹시나 기억해둔 것도 없다면 DB에서 조회
                             if not matched_dealer:
                                 matched_dealer = hc_to_dealer.get(hc_name_s, "")
                                 
-                            # 진짜 대리점 합계 장부에 더하기!
                             if matched_dealer in real_dealer_sales:
                                 real_dealer_sales[matched_dealer] += s_val
 
@@ -369,15 +393,15 @@ def load_vdt_data():
                 df[col] = np.where(df[tgt_col] > 0, (df[act_col] / df[tgt_col] * 100).round(1), 0)
         
         status_box.empty()
-        return df, date_headers, real_dealer_sales 
+        return df, date_headers, real_dealer_sales, real_dealer_monthly, real_dealer_weekly 
 
     except Exception as e:
         status_box.empty()
         st.error("🚨 데이터 구성 중 에러가 발생했습니다!")
         with st.expander("🛠️ 상세 에러 보기"): st.code(traceback.format_exc())
-        return pd.DataFrame(), {}, {}
+        return pd.DataFrame(), {}, {}, {}, {}
 
-def calculate_subtotals(df, real_dealer_sales):
+def calculate_subtotals(df, real_dealer_sales, real_dealer_monthly, real_dealer_weekly):
     if df.empty: return df
     
     result_rows = []
@@ -391,10 +415,27 @@ def calculate_subtotals(df, real_dealer_sales):
         subtotal[dealer_col] = dealer
         subtotal[hc_col] = "합계"
         
-        # 🚀 대리점 당월매출 합계를 최신 시트의 "찐 합계(퇴사자 포함)"로 완벽하게 덮어쓰기!
+        # 🚀 [대리점 합계 덮어쓰기] 당월매출
         if dealer in real_dealer_sales:
             subtotal[('🎯 당월매출', '인별매출(천)', 'ACT')] = real_dealer_sales[dealer]
+            
+        # 🚀 [대리점 합계 덮어쓰기] 당월 합계 (계약액, 견적건, 계약건)
+        if dealer in real_dealer_monthly:
+            subtotal[('🌟 당월 합계', '계약액(천)', 'ACT')] = real_dealer_monthly[dealer]['amt']
+            subtotal[('🌟 당월 합계', '견적건', 'ACT')] = real_dealer_monthly[dealer]['est']
+            subtotal[('🌟 당월 합계', '계약건', 'ACT')] = real_dealer_monthly[dealer]['cnt']
+            
+        # 🚀 [대리점 합계 덮어쓰기] 주차별 합계 (계약액, 견적건, 계약건)
+        if dealer in real_dealer_weekly:
+            for wk, wk_data in real_dealer_weekly[dealer].items():
+                wk_cols = [c[0] for c in df.columns if wk in c[0]]
+                if wk_cols:
+                    w_c = wk_cols[0]
+                    subtotal[(w_c, '계약액(천)', 'ACT')] = wk_data['amt']
+                    subtotal[(w_c, '견적건', 'ACT')] = wk_data['est']
+                    subtotal[(w_c, '계약건', 'ACT')] = wk_data['cnt']
         
+        # 덮어쓴 ACT를 기준으로 달성률 100% 자동 재계산
         for col in df.columns[2:]:
             if col[2] == '달성율(%)':
                 tgt_col = (col[0], col[1], '목표')
@@ -406,10 +447,25 @@ def calculate_subtotals(df, real_dealer_sales):
     grand_total[dealer_col] = "🌟 총계"
     grand_total[hc_col] = "🌟 총계"
     
-    # 🚀 전체 총계의 당월매출도 최신 시트의 "찐 합계들의 총합"으로 덮어쓰기!
-    total_real_sales = sum([real_dealer_sales.get(d, 0) for d in df[dealer_col].unique()])
-    grand_total[('🎯 당월매출', '인별매출(천)', 'ACT')] = total_real_sales
+    # 🚀 [전체 총계 덮어쓰기] 당월매출
+    grand_total[('🎯 당월매출', '인별매출(천)', 'ACT')] = sum([real_dealer_sales.get(d, 0) for d in df[dealer_col].unique()])
     
+    # 🚀 [전체 총계 덮어쓰기] 당월 합계
+    grand_total[('🌟 당월 합계', '계약액(천)', 'ACT')] = sum([real_dealer_monthly.get(d, {}).get('amt', 0) for d in df[dealer_col].unique()])
+    grand_total[('🌟 당월 합계', '견적건', 'ACT')] = sum([real_dealer_monthly.get(d, {}).get('est', 0) for d in df[dealer_col].unique()])
+    grand_total[('🌟 당월 합계', '계약건', 'ACT')] = sum([real_dealer_monthly.get(d, {}).get('cnt', 0) for d in df[dealer_col].unique()])
+    
+    # 🚀 [전체 총계 덮어쓰기] 주차별 합계
+    some_dealer = df[dealer_col].unique()[0] if not df.empty else None
+    if some_dealer and some_dealer in real_dealer_weekly:
+        for wk in real_dealer_weekly[some_dealer].keys():
+            wk_cols = [c[0] for c in df.columns if wk in c[0]]
+            if wk_cols:
+                w_c = wk_cols[0]
+                grand_total[(w_c, '계약액(천)', 'ACT')] = sum([real_dealer_weekly.get(d, {}).get(wk, {}).get('amt', 0) for d in df[dealer_col].unique()])
+                grand_total[(w_c, '견적건', 'ACT')] = sum([real_dealer_weekly.get(d, {}).get(wk, {}).get('est', 0) for d in df[dealer_col].unique()])
+                grand_total[(w_c, '계약건', 'ACT')] = sum([real_dealer_weekly.get(d, {}).get(wk, {}).get('cnt', 0) for d in df[dealer_col].unique()])
+
     for col in df.columns[2:]:
         if col[2] == '달성율(%)':
             tgt_col = (col[0], col[1], '목표')
@@ -419,10 +475,11 @@ def calculate_subtotals(df, real_dealer_sales):
     
     return pd.DataFrame(result_rows)
 
-df_raw, date_headers, real_dealer_sales = load_vdt_data()
+
+df_raw, date_headers, real_dealer_sales, real_dealer_monthly, real_dealer_weekly = load_vdt_data()
 
 if not df_raw.empty:
-    final_df = calculate_subtotals(df_raw, real_dealer_sales)
+    final_df = calculate_subtotals(df_raw, real_dealer_sales, real_dealer_monthly, real_dealer_weekly)
     
     # ---------------------------------------------------------
     # 🚀 개인/대리점 선택 및 실적 차트 대시보드
