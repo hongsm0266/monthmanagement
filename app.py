@@ -38,7 +38,6 @@ st.markdown("""
     
     .vdt-table-container {
         width: 100%;
-        /* 🚀 [수정] 표의 높이를 모니터 화면의 65%로 고정하여 스크롤바가 항상 화면에 보이게 함 */
         max-height: 65vh; 
         overflow: auto;
         border: 1px solid #cbd5e1;
@@ -46,7 +45,6 @@ st.markdown("""
         margin-top: 10px;
     }
     
-    /* 🚀 [수정] 크롬/엣지 브라우저에서 스크롤바를 두껍고 예쁘게 커스텀 */
     .vdt-table-container::-webkit-scrollbar { width: 14px; height: 14px; }
     .vdt-table-container::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 8px; }
     .vdt-table-container::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 8px; border: 3px solid #f1f5f9; }
@@ -59,7 +57,6 @@ st.markdown("""
         white-space: nowrap;
     }
     
-    /* 🚀 [수정] 표 상단 항목들(thead)을 위쪽에 틀 고정 (Top Sticky) */
     .vdt-table thead th {
         height: 34px;
         box-sizing: border-box;
@@ -67,7 +64,6 @@ st.markdown("""
         z-index: 10;
         background-clip: padding-box; 
     }
-    /* 1,2,3번째 줄의 높이를 계산해서 순서대로 고정 */
     .vdt-table thead tr:nth-child(1) th { top: 0; }
     .vdt-table thead tr:nth-child(2) th { top: 33px; }
     .vdt-table thead tr:nth-child(3) th { top: 66px; }
@@ -136,6 +132,16 @@ def get_week_name(sheet_title):
 now = datetime.now()
 CURRENT_WEEK = get_week_name(f"{now.month}/{now.day}") 
 if not CURRENT_WEEK: CURRENT_WEEK = '1주차'
+
+# 🚀 [추가] 전주(이전 주차) 자동 계산
+PREV_WEEK = None
+if CURRENT_WEEK:
+    try:
+        curr_num = int(CURRENT_WEEK.replace("주차", ""))
+        if curr_num > 0:
+            PREV_WEEK = f"{curr_num - 1}주차"
+    except:
+        pass
 
 @st.cache_data(ttl=60)
 def load_vdt_data():
@@ -356,6 +362,7 @@ def calculate_subtotals(df):
     
     return pd.DataFrame(result_rows)
 
+
 df_raw, date_headers = load_vdt_data()
 
 if not df_raw.empty:
@@ -395,7 +402,6 @@ if not df_raw.empty:
     if selected_option != valid_choices[0]:
         st.markdown("---")
         
-        # 선택한 데이터 찾기
         is_dealer_total = "대리점 합계" in selected_option
         if is_dealer_total:
             target_dealer = selected_option.replace("🏢 [", "").replace("] 대리점 합계", "")
@@ -411,7 +417,6 @@ if not df_raw.empty:
             
         t_row = final_df[(final_df[('기본정보', '대리점', '대리점')] == target_dealer) & (final_df[('기본정보', 'HC명', 'HC명')] == target_hc)].iloc[0]
         
-        # 순위(등수) 계산 함수
         total_competitors = len(comp_df)
         def get_rank_str(col_tuple, val):
             if val == 0: return f"순위 제외"
@@ -419,13 +424,17 @@ if not df_raw.empty:
             target_idx = comp_df[(comp_df[('기본정보', '대리점', '대리점')] == target_dealer) & (comp_df[('기본정보', 'HC명', 'HC명')] == target_hc)].index[0]
             return f"🏆 {int(ranks.loc[target_idx])}등 / {total_competitors}{unit_str}"
 
+        # 당주(현재 주차) 및 전주(이전 주차) 컬럼 파악
         curr_wk_cols = [c[0] for c in final_df.columns if CURRENT_WEEK in c[0]]
         cw_col = curr_wk_cols[0] if curr_wk_cols else None
         
-        # 메인 요약 문구
-        st.markdown(f"### ✨ **{selected_option.split(' ', 1)[1]}** 실적 요약 (당월 & {CURRENT_WEEK})")
+        prev_wk_cols = [c[0] for c in final_df.columns if PREV_WEEK and PREV_WEEK in c[0]]
+        pw_col = prev_wk_cols[0] if prev_wk_cols else None
         
-        # 지표별 값 및 등수 계산
+        st.markdown(f"### ✨ **{selected_option.split(' ', 1)[1]}** 실적 요약 (당월 / 전주 / 당주)")
+        
+        # --- 지표값 세팅 ---
+        # 1. 당월 지표
         act1 = t_row[('🎯 당월매출', '인별매출(천)', 'ACT')]
         pct1 = t_row[('🎯 당월매출', '인별매출(천)', '달성율(%)')]
         rk1 = get_rank_str(('🎯 당월매출', '인별매출(천)', '달성율(%)'), pct1)
@@ -434,6 +443,16 @@ if not df_raw.empty:
         pct2 = t_row[('🌟 당월 합계', '계약액(천)', '달성율(%)')]
         rk2 = get_rank_str(('🌟 당월 합계', '계약액(천)', '달성율(%)'), pct2)
         
+        # 2. 전주(PREV) 지표
+        act_pw_amt = t_row[(pw_col, '계약액(천)', 'ACT')] if pw_col else 0
+        pct_pw_amt = t_row[(pw_col, '계약액(천)', '달성율(%)')] if pw_col else 0
+        rk_pw_amt = get_rank_str((pw_col, '계약액(천)', '달성율(%)'), pct_pw_amt) if pw_col else ""
+        
+        act_pw_cnt = t_row[(pw_col, '계약건', 'ACT')] if pw_col else 0
+        pct_pw_cnt = t_row[(pw_col, '계약건', '달성율(%)')] if pw_col else 0
+        rk_pw_cnt = get_rank_str((pw_col, '계약건', '달성율(%)'), pct_pw_cnt) if pw_col else ""
+        
+        # 3. 당주(CURR) 지표
         act3 = t_row[(cw_col, '계약액(천)', 'ACT')] if cw_col else 0
         pct3 = t_row[(cw_col, '계약액(천)', '달성율(%)')] if cw_col else 0
         rk3 = get_rank_str((cw_col, '계약액(천)', '달성율(%)'), pct3) if cw_col else ""
@@ -442,11 +461,21 @@ if not df_raw.empty:
         pct4 = t_row[(cw_col, '계약건', '달성율(%)')] if cw_col else 0
         rk4 = get_rank_str((cw_col, '계약건', '달성율(%)'), pct4) if cw_col else ""
 
-        mc1, mc2, mc3, mc4 = st.columns(4)
-        with mc1: st.metric("🌲 당월매출 (천원)", f"{act1:,.0f}", f"{pct1:.1f}% 달성 | {rk1}", delta_color="off")
-        with mc2: st.metric("🌟 당월 합계 계약액 (천원)", f"{act2:,.0f}", f"{pct2:.1f}% 달성 | {rk2}", delta_color="off")
-        with mc3: st.metric(f"🌊 {CURRENT_WEEK} 계약액 (천원)", f"{act3:,.0f}", f"{pct3:.1f}% 달성 | {rk3}", delta_color="off")
-        with mc4: st.metric(f"🌊 {CURRENT_WEEK} 계약건 (건)", f"{act4:,.0f}", f"{pct4:.1f}% 달성 | {rk4}", delta_color="off")
+        # 🚀 [수정] 당월 / 전주 / 당주를 한눈에 볼 수 있도록 3열 배치
+        mc1, mc2, mc3 = st.columns(3)
+        with mc1: 
+            st.metric("🌲 당월매출 (천원)", f"{act1:,.0f}", f"{pct1:.1f}% 달성 | {rk1}", delta_color="off")
+            st.metric("🌟 당월 합계 계약액 (천원)", f"{act2:,.0f}", f"{pct2:.1f}% 달성 | {rk2}", delta_color="off")
+        with mc2: 
+            if pw_col:
+                st.metric(f"⏪ 전주({PREV_WEEK}) 계약액 (천원)", f"{act_pw_amt:,.0f}", f"{pct_pw_amt:.1f}% 달성 | {rk_pw_amt}", delta_color="off")
+                st.metric(f"⏪ 전주({PREV_WEEK}) 계약건 (건)", f"{act_pw_cnt:,.0f}", f"{pct_pw_cnt:.1f}% 달성 | {rk_pw_cnt}", delta_color="off")
+            else:
+                st.metric("⏪ 전주 계약액 (천원)", "-", "해당 데이터 없음", delta_color="off")
+                st.metric("⏪ 전주 계약건 (건)", "-", "해당 데이터 없음", delta_color="off")
+        with mc3: 
+            st.metric(f"🌊 당주({CURRENT_WEEK}) 계약액 (천원)", f"{act3:,.0f}", f"{pct3:.1f}% 달성 | {rk3}", delta_color="off")
+            st.metric(f"🌊 당주({CURRENT_WEEK}) 계약건 (건)", f"{act4:,.0f}", f"{pct4:.1f}% 달성 | {rk4}", delta_color="off")
             
         st.markdown("##### 📈 주요 항목 목표 대비 실적(ACT)")
         
@@ -561,7 +590,6 @@ if not df_raw.empty:
             
         html = ["<div class='vdt-table-container'><table class='vdt-table'><thead>"]
         
-        # 🚀 [수정] 대리점 및 HC명 열 틀 고정 (Top-Left Corner: top 0, left 적용, 가장 높은 z-index 15)
         html.append("<tr><th rowspan='3' style='position: sticky; top: 0; left: 0; z-index: 15; background-color: #0f172a; min-width: 90px; max-width: 90px;'>대리점</th><th rowspan='3' style='position: sticky; top: 0; left: 90px; z-index: 15; background-color: #0f172a; min-width: 110px; max-width: 110px; border-right: 2px solid #94a3b8;'>HC명</th>")
         
         headers_l1 = []
@@ -667,7 +695,6 @@ if not df_raw.empty:
                 
             html.append(f"<tr {row_bg}>")
             
-            # 🚀 [수정] 대리점 및 HC명 데이터 열 틀 고정 (Left Sticky, z-index 5)
             html.append(f"<td class='text-center' style='position: sticky; left: 0; z-index: 5; background-color: {bg_color}; min-width: 90px; max-width: 90px; border-right: 1px solid #cbd5e1;'>{dealer}</td>")
             html.append(f"<td class='text-center' style='position: sticky; left: 90px; z-index: 5; background-color: {bg_color}; min-width: 110px; max-width: 110px; border-right: 2px solid #94a3b8;'>{hc}</td>")
             
@@ -679,7 +706,7 @@ if not df_raw.empty:
                 is_first_of_week = is_curr and col_obj[1] == '계약액(천)' and col[2] == '목표'
                 is_last_of_week = is_curr and col_obj[1] == '계약건' and col[2] == '달성율(%)'
                 is_last_of_sales = col[0] == '🎯 당월매출' and col_obj[2] == '달성율(%)'
-                is_last_monthly = "🌟 당월 합계" in col_obj[0] and col_obj[1] == '계약건' and col_obj[2] == '달성율(%)'
+                is_last_monthly = "🌟 당월 합계" in col[0] and col_obj[1] == '계약건' and col_obj[2] == '달성율(%)'
                 
                 style_parts = []
                 if is_curr:
