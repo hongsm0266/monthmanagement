@@ -231,7 +231,18 @@ def load_vdt_data():
                 }
 
         status_box.info("📈 3단계: 일별 실적(ACT) 스캔 및 누적 취합 중...")
-        daily_sheets = [ws for ws in sh.worksheets() if "/" in ws.title]
+        
+        raw_daily_sheets = [ws for ws in sh.worksheets() if "/" in ws.title]
+        
+        # 🚀 [오류 해결 로직 1] 날짜순으로 시트를 정확히 정렬 (오래된 날짜 -> 최신 날짜 순)
+        def sort_key(ws):
+            try:
+                parts = ws.title.replace('일', '').strip().split('/')
+                return int(parts[0]) * 100 + int(parts[1])
+            except:
+                return 0
+                
+        daily_sheets = sorted(raw_daily_sheets, key=sort_key)
         
         acts = {hc: {wk: {'amt': 0, 'est': 0, 'cnt': 0} for wk in week_keys} for _, hc, _ in hc_info}
         month_acts = {hc: {'amt': 0, 'est': 0, 'cnt': 0} for _, hc, _ in hc_info}
@@ -242,7 +253,6 @@ def load_vdt_data():
             d_data = ws.get_all_values()
             
             for row in d_data:
-                # 1. 일일 계약액, 견적건, 계약건 누적 처리
                 if len(row) > 15: 
                     hc_name = str(row[3]).strip()
                     if hc_name in acts:
@@ -259,15 +269,14 @@ def load_vdt_data():
                         month_acts[hc_name]['cnt'] += cnt_val
                         month_acts[hc_name]['amt'] += amt_val
                         
-                # 🚀 2. [오류 완벽 해결] S열 당월매출 가져오기
-                # 빈 시트나 결근으로 인해 최신 탭에서 누락되는 것을 방지하기 위해
-                # 모든 탭을 훑으며 가장 큰 값(최근 누적 달성액)을 유지합니다.
+                # 🚀 [오류 해결 로직 2] 당월매출 (S열, 인덱스 18) 처리
+                # max()를 제거하고, 최신 날짜로 올수록 값이 비어있지 않다면 무조건 덮어쓰기!
                 if len(row) > 18:
                     hc_name_s = str(row[3]).strip()
                     if hc_name_s in acts_sales:
-                        s_val = clean_val(row[18])
-                        if s_val > acts_sales[hc_name_s]:
-                            acts_sales[hc_name_s] = s_val
+                        s_str = str(row[18]).strip()
+                        if s_str != '':  # 빈칸이 아니라면 취소/환불로 금액이 깎였어도 무조건 덮어씁니다.
+                            acts_sales[hc_name_s] = clean_val(s_str)
 
         status_box.info("✅ 데이터 구성 완료! 표 출력 중...")
         
@@ -720,7 +729,7 @@ if not df_raw.empty:
                 is_monthly = "당월" in col_obj[0]
                 
                 is_first_of_week = is_curr and col_obj[1] == '계약액(천)' and col[2] == '목표'
-                is_last_of_week = is_curr and col[1] == '계약건' and col[2] == '달성율(%)'
+                is_last_of_week = is_curr and col_obj[1] == '계약건' and col[2] == '달성율(%)'
                 is_last_of_sales = col[0] == '🎯 당월매출' and col_obj[2] == '달성율(%)'
                 is_last_monthly = "🌟 당월 합계" in col[0] and col_obj[1] == '계약건' and col_obj[2] == '달성율(%)'
                 
