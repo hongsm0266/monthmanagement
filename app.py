@@ -10,7 +10,7 @@ from google.oauth2.service_account import Credentials
 import traceback
 from datetime import datetime
 import plotly.graph_objects as go 
-import re # 🚀 [추가] 날짜를 정확히 추출하기 위한 정규식 라이브러리
+import re 
 
 # 1. 화면 기본 설정
 st.set_page_config(page_title="충청호남팀 영업사원 주차별 VDT 목표 관리", layout="wide")
@@ -234,7 +234,6 @@ def load_vdt_data():
         
         raw_daily_sheets = [ws for ws in sh.worksheets() if "/" in ws.title]
         
-        # 🚀 [완벽 수정 1] 요일이 섞여 있어도 "숫자/숫자" 형식만 귀신같이 추출하여 무조건 오래된 날짜부터 정렬
         def sort_key(ws):
             try:
                 m = re.search(r'(\d+)\s*/\s*(\d+)', ws.title)
@@ -249,18 +248,15 @@ def load_vdt_data():
         acts = {hc: {wk: {'amt': 0, 'est': 0, 'cnt': 0} for wk in week_keys} for _, hc, _ in hc_info}
         month_acts = {hc: {'amt': 0, 'est': 0, 'cnt': 0} for _, hc, _ in hc_info}
         
-        # 🚀 [완벽 수정 2] 모든 인원의 "가장 최신 누적 매출"을 저장할 숨겨진 장부 준비
-        all_hc_latest_s = {}
         hc_to_dealer = {hc: dealer for dealer, hc, _ in hc_info}
         valid_dealers = list(set([d for d, _, _ in hc_info]))
         
-        # 날짜가 오래된 시트부터 차례대로 까보면서 덮어쓰기 진행!
+        # 1️⃣ 모든 시트를 돌면서 "주차별 실적"과 "당월 계약/견적" 누적하기 (이건 기존처럼 누적)
         for ws in daily_sheets:
             wk = get_week_name(ws.title)
             d_data = ws.get_all_values()
             
             for row in d_data:
-                # 건수 및 주차별 실적 누적
                 if len(row) > 15: 
                     hc_name = str(row[3]).strip()
                     if hc_name in acts:
@@ -277,46 +273,44 @@ def load_vdt_data():
                         month_acts[hc_name]['cnt'] += cnt_val
                         month_acts[hc_name]['amt'] += amt_val
                         
-                # 당월매출 (S열) 처리 - 빈칸이 아닐 때마다 계속 최신 값으로 덮어쓰기! (취소/정정 완벽 반영)
+        # 2️⃣ [완벽 해결 핵심 로직] 당월매출(S열)은 무조건 "가장 최신 시트"에서만 뽑아옵니다!
+        acts_sales = {hc: 0 for _, hc, _ in hc_info}
+        real_dealer_sales = {d: 0 for d in valid_dealers}
+        
+        if daily_sheets:
+            latest_sheet = daily_sheets[-1] # 가장 최근 날짜(예: 8/9) 시트 1개만 봄
+            l_data = latest_sheet.get_all_values()
+            
+            for row in l_data:
                 if len(row) > 18:
-                    dealer_s = str(row[2]).strip() if len(row) > 2 else ""
+                    raw_dealer = str(row[2]).strip() if len(row) > 2 else ""
                     hc_name_s = str(row[3]).strip()
                     s_str = str(row[18]).strip()
                     
+                    # 합계, 소계 같은 요약 행 제외
                     if hc_name_s and not any(x in hc_name_s for x in ['HC', 'HC명', '영업사원', '이름', '합계', '소계', '총계', '목표', '대리점']):
                         if s_str != '':
-                            val = clean_val(s_str)
+                            s_val = clean_val(s_str)
                             
-                            # 대리점 이름 보정 (일보에 대리점 명이 누락된 경우 목표시트 기준 매핑)
-                            matched_dealer = dealer_s
+                            # (A) 인별 당월매출 ACT 세팅 (표에 있는 사람 기준)
+                            if hc_name_s in acts_sales:
+                                acts_sales[hc_name_s] = s_val
+                                
+                            # (B) 대리점별 당월매출 찐 합계 (퇴사자 포함, 최신 시트에 적힌 모든 인원 더하기)
+                            matched_dealer = ""
+                            # 먼저 엑셀에 적힌 대리점 이름(raw_dealer)으로 찾기
+                            for vd in valid_dealers:
+                                if vd in raw_dealer:
+                                    matched_dealer = vd
+                                    break
+                                    
+                            # 안 적혀있으면 영업사원 이름으로 우리 DB에서 찾기
                             if not matched_dealer:
                                 matched_dealer = hc_to_dealer.get(hc_name_s, "")
                                 
-                            all_hc_latest_s[hc_name_s] = {
-                                'dealer': matched_dealer,
-                                'val': val
-                            }
-        
-        # 숨겨진 장부에서 값 추출하여 표에 표시할 변수에 세팅
-        acts_sales = {hc: 0 for _, hc, _ in hc_info}
-        for hc_name in acts_sales.keys():
-            if hc_name in all_hc_latest_s:
-                acts_sales[hc_name] = all_hc_latest_s[hc_name]['val']
-                
-        # 대리점별 '진짜' 당월매출 합계 계산 (퇴사자 포함, 마지막까지 실적이 남은 모든 사람 합산)
-        real_dealer_sales = {}
-        for hc, info in all_hc_latest_s.items():
-            d = info['dealer']
-            
-            # 대리점명 텍스트 미세 오차 보정
-            if d not in valid_dealers:
-                for vd in valid_dealers:
-                    if vd in d or vd in hc:
-                        d = vd
-                        break
-                        
-            if d in valid_dealers:
-                real_dealer_sales[d] = real_dealer_sales.get(d, 0) + info['val']
+                            # 진짜 대리점 합계 장부에 더하기!
+                            if matched_dealer in real_dealer_sales:
+                                real_dealer_sales[matched_dealer] += s_val
 
         status_box.info("✅ 데이터 구성 완료! 표 출력 중...")
         
@@ -392,7 +386,7 @@ def calculate_subtotals(df, real_dealer_sales):
         subtotal[dealer_col] = dealer
         subtotal[hc_col] = "합계"
         
-        # 🚀 대리점 당월매출 합계를 "진짜 합계(퇴사자 포함)"로 덮어쓰기!
+        # 🚀 대리점 당월매출 합계를 최신 시트의 "찐 합계(퇴사자 포함)"로 완벽하게 덮어쓰기!
         if dealer in real_dealer_sales:
             subtotal[('🎯 당월매출', '인별매출(천)', 'ACT')] = real_dealer_sales[dealer]
         
@@ -407,7 +401,7 @@ def calculate_subtotals(df, real_dealer_sales):
     grand_total[dealer_col] = "🌟 총계"
     grand_total[hc_col] = "🌟 총계"
     
-    # 🚀 전체 총계의 당월매출도 "진짜 합계들의 총합"으로 덮어쓰기!
+    # 🚀 전체 총계의 당월매출도 최신 시트의 "찐 합계들의 총합"으로 덮어쓰기!
     total_real_sales = sum([real_dealer_sales.get(d, 0) for d in df[dealer_col].unique()])
     grand_total[('🎯 당월매출', '인별매출(천)', 'ACT')] = total_real_sales
     
@@ -490,7 +484,6 @@ if not df_raw.empty:
         
         st.markdown(f"### ✨ **{selected_option.split(' ', 1)[1]}** 실적 요약 (당월 / 전주 / 당주)")
         
-        # --- 1. 당월 지표 ---
         act1 = t_row[('🎯 당월매출', '인별매출(천)', 'ACT')]
         pct1 = t_row[('🎯 당월매출', '인별매출(천)', '달성율(%)')]
         rk1 = get_rank_str(('🎯 당월매출', '인별매출(천)', '달성율(%)'), pct1)
@@ -503,7 +496,6 @@ if not df_raw.empty:
         pct_m_est = t_row[('🌟 당월 합계', '견적건', '달성율(%)')]
         rk_m_est = get_rank_str(('🌟 당월 합계', '견적건', '달성율(%)'), pct_m_est)
         
-        # --- 2. 전주(PREV) 지표 ---
         act_pw_amt = t_row[(pw_col, '계약액(천)', 'ACT')] if pw_col else 0
         pct_pw_amt = t_row[(pw_col, '계약액(천)', '달성율(%)')] if pw_col else 0
         rk_pw_amt = get_rank_str((pw_col, '계약액(천)', '달성율(%)'), pct_pw_amt) if pw_col else ""
@@ -516,7 +508,6 @@ if not df_raw.empty:
         pct_pw_est = t_row[(pw_col, '견적건', '달성율(%)')] if pw_col else 0
         rk_pw_est = get_rank_str((pw_col, '견적건', '달성율(%)'), pct_pw_est) if pw_col else ""
         
-        # --- 3. 당주(CURR) 지표 ---
         act3 = t_row[(cw_col, '계약액(천)', 'ACT')] if cw_col else 0
         pct3 = t_row[(cw_col, '계약액(천)', '달성율(%)')] if cw_col else 0
         rk3 = get_rank_str((cw_col, '계약액(천)', '달성율(%)'), pct3) if cw_col else ""
