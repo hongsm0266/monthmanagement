@@ -10,6 +10,7 @@ from google.oauth2.service_account import Credentials
 import traceback
 from datetime import datetime
 import plotly.graph_objects as go 
+import re # 🚀 [추가] 날짜를 정확히 추출하기 위한 정규식 라이브러리
 
 # 1. 화면 기본 설정
 st.set_page_config(page_title="충청호남팀 영업사원 주차별 VDT 목표 관리", layout="wide")
@@ -133,7 +134,6 @@ now = datetime.now()
 CURRENT_WEEK = get_week_name(f"{now.month}/{now.day}") 
 if not CURRENT_WEEK: CURRENT_WEEK = '1주차'
 
-# 전주(이전 주차) 자동 계산
 PREV_WEEK = None
 if CURRENT_WEEK:
     try:
@@ -234,26 +234,33 @@ def load_vdt_data():
         
         raw_daily_sheets = [ws for ws in sh.worksheets() if "/" in ws.title]
         
-        # 날짜순 정렬 보장
+        # 🚀 [완벽 수정 1] 요일이 섞여 있어도 "숫자/숫자" 형식만 귀신같이 추출하여 무조건 오래된 날짜부터 정렬
         def sort_key(ws):
             try:
-                parts = ws.title.replace('일', '').strip().split('/')
-                return int(parts[0]) * 100 + int(parts[1])
+                m = re.search(r'(\d+)\s*/\s*(\d+)', ws.title)
+                if m:
+                    return int(m.group(1)) * 100 + int(m.group(2))
             except:
-                return 0
+                pass
+            return 0
                 
         daily_sheets = sorted(raw_daily_sheets, key=sort_key)
         
         acts = {hc: {wk: {'amt': 0, 'est': 0, 'cnt': 0} for wk in week_keys} for _, hc, _ in hc_info}
         month_acts = {hc: {'amt': 0, 'est': 0, 'cnt': 0} for _, hc, _ in hc_info}
-        acts_sales = {hc: 0 for _, hc, _ in hc_info}
         
-        # 1. 계약액(P열) 및 건수는 기존처럼 전체 시트를 순회하며 '누적' 합산
+        # 🚀 [완벽 수정 2] 모든 인원의 "가장 최신 누적 매출"을 저장할 숨겨진 장부 준비
+        all_hc_latest_s = {}
+        hc_to_dealer = {hc: dealer for dealer, hc, _ in hc_info}
+        valid_dealers = list(set([d for d, _, _ in hc_info]))
+        
+        # 날짜가 오래된 시트부터 차례대로 까보면서 덮어쓰기 진행!
         for ws in daily_sheets:
             wk = get_week_name(ws.title)
             d_data = ws.get_all_values()
             
             for row in d_data:
+                # 건수 및 주차별 실적 누적
                 if len(row) > 15: 
                     hc_name = str(row[3]).strip()
                     if hc_name in acts:
@@ -269,52 +276,47 @@ def load_vdt_data():
                         month_acts[hc_name]['est'] += est_val
                         month_acts[hc_name]['cnt'] += cnt_val
                         month_acts[hc_name]['amt'] += amt_val
-
-        # 🚀 2. [완벽 해결] 당월매출(S열)은 무조건 "가장 최근 시트" 단 1개에서만 가져오기
-        real_dealer_sales = {}
-        if daily_sheets:
-            latest_sheet = daily_sheets[-1]
-            l_data = latest_sheet.get_all_values()
-            
-            valid_dealers = list(set([d for d, _, _ in hc_info]))
-            hc_to_dealer = {hc: dealer for dealer, hc, _ in hc_info}
-            
-            for row in l_data:
+                        
+                # 당월매출 (S열) 처리 - 빈칸이 아닐 때마다 계속 최신 값으로 덮어쓰기! (취소/정정 완벽 반영)
                 if len(row) > 18:
                     dealer_s = str(row[2]).strip() if len(row) > 2 else ""
                     hc_name_s = str(row[3]).strip()
                     s_str = str(row[18]).strip()
                     
-                    if s_str == '': continue
-                    s_val = clean_val(s_str)
-                    
-                    # (A) 인별 당월매출 세팅 (현재 표에 있는 영업사원들)
-                    if hc_name_s in acts_sales:
-                        acts_sales[hc_name_s] = s_val
-                    
-                    # (B) 대리점별 당월매출 진짜 합계 세팅 (퇴사자 포함 최근 시트의 "모든" 인원 합산)
-                    # 합계, 소계, 총계 등은 이중 합산 방지를 위해 철저히 제외
-                    if hc_name_s and not any(x in hc_name_s for x in ['HC', '영업사원', '이름', '합계', '소계', '총계', '목표']):
+                    if hc_name_s and not any(x in hc_name_s for x in ['HC', 'HC명', '영업사원', '이름', '합계', '소계', '총계', '목표', '대리점']):
+                        if s_str != '':
+                            val = clean_val(s_str)
+                            
+                            # 대리점 이름 보정 (일보에 대리점 명이 누락된 경우 목표시트 기준 매핑)
+                            matched_dealer = dealer_s
+                            if not matched_dealer:
+                                matched_dealer = hc_to_dealer.get(hc_name_s, "")
+                                
+                            all_hc_latest_s[hc_name_s] = {
+                                'dealer': matched_dealer,
+                                'val': val
+                            }
+        
+        # 숨겨진 장부에서 값 추출하여 표에 표시할 변수에 세팅
+        acts_sales = {hc: 0 for _, hc, _ in hc_info}
+        for hc_name in acts_sales.keys():
+            if hc_name in all_hc_latest_s:
+                acts_sales[hc_name] = all_hc_latest_s[hc_name]['val']
+                
+        # 대리점별 '진짜' 당월매출 합계 계산 (퇴사자 포함, 마지막까지 실적이 남은 모든 사람 합산)
+        real_dealer_sales = {}
+        for hc, info in all_hc_latest_s.items():
+            d = info['dealer']
+            
+            # 대리점명 텍스트 미세 오차 보정
+            if d not in valid_dealers:
+                for vd in valid_dealers:
+                    if vd in d or vd in hc:
+                        d = vd
+                        break
                         
-                        matched_dealer = hc_to_dealer.get(hc_name_s, "")
-                        
-                        # 목표 리스트에 없는 사람(퇴사자 등)이면 텍스트 기반으로 대리점 매핑
-                        if not matched_dealer:
-                            for vd in valid_dealers:
-                                if vd in dealer_s:
-                                    matched_dealer = vd
-                                    break
-                                    
-                        # 그래도 못 찾으면 혹시나 이름 칸에 대리점을 적었을 경우 대비
-                        if not matched_dealer:
-                            for vd in valid_dealers:
-                                if vd in hc_name_s:
-                                    matched_dealer = vd
-                                    break
-                                    
-                        # 매핑된 대리점이 있으면 진짜 합계 장부에 더하기
-                        if matched_dealer in valid_dealers:
-                            real_dealer_sales[matched_dealer] = real_dealer_sales.get(matched_dealer, 0) + s_val
+            if d in valid_dealers:
+                real_dealer_sales[d] = real_dealer_sales.get(d, 0) + info['val']
 
         status_box.info("✅ 데이터 구성 완료! 표 출력 중...")
         
@@ -774,7 +776,7 @@ if not df_raw.empty:
                 is_curr = CURRENT_WEEK in col_obj[0]
                 is_monthly = "당월" in col_obj[0]
                 
-                is_first_of_week = is_curr and col_obj[1] == '계약액(천)' and col[2] == '목표'
+                is_first_of_week = is_curr and col[1] == '계약액(천)' and col[2] == '목표'
                 is_last_of_week = is_curr and col[1] == '계약건' and col[2] == '달성율(%)'
                 is_last_of_sales = col[0] == '🎯 당월매출' and col_obj[2] == '달성율(%)'
                 is_last_monthly = "🌟 당월 합계" in col[0] and col_obj[1] == '계약건' and col_obj[2] == '달성율(%)'
