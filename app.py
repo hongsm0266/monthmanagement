@@ -42,13 +42,34 @@ st.markdown("""
         border: 1px solid #cbd5e1;
         border-radius: 8px;
         margin-top: 10px;
+        /* 🚀 [수정] 컨테이너를 뒤집어서 스크롤바를 맨 위로 올림 */
+        transform: rotateX(180deg);
     }
     .vdt-table {
         width: 100%;
         border-collapse: collapse;
         font-size: 12px;
         white-space: nowrap;
+        /* 🚀 [수정] 표 내용은 다시 원래대로 똑바로 보이게 뒤집음 */
+        transform: rotateX(180deg);
     }
+    
+    /* Chrome, Edge 등 브라우저 스크롤바 예쁘게 꾸미기 */
+    .vdt-table-container::-webkit-scrollbar {
+        height: 12px;
+    }
+    .vdt-table-container::-webkit-scrollbar-track {
+        background: #f1f5f9; 
+        border-radius: 8px;
+    }
+    .vdt-table-container::-webkit-scrollbar-thumb {
+        background: #94a3b8; 
+        border-radius: 8px;
+    }
+    .vdt-table-container::-webkit-scrollbar-thumb:hover {
+        background: #64748b; 
+    }
+    
     .vdt-table th {
         background-color: #0f172a;
         color: white;
@@ -548,7 +569,6 @@ if not df_raw.empty:
         html = ["<div class='vdt-table-container'><table class='vdt-table'><thead>"]
         
         # --- 헤더 1열 ---
-        # [수정] 대리점 및 HC명 열 틀 고정 (position: sticky 적용)
         html.append("<tr><th rowspan='3' style='position: sticky; left: 0; z-index: 4; background-color: #0f172a; min-width: 90px; max-width: 90px;'>대리점</th><th rowspan='3' style='position: sticky; left: 90px; z-index: 4; background-color: #0f172a; min-width: 110px; max-width: 110px; border-right: 2px solid #94a3b8;'>HC명</th>")
         
         headers_l1 = []
@@ -657,7 +677,6 @@ if not df_raw.empty:
                 
             html.append(f"<tr {row_bg}>")
             
-            # [수정] 대리점 및 HC명 열 틀 고정 (position: sticky 적용 및 색상 명시)
             html.append(f"<td class='text-center' style='position: sticky; left: 0; z-index: 3; background-color: {bg_color}; min-width: 90px; max-width: 90px; border-right: 1px solid #cbd5e1;'>{dealer}</td>")
             html.append(f"<td class='text-center' style='position: sticky; left: 90px; z-index: 3; background-color: {bg_color}; min-width: 110px; max-width: 110px; border-right: 2px solid #94a3b8;'>{hc}</td>")
             
@@ -668,8 +687,8 @@ if not df_raw.empty:
                 
                 is_first_of_week = is_curr and col_obj[1] == '계약액(천)' and col_obj[2] == '목표'
                 is_last_of_week = is_curr and col_obj[1] == '계약건' and col_obj[2] == '달성율(%)'
-                is_last_of_sales = col_obj[0] == '🎯 당월매출' and col_obj[2] == '달성율(%)'
-                is_last_monthly = "🌟 당월 합계" in col_obj[0] and col_obj[1] == '계약건' and col_obj[2] == '달성율(%)'
+                is_last_of_sales = col[0] == '🎯 당월매출' and col_obj[2] == '달성율(%)'
+                is_last_monthly = "🌟 당월 합계" in col[0] and col_obj[1] == '계약건' and col_obj[2] == '달성율(%)'
                 
                 style_parts = []
                 if is_curr:
