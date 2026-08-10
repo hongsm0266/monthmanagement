@@ -251,7 +251,7 @@ def load_vdt_data():
         hc_to_dealer = {hc: dealer for dealer, hc, _ in hc_info}
         valid_dealers = list(set([d for d, _, _ in hc_info]))
         
-        # 1️⃣ 모든 시트를 돌면서 "주차별 실적"과 "당월 계약/견적" 누적하기 (이건 기존처럼 누적)
+        # 1️⃣ 주차별 실적은 과거부터 전체 시트를 순회하며 '누적' 합산
         for ws in daily_sheets:
             wk = get_week_name(ws.title)
             d_data = ws.get_all_values()
@@ -273,21 +273,30 @@ def load_vdt_data():
                         month_acts[hc_name]['cnt'] += cnt_val
                         month_acts[hc_name]['amt'] += amt_val
                         
-        # 2️⃣ [완벽 해결 핵심 로직] 당월매출(S열)은 무조건 "가장 최신 시트"에서만 뽑아옵니다!
+        # 2️⃣ [완벽 해결 핵심] 당월매출(S열)은 무조건 "가장 최신 시트 1개"에서만 가져옴
         acts_sales = {hc: 0 for _, hc, _ in hc_info}
         real_dealer_sales = {d: 0 for d in valid_dealers}
         
         if daily_sheets:
-            latest_sheet = daily_sheets[-1] # 가장 최근 날짜(예: 8/9) 시트 1개만 봄
+            latest_sheet = daily_sheets[-1] 
             l_data = latest_sheet.get_all_values()
+            
+            # 💡 셀 병합으로 인해 대리점 이름이 비어있는 경우를 방지하기 위해 '현재 대리점'을 기억합니다!
+            current_remembered_dealer = ""
             
             for row in l_data:
                 if len(row) > 18:
-                    raw_dealer = str(row[2]).strip() if len(row) > 2 else ""
+                    # A열, B열, C열(0, 1, 2)에 대리점 이름이 등장하면 기억해둡니다.
+                    row_header_str = " ".join([str(x).strip() for x in row[:3]])
+                    for vd in valid_dealers:
+                        if vd in row_header_str:
+                            current_remembered_dealer = vd
+                            break
+                            
                     hc_name_s = str(row[3]).strip()
                     s_str = str(row[18]).strip()
                     
-                    # 합계, 소계 같은 요약 행 제외
+                    # 합계, 소계 같은 요약 행은 제외
                     if hc_name_s and not any(x in hc_name_s for x in ['HC', 'HC명', '영업사원', '이름', '합계', '소계', '총계', '목표', '대리점']):
                         if s_str != '':
                             s_val = clean_val(s_str)
@@ -296,15 +305,11 @@ def load_vdt_data():
                             if hc_name_s in acts_sales:
                                 acts_sales[hc_name_s] = s_val
                                 
-                            # (B) 대리점별 당월매출 찐 합계 (퇴사자 포함, 최신 시트에 적힌 모든 인원 더하기)
-                            matched_dealer = ""
-                            # 먼저 엑셀에 적힌 대리점 이름(raw_dealer)으로 찾기
-                            for vd in valid_dealers:
-                                if vd in raw_dealer:
-                                    matched_dealer = vd
-                                    break
-                                    
-                            # 안 적혀있으면 영업사원 이름으로 우리 DB에서 찾기
+                            # (B) 대리점별 당월매출 찐 합계 
+                            # 퇴사자여서 빈칸으로 매핑되더라도, 위에서 기억해둔 대리점 소속으로 무조건 편입!
+                            matched_dealer = current_remembered_dealer
+                            
+                            # 혹시나 기억해둔 것도 없다면 DB에서 조회
                             if not matched_dealer:
                                 matched_dealer = hc_to_dealer.get(hc_name_s, "")
                                 
@@ -413,7 +418,6 @@ def calculate_subtotals(df, real_dealer_sales):
     result_rows.append(pd.Series(grand_total))
     
     return pd.DataFrame(result_rows)
-
 
 df_raw, date_headers, real_dealer_sales = load_vdt_data()
 
