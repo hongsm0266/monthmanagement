@@ -133,7 +133,7 @@ now = datetime.now()
 CURRENT_WEEK = get_week_name(f"{now.month}/{now.day}") 
 if not CURRENT_WEEK: CURRENT_WEEK = '1주차'
 
-# 🚀 [추가] 전주(이전 주차) 자동 계산
+# 전주(이전 주차) 자동 계산
 PREV_WEEK = None
 if CURRENT_WEEK:
     try:
@@ -424,7 +424,6 @@ if not df_raw.empty:
             target_idx = comp_df[(comp_df[('기본정보', '대리점', '대리점')] == target_dealer) & (comp_df[('기본정보', 'HC명', 'HC명')] == target_hc)].index[0]
             return f"🏆 {int(ranks.loc[target_idx])}등 / {total_competitors}{unit_str}"
 
-        # 당주(현재 주차) 및 전주(이전 주차) 컬럼 파악
         curr_wk_cols = [c[0] for c in final_df.columns if CURRENT_WEEK in c[0]]
         cw_col = curr_wk_cols[0] if curr_wk_cols else None
         
@@ -433,8 +432,7 @@ if not df_raw.empty:
         
         st.markdown(f"### ✨ **{selected_option.split(' ', 1)[1]}** 실적 요약 (당월 / 전주 / 당주)")
         
-        # --- 지표값 세팅 ---
-        # 1. 당월 지표
+        # --- 1. 당월 지표 ---
         act1 = t_row[('🎯 당월매출', '인별매출(천)', 'ACT')]
         pct1 = t_row[('🎯 당월매출', '인별매출(천)', '달성율(%)')]
         rk1 = get_rank_str(('🎯 당월매출', '인별매출(천)', '달성율(%)'), pct1)
@@ -443,7 +441,11 @@ if not df_raw.empty:
         pct2 = t_row[('🌟 당월 합계', '계약액(천)', '달성율(%)')]
         rk2 = get_rank_str(('🌟 당월 합계', '계약액(천)', '달성율(%)'), pct2)
         
-        # 2. 전주(PREV) 지표
+        act_m_est = t_row[('🌟 당월 합계', '견적건', 'ACT')]
+        pct_m_est = t_row[('🌟 당월 합계', '견적건', '달성율(%)')]
+        rk_m_est = get_rank_str(('🌟 당월 합계', '견적건', '달성율(%)'), pct_m_est)
+        
+        # --- 2. 전주(PREV) 지표 ---
         act_pw_amt = t_row[(pw_col, '계약액(천)', 'ACT')] if pw_col else 0
         pct_pw_amt = t_row[(pw_col, '계약액(천)', '달성율(%)')] if pw_col else 0
         rk_pw_amt = get_rank_str((pw_col, '계약액(천)', '달성율(%)'), pct_pw_amt) if pw_col else ""
@@ -452,7 +454,11 @@ if not df_raw.empty:
         pct_pw_cnt = t_row[(pw_col, '계약건', '달성율(%)')] if pw_col else 0
         rk_pw_cnt = get_rank_str((pw_col, '계약건', '달성율(%)'), pct_pw_cnt) if pw_col else ""
         
-        # 3. 당주(CURR) 지표
+        act_pw_est = t_row[(pw_col, '견적건', 'ACT')] if pw_col else 0
+        pct_pw_est = t_row[(pw_col, '견적건', '달성율(%)')] if pw_col else 0
+        rk_pw_est = get_rank_str((pw_col, '견적건', '달성율(%)'), pct_pw_est) if pw_col else ""
+        
+        # --- 3. 당주(CURR) 지표 ---
         act3 = t_row[(cw_col, '계약액(천)', 'ACT')] if cw_col else 0
         pct3 = t_row[(cw_col, '계약액(천)', '달성율(%)')] if cw_col else 0
         rk3 = get_rank_str((cw_col, '계약액(천)', '달성율(%)'), pct3) if cw_col else ""
@@ -460,22 +466,31 @@ if not df_raw.empty:
         act4 = t_row[(cw_col, '계약건', 'ACT')] if cw_col else 0
         pct4 = t_row[(cw_col, '계약건', '달성율(%)')] if cw_col else 0
         rk4 = get_rank_str((cw_col, '계약건', '달성율(%)'), pct4) if cw_col else ""
+        
+        act_cw_est = t_row[(cw_col, '견적건', 'ACT')] if cw_col else 0
+        pct_cw_est = t_row[(cw_col, '견적건', '달성율(%)')] if cw_col else 0
+        rk_cw_est = get_rank_str((cw_col, '견적건', '달성율(%)'), pct_cw_est) if cw_col else ""
 
-        # 🚀 [수정] 당월 / 전주 / 당주를 한눈에 볼 수 있도록 3열 배치
         mc1, mc2, mc3 = st.columns(3)
         with mc1: 
             st.metric("🌲 당월매출 (천원)", f"{act1:,.0f}", f"{pct1:.1f}% 달성 | {rk1}", delta_color="off")
             st.metric("🌟 당월 합계 계약액 (천원)", f"{act2:,.0f}", f"{pct2:.1f}% 달성 | {rk2}", delta_color="off")
+            st.metric("🌟 당월 합계 견적건 (건)", f"{act_m_est:,.0f}", f"{pct_m_est:.1f}% 달성 | {rk_m_est}", delta_color="off")
+            
         with mc2: 
             if pw_col:
                 st.metric(f"⏪ 전주({PREV_WEEK}) 계약액 (천원)", f"{act_pw_amt:,.0f}", f"{pct_pw_amt:.1f}% 달성 | {rk_pw_amt}", delta_color="off")
                 st.metric(f"⏪ 전주({PREV_WEEK}) 계약건 (건)", f"{act_pw_cnt:,.0f}", f"{pct_pw_cnt:.1f}% 달성 | {rk_pw_cnt}", delta_color="off")
+                st.metric(f"⏪ 전주({PREV_WEEK}) 견적건 (건)", f"{act_pw_est:,.0f}", f"{pct_pw_est:.1f}% 달성 | {rk_pw_est}", delta_color="off")
             else:
                 st.metric("⏪ 전주 계약액 (천원)", "-", "해당 데이터 없음", delta_color="off")
                 st.metric("⏪ 전주 계약건 (건)", "-", "해당 데이터 없음", delta_color="off")
+                st.metric("⏪ 전주 견적건 (건)", "-", "해당 데이터 없음", delta_color="off")
+                
         with mc3: 
             st.metric(f"🌊 당주({CURRENT_WEEK}) 계약액 (천원)", f"{act3:,.0f}", f"{pct3:.1f}% 달성 | {rk3}", delta_color="off")
             st.metric(f"🌊 당주({CURRENT_WEEK}) 계약건 (건)", f"{act4:,.0f}", f"{pct4:.1f}% 달성 | {rk4}", delta_color="off")
+            st.metric(f"🌊 당주({CURRENT_WEEK}) 견적건 (건)", f"{act_cw_est:,.0f}", f"{pct_cw_est:.1f}% 달성 | {rk_cw_est}", delta_color="off")
             
         st.markdown("##### 📈 주요 항목 목표 대비 실적(ACT)")
         
