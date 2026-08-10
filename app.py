@@ -458,9 +458,6 @@ if not df_raw.empty:
         text_acts = [f"{v:,.0f}건<br>({p:.1f}%)" if "건" in c else f"{v:,.0f}<br>({p:.1f}%)" for v, p, c in zip(acts, pcts, categories)]
         act_colors = ['#10b981' if p >= 100 else '#3b82f6' for p in pcts]
 
-        # ----------------------------------------------------
-        # 🚀 [업그레이드] 이중 축(Secondary Y-axis) 처리 및 색상 적용
-        # ----------------------------------------------------
         # 1. 금액 데이터 (왼쪽 Y축 사용)
         cat_amt = categories[:3]
         tgt_amt = targets[:3]
@@ -551,7 +548,8 @@ if not df_raw.empty:
         html = ["<div class='vdt-table-container'><table class='vdt-table'><thead>"]
         
         # --- 헤더 1열 ---
-        html.append("<tr><th rowspan='3'>대리점</th><th rowspan='3' style='border-right: 2px solid #94a3b8;'>HC명</th>")
+        # [수정] 대리점 및 HC명 열 틀 고정 (position: sticky 적용)
+        html.append("<tr><th rowspan='3' style='position: sticky; left: 0; z-index: 4; background-color: #0f172a; min-width: 90px; max-width: 90px;'>대리점</th><th rowspan='3' style='position: sticky; left: 90px; z-index: 4; background-color: #0f172a; min-width: 110px; max-width: 110px; border-right: 2px solid #94a3b8;'>HC명</th>")
         
         headers_l1 = []
         for col in df.columns[2:]:
@@ -647,15 +645,21 @@ if not df_raw.empty:
             dealer = row[dealer_col]
             hc = row[hc_col]
             
-            if str(hc) == "합계": row_bg = "style='background-color: #e2e8f0; font-weight: bold;'"
-            elif "🌟" in str(hc): row_bg = "style='background-color: #cbd5e1; font-weight: bold;'"
+            if str(hc) == "합계": 
+                bg_color = "#e2e8f0"
+                row_bg = f"style='background-color: {bg_color}; font-weight: bold;'"
+            elif "🌟" in str(hc): 
+                bg_color = "#cbd5e1"
+                row_bg = f"style='background-color: {bg_color}; font-weight: bold;'"
             else:
-                bg = dealer_colors.get(dealer, '#ffffff')
-                row_bg = f"style='background-color: {bg};'"
+                bg_color = dealer_colors.get(dealer, '#ffffff')
+                row_bg = f"style='background-color: {bg_color};'"
                 
             html.append(f"<tr {row_bg}>")
-            html.append(f"<td class='text-center' style='border-right: 1px solid #cbd5e1;'>{dealer}</td>")
-            html.append(f"<td class='text-center' style='border-right: 2px solid #94a3b8;'>{hc}</td>")
+            
+            # [수정] 대리점 및 HC명 열 틀 고정 (position: sticky 적용 및 색상 명시)
+            html.append(f"<td class='text-center' style='position: sticky; left: 0; z-index: 3; background-color: {bg_color}; min-width: 90px; max-width: 90px; border-right: 1px solid #cbd5e1;'>{dealer}</td>")
+            html.append(f"<td class='text-center' style='position: sticky; left: 90px; z-index: 3; background-color: {bg_color}; min-width: 110px; max-width: 110px; border-right: 2px solid #94a3b8;'>{hc}</td>")
             
             for c_idx, val in enumerate(row[2:]):
                 col_obj = df.columns[c_idx + 2]
@@ -665,7 +669,7 @@ if not df_raw.empty:
                 is_first_of_week = is_curr and col_obj[1] == '계약액(천)' and col_obj[2] == '목표'
                 is_last_of_week = is_curr and col_obj[1] == '계약건' and col_obj[2] == '달성율(%)'
                 is_last_of_sales = col_obj[0] == '🎯 당월매출' and col_obj[2] == '달성율(%)'
-                is_last_monthly = "🌟 당월 합계" in col[0] and col[1] == '계약건' and col[2] == '달성율(%)'
+                is_last_monthly = "🌟 당월 합계" in col_obj[0] and col_obj[1] == '계약건' and col_obj[2] == '달성율(%)'
                 
                 style_parts = []
                 if is_curr:
