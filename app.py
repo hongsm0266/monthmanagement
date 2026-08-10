@@ -38,38 +38,40 @@ st.markdown("""
     
     .vdt-table-container {
         width: 100%;
-        overflow-x: auto;
+        /* 🚀 [수정] 표의 높이를 모니터 화면의 65%로 고정하여 스크롤바가 항상 화면에 보이게 함 */
+        max-height: 65vh; 
+        overflow: auto;
         border: 1px solid #cbd5e1;
         border-radius: 8px;
         margin-top: 10px;
-        /* 🚀 [수정] 컨테이너를 뒤집어서 스크롤바를 맨 위로 올림 */
-        transform: rotateX(180deg);
     }
+    
+    /* 🚀 [수정] 크롬/엣지 브라우저에서 스크롤바를 두껍고 예쁘게 커스텀 */
+    .vdt-table-container::-webkit-scrollbar { width: 14px; height: 14px; }
+    .vdt-table-container::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 8px; }
+    .vdt-table-container::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 8px; border: 3px solid #f1f5f9; }
+    .vdt-table-container::-webkit-scrollbar-thumb:hover { background: #64748b; }
+
     .vdt-table {
         width: 100%;
         border-collapse: collapse;
         font-size: 12px;
         white-space: nowrap;
-        /* 🚀 [수정] 표 내용은 다시 원래대로 똑바로 보이게 뒤집음 */
-        transform: rotateX(180deg);
     }
     
-    /* Chrome, Edge 등 브라우저 스크롤바 예쁘게 꾸미기 */
-    .vdt-table-container::-webkit-scrollbar {
-        height: 12px;
+    /* 🚀 [수정] 표 상단 항목들(thead)을 위쪽에 틀 고정 (Top Sticky) */
+    .vdt-table thead th {
+        height: 34px;
+        box-sizing: border-box;
+        position: sticky;
+        z-index: 10;
+        background-clip: padding-box; 
     }
-    .vdt-table-container::-webkit-scrollbar-track {
-        background: #f1f5f9; 
-        border-radius: 8px;
-    }
-    .vdt-table-container::-webkit-scrollbar-thumb {
-        background: #94a3b8; 
-        border-radius: 8px;
-    }
-    .vdt-table-container::-webkit-scrollbar-thumb:hover {
-        background: #64748b; 
-    }
-    
+    /* 1,2,3번째 줄의 높이를 계산해서 순서대로 고정 */
+    .vdt-table thead tr:nth-child(1) th { top: 0; }
+    .vdt-table thead tr:nth-child(2) th { top: 33px; }
+    .vdt-table thead tr:nth-child(3) th { top: 66px; }
+
     .vdt-table th {
         background-color: #0f172a;
         color: white;
@@ -354,7 +356,6 @@ def calculate_subtotals(df):
     
     return pd.DataFrame(result_rows)
 
-
 df_raw, date_headers = load_vdt_data()
 
 if not df_raw.empty:
@@ -479,7 +480,6 @@ if not df_raw.empty:
         text_acts = [f"{v:,.0f}건<br>({p:.1f}%)" if "건" in c else f"{v:,.0f}<br>({p:.1f}%)" for v, p, c in zip(acts, pcts, categories)]
         act_colors = ['#10b981' if p >= 100 else '#3b82f6' for p in pcts]
 
-        # 1. 금액 데이터 (왼쪽 Y축 사용)
         cat_amt = categories[:3]
         tgt_amt = targets[:3]
         act_amt = acts[:3]
@@ -487,7 +487,6 @@ if not df_raw.empty:
         ta_amt = text_acts[:3]
         ac_amt = act_colors[:3]
         
-        # 2. 건수 데이터 (오른쪽 Y2축 사용)
         cat_cnt = categories[3:]
         tgt_cnt = targets[3:]
         act_cnt = acts[3:]
@@ -497,35 +496,30 @@ if not df_raw.empty:
 
         fig = go.Figure()
         
-        # 금액 목표 (왼쪽 축)
         fig.add_trace(go.Bar(
             x=cat_amt, y=tgt_amt, name='🎯 목표',
             marker_color='#cbd5e1', text=tt_amt, textposition='outside', 
             textfont=dict(size=14, color='#1e293b'), yaxis='y1'
         ))
         
-        # 금액 실적 (왼쪽 축)
         fig.add_trace(go.Bar(
             x=cat_amt, y=act_amt, name='🔥 실적(ACT)',
             marker_color=ac_amt, text=ta_amt, textposition='outside', 
             textfont=dict(size=15, color='#0f172a'), yaxis='y1'
         ))
         
-        # 건수 목표 (오른쪽 축 - 범례 중복 방지를 위해 showlegend=False)
         fig.add_trace(go.Bar(
             x=cat_cnt, y=tgt_cnt, name='🎯 목표(건수)',
             marker_color='#cbd5e1', text=tt_cnt, textposition='outside', 
             textfont=dict(size=14, color='#1e293b'), yaxis='y2', showlegend=False
         ))
         
-        # 건수 실적 (오른쪽 축 - 범례 중복 방지)
         fig.add_trace(go.Bar(
             x=cat_cnt, y=act_cnt, name='🔥 실적(건수)',
             marker_color=ac_cnt, text=ta_cnt, textposition='outside', 
             textfont=dict(size=15, color='#0f172a'), yaxis='y2', showlegend=False
         ))
         
-        # 이중 축 레이아웃 설정
         fig.update_layout(
             barmode='group', height=450,
             xaxis=dict(tickangle=0, tickfont=dict(size=16, color='black')), 
@@ -549,7 +543,6 @@ if not df_raw.empty:
         st.markdown("---")
     # ---------------------------------------------------------
     
-    # 8월 1주차 VDT 현황 타이틀
     st.markdown(f"""
     <div style='background-color: #f8fafc; padding: 15px; border-left: 5px solid #3b82f6; border-radius: 5px; margin-bottom: 20px;'>
         <h2 style='margin:0; color: #1e3a8a;'>📌 {current_month}월 {CURRENT_WEEK} VDT 현황</h2>
@@ -568,8 +561,8 @@ if not df_raw.empty:
             
         html = ["<div class='vdt-table-container'><table class='vdt-table'><thead>"]
         
-        # --- 헤더 1열 ---
-        html.append("<tr><th rowspan='3' style='position: sticky; left: 0; z-index: 4; background-color: #0f172a; min-width: 90px; max-width: 90px;'>대리점</th><th rowspan='3' style='position: sticky; left: 90px; z-index: 4; background-color: #0f172a; min-width: 110px; max-width: 110px; border-right: 2px solid #94a3b8;'>HC명</th>")
+        # 🚀 [수정] 대리점 및 HC명 열 틀 고정 (Top-Left Corner: top 0, left 적용, 가장 높은 z-index 15)
+        html.append("<tr><th rowspan='3' style='position: sticky; top: 0; left: 0; z-index: 15; background-color: #0f172a; min-width: 90px; max-width: 90px;'>대리점</th><th rowspan='3' style='position: sticky; top: 0; left: 90px; z-index: 15; background-color: #0f172a; min-width: 110px; max-width: 110px; border-right: 2px solid #94a3b8;'>HC명</th>")
         
         headers_l1 = []
         for col in df.columns[2:]:
@@ -600,7 +593,6 @@ if not df_raw.empty:
             else: html.append(f"<th colspan='9' {bg_style}>{h1}</th>")
         html.append("</tr>")
         
-        # --- 헤더 2열 ---
         html.append("<tr>")
         for h1 in headers_l1:
             is_curr = CURRENT_WEEK in h1
@@ -629,7 +621,6 @@ if not df_raw.empty:
                 html.append(f"<th colspan='3' {bg_style}>계약건</th>")
         html.append("</tr>")
         
-        # --- 헤더 3열 ---
         html.append("<tr>")
         for col in df.columns[2:]:
             is_curr = CURRENT_WEEK in col[0]
@@ -659,7 +650,6 @@ if not df_raw.empty:
             html.append(f"<th {bg_style}>{col[2]}</th>")
         html.append("</tr></thead><tbody>")
         
-        # --- 데이터 내용 생성 ---
         for r_idx in range(len(df)):
             row = df.iloc[r_idx]
             dealer = row[dealer_col]
@@ -677,18 +667,19 @@ if not df_raw.empty:
                 
             html.append(f"<tr {row_bg}>")
             
-            html.append(f"<td class='text-center' style='position: sticky; left: 0; z-index: 3; background-color: {bg_color}; min-width: 90px; max-width: 90px; border-right: 1px solid #cbd5e1;'>{dealer}</td>")
-            html.append(f"<td class='text-center' style='position: sticky; left: 90px; z-index: 3; background-color: {bg_color}; min-width: 110px; max-width: 110px; border-right: 2px solid #94a3b8;'>{hc}</td>")
+            # 🚀 [수정] 대리점 및 HC명 데이터 열 틀 고정 (Left Sticky, z-index 5)
+            html.append(f"<td class='text-center' style='position: sticky; left: 0; z-index: 5; background-color: {bg_color}; min-width: 90px; max-width: 90px; border-right: 1px solid #cbd5e1;'>{dealer}</td>")
+            html.append(f"<td class='text-center' style='position: sticky; left: 90px; z-index: 5; background-color: {bg_color}; min-width: 110px; max-width: 110px; border-right: 2px solid #94a3b8;'>{hc}</td>")
             
             for c_idx, val in enumerate(row[2:]):
                 col_obj = df.columns[c_idx + 2]
                 is_curr = CURRENT_WEEK in col_obj[0]
                 is_monthly = "당월" in col_obj[0]
                 
-                is_first_of_week = is_curr and col_obj[1] == '계약액(천)' and col_obj[2] == '목표'
-                is_last_of_week = is_curr and col_obj[1] == '계약건' and col_obj[2] == '달성율(%)'
+                is_first_of_week = is_curr and col_obj[1] == '계약액(천)' and col[2] == '목표'
+                is_last_of_week = is_curr and col_obj[1] == '계약건' and col[2] == '달성율(%)'
                 is_last_of_sales = col[0] == '🎯 당월매출' and col_obj[2] == '달성율(%)'
-                is_last_monthly = "🌟 당월 합계" in col[0] and col_obj[1] == '계약건' and col_obj[2] == '달성율(%)'
+                is_last_monthly = "🌟 당월 합계" in col_obj[0] and col_obj[1] == '계약건' and col_obj[2] == '달성율(%)'
                 
                 style_parts = []
                 if is_curr:
