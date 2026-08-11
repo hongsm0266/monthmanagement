@@ -251,34 +251,36 @@ def load_vdt_data():
         hc_to_dealer = {hc: dealer for dealer, hc, _ in hc_info}
         valid_dealers = list(set([d for d, _, _ in hc_info]))
         
-        # 🚀 [완벽 수정 1] 계약액/견적건/계약건 대리점 찐 합계 장부 생성!
         real_dealer_monthly = {d: {'amt': 0, 'est': 0, 'cnt': 0} for d in valid_dealers}
         real_dealer_weekly = {d: {wk: {'amt': 0, 'est': 0, 'cnt': 0} for wk in week_keys} for d in valid_dealers}
         
+        # 1️⃣ 주차별 실적 누적 (과거부터 최신까지 모두 합산)
         for ws in daily_sheets:
             wk = get_week_name(ws.title)
             d_data = ws.get_all_values()
             
-            # 셀 병합 추적용 (대리점 이름)
             current_remembered_dealer = ""
             
             for row in d_data:
-                # 딜러 이름 찾기 로직 (행 첫 3열 훑기)
                 row_header_str = " ".join([str(x).strip() for x in row[:3]])
-                for vd in valid_dealers:
-                    if vd in row_header_str:
-                        current_remembered_dealer = vd
-                        break
+                
+                # 🚀 [핵심 추가] 한밭대리점(INT충청) 실적을 세종 합계로 강제 편입!
+                if "한밭" in row_header_str or "INT충청" in row_header_str:
+                    current_remembered_dealer = "세종"
+                else:
+                    for vd in valid_dealers:
+                        if vd in row_header_str:
+                            current_remembered_dealer = vd
+                            break
 
                 if len(row) > 15: 
                     hc_name = str(row[3]).strip()
-                    # 요약행(합계 등) 철저히 제외
                     if hc_name and not any(x in hc_name for x in ['HC', 'HC명', '영업사원', '이름', '합계', '소계', '총계', '목표', '대리점']):
                         est_val = clean_val(row[4])
                         cnt_val = clean_val(row[5])
                         amt_val = clean_val(row[15])
                         
-                        # (A) 인별 실적 누적 (표에 나오는 현원들)
+                        # (A) 인별 실적 누적
                         if hc_name in acts:
                             if wk:
                                 acts[hc_name][wk]['est'] += est_val
@@ -289,7 +291,7 @@ def load_vdt_data():
                             month_acts[hc_name]['cnt'] += cnt_val
                             month_acts[hc_name]['amt'] += amt_val
                         
-                        # (B) 대리점 찐 합계 누적 (퇴사자 등 모든 사람 포함)
+                        # (B) 대리점 찐 합계 누적 (한밭대리점은 자동으로 세종에 누적됨)
                         matched_dealer = current_remembered_dealer
                         if not matched_dealer:
                             matched_dealer = hc_to_dealer.get(hc_name, "")
@@ -304,7 +306,7 @@ def load_vdt_data():
                                 real_dealer_weekly[matched_dealer][wk]['cnt'] += cnt_val
                                 real_dealer_weekly[matched_dealer][wk]['amt'] += amt_val
                         
-        # 🚀 [완벽 수정 2] 당월매출(S열) 대리점 찐 합계 장부 (가장 최신 시트 1개)
+        # 2️⃣ 당월매출(S열) 대리점 찐 합계 (가장 최신 시트 단 1개에서만)
         acts_sales = {hc: 0 for _, hc, _ in hc_info}
         real_dealer_sales = {d: 0 for d in valid_dealers}
         
@@ -317,11 +319,16 @@ def load_vdt_data():
             for row in l_data:
                 if len(row) > 18:
                     row_header_str = " ".join([str(x).strip() for x in row[:3]])
-                    for vd in valid_dealers:
-                        if vd in row_header_str:
-                            current_remembered_dealer = vd
-                            break
-                            
+                    
+                    # 🚀 [핵심 추가] 한밭대리점(INT충청) 실적을 세종 합계로 강제 편입!
+                    if "한밭" in row_header_str or "INT충청" in row_header_str:
+                        current_remembered_dealer = "세종"
+                    else:
+                        for vd in valid_dealers:
+                            if vd in row_header_str:
+                                current_remembered_dealer = vd
+                                break
+                                
                     hc_name_s = str(row[3]).strip()
                     s_str = str(row[18]).strip()
                     
@@ -329,11 +336,9 @@ def load_vdt_data():
                         if s_str != '':
                             s_val = clean_val(s_str)
                             
-                            # (A) 인별 당월매출 ACT
                             if hc_name_s in acts_sales:
                                 acts_sales[hc_name_s] = s_val
                                 
-                            # (B) 대리점별 당월매출 찐 합계
                             matched_dealer = current_remembered_dealer
                             if not matched_dealer:
                                 matched_dealer = hc_to_dealer.get(hc_name_s, "")
@@ -415,17 +420,14 @@ def calculate_subtotals(df, real_dealer_sales, real_dealer_monthly, real_dealer_
         subtotal[dealer_col] = dealer
         subtotal[hc_col] = "합계"
         
-        # 🚀 [대리점 합계 덮어쓰기] 당월매출
         if dealer in real_dealer_sales:
             subtotal[('🎯 당월매출', '인별매출(천)', 'ACT')] = real_dealer_sales[dealer]
             
-        # 🚀 [대리점 합계 덮어쓰기] 당월 합계 (계약액, 견적건, 계약건)
         if dealer in real_dealer_monthly:
             subtotal[('🌟 당월 합계', '계약액(천)', 'ACT')] = real_dealer_monthly[dealer]['amt']
             subtotal[('🌟 당월 합계', '견적건', 'ACT')] = real_dealer_monthly[dealer]['est']
             subtotal[('🌟 당월 합계', '계약건', 'ACT')] = real_dealer_monthly[dealer]['cnt']
             
-        # 🚀 [대리점 합계 덮어쓰기] 주차별 합계 (계약액, 견적건, 계약건)
         if dealer in real_dealer_weekly:
             for wk, wk_data in real_dealer_weekly[dealer].items():
                 wk_cols = [c[0] for c in df.columns if wk in c[0]]
@@ -435,7 +437,6 @@ def calculate_subtotals(df, real_dealer_sales, real_dealer_monthly, real_dealer_
                     subtotal[(w_c, '견적건', 'ACT')] = wk_data['est']
                     subtotal[(w_c, '계약건', 'ACT')] = wk_data['cnt']
         
-        # 덮어쓴 ACT를 기준으로 달성률 100% 자동 재계산
         for col in df.columns[2:]:
             if col[2] == '달성율(%)':
                 tgt_col = (col[0], col[1], '목표')
@@ -447,15 +448,12 @@ def calculate_subtotals(df, real_dealer_sales, real_dealer_monthly, real_dealer_
     grand_total[dealer_col] = "🌟 총계"
     grand_total[hc_col] = "🌟 총계"
     
-    # 🚀 [전체 총계 덮어쓰기] 당월매출
     grand_total[('🎯 당월매출', '인별매출(천)', 'ACT')] = sum([real_dealer_sales.get(d, 0) for d in df[dealer_col].unique()])
     
-    # 🚀 [전체 총계 덮어쓰기] 당월 합계
     grand_total[('🌟 당월 합계', '계약액(천)', 'ACT')] = sum([real_dealer_monthly.get(d, {}).get('amt', 0) for d in df[dealer_col].unique()])
     grand_total[('🌟 당월 합계', '견적건', 'ACT')] = sum([real_dealer_monthly.get(d, {}).get('est', 0) for d in df[dealer_col].unique()])
     grand_total[('🌟 당월 합계', '계약건', 'ACT')] = sum([real_dealer_monthly.get(d, {}).get('cnt', 0) for d in df[dealer_col].unique()])
     
-    # 🚀 [전체 총계 덮어쓰기] 주차별 합계
     some_dealer = df[dealer_col].unique()[0] if not df.empty else None
     if some_dealer and some_dealer in real_dealer_weekly:
         for wk in real_dealer_weekly[some_dealer].keys():
