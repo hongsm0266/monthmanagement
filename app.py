@@ -243,10 +243,10 @@ def load_vdt_data():
                 
         daily_sheets = sorted(raw_daily_sheets, key=sort_key)
         
-        # 🚀 [인공지능 명단 자동 추가 로직] 일보를 스캔하여 신규 인원을 미리 hc_info에 추가합니다!
         existing_hcs = [clean_str(h) for d, h, t in hc_info]
         valid_dealers = list(set([d for d, _, _ in hc_info]))
         
+        # 신규 인원(목표 시트에는 없고 일보에만 있는 인원)을 스캔하여 자동 추가합니다.
         for ws in daily_sheets:
             d_data = ws.get_all_values()
             current_rem_dealer = ""
@@ -265,14 +265,12 @@ def load_vdt_data():
                     hc_name = clean_str(row[3])
                     if hc_name and not any(x in hc_name for x in ['HC', 'HC명', '영업사원', '이름', '합계', '소계', '총계', '목표', '대리점', '비고']):
                         if hc_name not in existing_hcs:
-                            # 신규 인원 발견! 목표 0으로 hc_info에 자동 추가
                             new_dealer = current_rem_dealer if current_rem_dealer else "기타"
                             hc_info.append((new_dealer, hc_name, 0.0))
                             existing_hcs.append(hc_name)
                             if new_dealer not in valid_dealers:
                                 valid_dealers.append(new_dealer)
 
-        # 이제 신규 인원까지 모두 포함된 상태에서 목표(target) 및 실적(acts) 세팅!
         hc_weights = {}
         for dealer, hc, target in hc_info:
             d_sum = dealer_sales_sum.get(dealer, 0.0)
@@ -299,7 +297,7 @@ def load_vdt_data():
         real_dealer_monthly = {d: {'amt': 0, 'est': 0, 'cnt': 0} for d in valid_dealers}
         real_dealer_weekly = {d: {wk: {'amt': 0, 'est': 0, 'cnt': 0} for wk in week_keys} for d in valid_dealers}
         
-        # 1️⃣ 주차별 실적 누적 (새로 추가된 인원 포함, 세종-한밭 겹쳐도 모두 += 로 완벽 합산)
+        # 1️⃣ 주차별 & 당월 누적 실적 스캔 (과거부터 최신 시트까지 싹 다 합산)
         for ws in daily_sheets:
             wk = get_week_name(ws.title)
             d_data = ws.get_all_values()
@@ -325,7 +323,6 @@ def load_vdt_data():
                         cnt_val = clean_val(row[5]) if len(row) > 5 else 0.0
                         amt_val = clean_val(row[15]) if len(row) > 15 else 0.0
                         
-                        # (A) 인별 실적 누적 
                         if hc_name in acts:
                             if wk:
                                 acts[hc_name][wk]['est'] += est_val
@@ -336,7 +333,6 @@ def load_vdt_data():
                             month_acts[hc_name]['cnt'] += cnt_val
                             month_acts[hc_name]['amt'] += amt_val
                         
-                        # (B) 대리점 찐 합계 누적
                         matched_dealer = current_remembered_dealer
                         if not matched_dealer:
                             matched_dealer = hc_to_dealer.get(hc_name, "")
@@ -351,12 +347,15 @@ def load_vdt_data():
                                 real_dealer_weekly[matched_dealer][wk]['cnt'] += cnt_val
                                 real_dealer_weekly[matched_dealer][wk]['amt'] += amt_val
                         
-        # 2️⃣ 당월매출 S열 대리점 찐 합계
+        # 2️⃣ 당월매출 S열 스캔 (껍데기 빈 시트 방어 로직 추가!)
         acts_sales = {clean_str(hc): 0 for _, hc, _ in hc_info}
         real_dealer_sales = {d: 0 for d in valid_dealers}
         
-        if daily_sheets:
-            latest_sheet = daily_sheets[-1] 
+        # 🚀 실적이 조금이라도 적혀 있는(빈 시트가 아닌) "진짜 최신 시트"만 골라냅니다!
+        valid_latest_sheets = [ws for ws in daily_sheets if len(ws.get_all_values()) > 5]
+        
+        if valid_latest_sheets:
+            latest_sheet = valid_latest_sheets[-1] 
             l_data = latest_sheet.get_all_values()
             
             current_remembered_dealer = ""
@@ -381,7 +380,6 @@ def load_vdt_data():
                         if s_str != '':
                             s_val = clean_val(s_str)
                             
-                            # (A) 인별 당월매출 완벽 누적 합산 (다중 소속 완벽 대응)
                             if hc_name_s in acts_sales:
                                 acts_sales[hc_name_s] += s_val
                                 
@@ -389,7 +387,6 @@ def load_vdt_data():
                             if not matched_dealer:
                                 matched_dealer = hc_to_dealer.get(hc_name_s, "")
                                 
-                            # (B) 대리점 당월매출 찐 합계 누적
                             if matched_dealer in real_dealer_sales:
                                 real_dealer_sales[matched_dealer] += s_val
 
@@ -415,14 +412,19 @@ def load_vdt_data():
         rows = []
         for dealer, hc, sales_tgt in hc_info:
             hc_clean = clean_str(hc)
+            m_act = month_acts.get(hc_clean, {'amt': 0, 'est': 0, 'cnt': 0})
+            s_act = acts_sales.get(hc_clean, 0)
+            
+            # 🚀 [0원 퇴사자 완벽 필터링] 목표가 0인데, 당월 모든 실적이 0이면 표에서 과감히 삭제!
+            if sales_tgt == 0.0 and m_act['amt'] == 0 and m_act['est'] == 0 and m_act['cnt'] == 0 and s_act == 0:
+                continue
+
             row_data = [dealer, hc]
-            row_data.extend([sales_tgt, acts_sales.get(hc_clean, 0), 0.0])
+            row_data.extend([sales_tgt, s_act, 0.0])
             
             m_tgt_amt = sum([targets.get(hc, {}).get(wk, {}).get('amt', 0) for wk in week_keys])
             m_tgt_est = sum([targets.get(hc, {}).get(wk, {}).get('est', 0) for wk in week_keys])
             m_tgt_cnt = sum([targets.get(hc, {}).get(wk, {}).get('cnt', 0) for wk in week_keys])
-            
-            m_act = month_acts.get(hc_clean, {'amt': 0, 'est': 0, 'cnt': 0})
             
             row_data.extend([
                 m_tgt_amt, m_act['amt'], 0.0,
