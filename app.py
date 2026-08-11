@@ -113,18 +113,20 @@ def clean_val(v):
     try: return float(v_str) * multiplier
     except: return 0.0
 
+# 🚀 [오류 완벽 해결] 시트 이름에 요일(화), 공백 등이 섞여 있어도 숫자만 뽑아서 정확히 주차를 인식합니다.
 def get_week_name(sheet_title):
     try:
-        parts = sheet_title.replace('일','').split('/') 
-        if len(parts) != 2: return None
-        m, d = int(parts[0]), int(parts[1])
-        if m == 7 and d >= 27: return '0주차'
-        if m == 8:
-            if d <= 2: return '0주차'
-            elif d <= 9: return '1주차'
-            elif d <= 16: return '2주차'
-            elif d <= 23: return '3주차'
-            elif d <= 30: return '4주차'
+        m_search = re.search(r'(\d+)\s*/\s*(\d+)', sheet_title)
+        if not m_search: return None
+        m_val, d_val = int(m_search.group(1)), int(m_search.group(2))
+        
+        if m_val == 7 and d_val >= 27: return '0주차'
+        if m_val == 8:
+            if d_val <= 2: return '0주차'
+            elif d_val <= 9: return '1주차'
+            elif d_val <= 16: return '2주차'
+            elif d_val <= 23: return '3주차'
+            elif d_val <= 30: return '4주차'
             else: return '5주차'
     except:
         pass
@@ -236,9 +238,9 @@ def load_vdt_data():
         
         def sort_key(ws):
             try:
-                m = re.search(r'(\d+)\s*/\s*(\d+)', ws.title)
-                if m:
-                    return int(m.group(1)) * 100 + int(m.group(2))
+                m_search = re.search(r'(\d+)\s*/\s*(\d+)', ws.title)
+                if m_search:
+                    return int(m_search.group(1)) * 100 + int(m_search.group(2))
             except:
                 pass
             return 0
@@ -262,9 +264,10 @@ def load_vdt_data():
             current_remembered_dealer = ""
             
             for row in d_data:
-                row_header_str = " ".join([str(x).strip() for x in row[:3]])
+                # 🚀 [추가] 대리점 이름이 D열에 적힐 경우를 대비해 4칸까지 훑습니다.
+                row_header_str = " ".join([str(x).strip() for x in row[:4]])
                 
-                # 한밭대리점(INT충청) 실적을 세종 합계로 강제 편입
+                # 한밭대리점(INT충청) 실적을 세종 합계로 강제 편입!
                 if "한밭" in row_header_str or "INT충청" in row_header_str:
                     current_remembered_dealer = "세종"
                 else:
@@ -280,7 +283,7 @@ def load_vdt_data():
                         cnt_val = clean_val(row[5])
                         amt_val = clean_val(row[15])
                         
-                        # (A) 인별 실적 누적 (이미 += 로 합산 처리 중!)
+                        # (A) 인별 실적 누적 (같은 사람이 여러 줄에 있어도 알아서 다 더해집니다)
                         if hc_name in acts:
                             if wk:
                                 acts[hc_name][wk]['est'] += est_val
@@ -318,7 +321,7 @@ def load_vdt_data():
             
             for row in l_data:
                 if len(row) > 18:
-                    row_header_str = " ".join([str(x).strip() for x in row[:3]])
+                    row_header_str = " ".join([str(x).strip() for x in row[:4]])
                     
                     if "한밭" in row_header_str or "INT충청" in row_header_str:
                         current_remembered_dealer = "세종"
@@ -335,8 +338,7 @@ def load_vdt_data():
                         if s_str != '':
                             s_val = clean_val(s_str)
                             
-                            # 🚀 [완벽 수정] 인별 당월매출 (S열)을 덮어쓰기(=)에서 누적합산(+=)으로 변경!!
-                            # 동일한 인원(ex. 김경율)이 세종, 한밭 양쪽에 있어도 둘 다 더해줍니다.
+                            # (A) 인별 당월매출 누적 (동일 인물이 세종/한밭 양쪽에 쓰여도 +로 누적합산!)
                             if hc_name_s in acts_sales:
                                 acts_sales[hc_name_s] += s_val
                                 
@@ -344,6 +346,7 @@ def load_vdt_data():
                             if not matched_dealer:
                                 matched_dealer = hc_to_dealer.get(hc_name_s, "")
                                 
+                            # (B) 대리점 당월매출 합계 (퇴사자, 중복인원 전부 포함하여 +로 누적합산!)
                             if matched_dealer in real_dealer_sales:
                                 real_dealer_sales[matched_dealer] += s_val
 
