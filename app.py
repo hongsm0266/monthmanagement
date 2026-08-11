@@ -264,7 +264,7 @@ def load_vdt_data():
             for row in d_data:
                 row_header_str = " ".join([str(x).strip() for x in row[:3]])
                 
-                # 🚀 [핵심 추가] 한밭대리점(INT충청) 실적을 세종 합계로 강제 편입!
+                # 한밭대리점(INT충청) 실적을 세종 합계로 강제 편입
                 if "한밭" in row_header_str or "INT충청" in row_header_str:
                     current_remembered_dealer = "세종"
                 else:
@@ -280,7 +280,7 @@ def load_vdt_data():
                         cnt_val = clean_val(row[5])
                         amt_val = clean_val(row[15])
                         
-                        # (A) 인별 실적 누적
+                        # (A) 인별 실적 누적 (이미 += 로 합산 처리 중!)
                         if hc_name in acts:
                             if wk:
                                 acts[hc_name][wk]['est'] += est_val
@@ -291,7 +291,7 @@ def load_vdt_data():
                             month_acts[hc_name]['cnt'] += cnt_val
                             month_acts[hc_name]['amt'] += amt_val
                         
-                        # (B) 대리점 찐 합계 누적 (한밭대리점은 자동으로 세종에 누적됨)
+                        # (B) 대리점 찐 합계 누적 
                         matched_dealer = current_remembered_dealer
                         if not matched_dealer:
                             matched_dealer = hc_to_dealer.get(hc_name, "")
@@ -320,7 +320,6 @@ def load_vdt_data():
                 if len(row) > 18:
                     row_header_str = " ".join([str(x).strip() for x in row[:3]])
                     
-                    # 🚀 [핵심 추가] 한밭대리점(INT충청) 실적을 세종 합계로 강제 편입!
                     if "한밭" in row_header_str or "INT충청" in row_header_str:
                         current_remembered_dealer = "세종"
                     else:
@@ -336,8 +335,10 @@ def load_vdt_data():
                         if s_str != '':
                             s_val = clean_val(s_str)
                             
+                            # 🚀 [완벽 수정] 인별 당월매출 (S열)을 덮어쓰기(=)에서 누적합산(+=)으로 변경!!
+                            # 동일한 인원(ex. 김경율)이 세종, 한밭 양쪽에 있어도 둘 다 더해줍니다.
                             if hc_name_s in acts_sales:
-                                acts_sales[hc_name_s] = s_val
+                                acts_sales[hc_name_s] += s_val
                                 
                             matched_dealer = current_remembered_dealer
                             if not matched_dealer:
@@ -472,7 +473,6 @@ def calculate_subtotals(df, real_dealer_sales, real_dealer_monthly, real_dealer_
     result_rows.append(pd.Series(grand_total))
     
     return pd.DataFrame(result_rows)
-
 
 df_raw, date_headers, real_dealer_sales, real_dealer_monthly, real_dealer_weekly = load_vdt_data()
 
