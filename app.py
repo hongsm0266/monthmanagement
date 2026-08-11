@@ -230,7 +230,7 @@ def load_vdt_data():
 
         status_box.info("📈 3단계: 일별 실적(ACT) 스캔 및 누적 취합 중...")
         
-        raw_daily_sheets = [ws for ws in sh.worksheets() if "/" in ws.title]
+        raw_daily_sheets = [ws for ws in sh.worksheets() if "/" in ws.title or "일" in ws.title]
         
         def sort_key(ws):
             try:
@@ -246,7 +246,7 @@ def load_vdt_data():
         existing_hcs = [clean_str(h) for d, h, t in hc_info]
         valid_dealers = list(set([d for d, _, _ in hc_info]))
         
-        # 신규 인원(목표 시트에는 없고 일보에만 있는 인원)을 스캔하여 자동 추가합니다.
+        # 🚀 [캡쳐화면 보정] INT충청 / 한밭 / 701347 대리점을 세종으로 매핑
         for ws in daily_sheets:
             d_data = ws.get_all_values()
             current_rem_dealer = ""
@@ -254,7 +254,7 @@ def load_vdt_data():
                 if len(row) > 3:
                     header_str = clean_str("".join([str(x) for x in row[:4]]))
                     
-                    if "한밭" in header_str or "INT충청" in header_str:
+                    if any(k in header_str for k in ["한밭", "INT충청", "701347"]):
                         current_rem_dealer = "세종"
                     else:
                         for vd in valid_dealers:
@@ -263,9 +263,9 @@ def load_vdt_data():
                                 break
                                 
                     hc_name = clean_str(row[3])
-                    if hc_name and not any(x in hc_name for x in ['HC', 'HC명', '영업사원', '이름', '합계', '소계', '총계', '목표', '대리점', '비고']):
+                    if hc_name and not any(x in hc_name for x in ['HC', 'HC명', '영업사원', '이름', '합계', '소계', '총계', '목표', '대리점', '비고', '사번']):
                         if hc_name not in existing_hcs:
-                            new_dealer = current_rem_dealer if current_rem_dealer else "기타"
+                            new_dealer = current_rem_dealer if current_rem_dealer else "세종"
                             hc_info.append((new_dealer, hc_name, 0.0))
                             existing_hcs.append(hc_name)
                             if new_dealer not in valid_dealers:
@@ -297,7 +297,7 @@ def load_vdt_data():
         real_dealer_monthly = {d: {'amt': 0, 'est': 0, 'cnt': 0} for d in valid_dealers}
         real_dealer_weekly = {d: {wk: {'amt': 0, 'est': 0, 'cnt': 0} for wk in week_keys} for d in valid_dealers}
         
-        # 1️⃣ 주차별 & 당월 누적 실적 스캔 (과거부터 최신 시트까지 싹 다 합산)
+        # 1️⃣ 주차별 실적 누적
         for ws in daily_sheets:
             wk = get_week_name(ws.title)
             d_data = ws.get_all_values()
@@ -308,7 +308,7 @@ def load_vdt_data():
                 if len(row) > 3: 
                     row_header_str = clean_str("".join([str(x) for x in row[:4]]))
                     
-                    if "한밭" in row_header_str or "INT충청" in row_header_str:
+                    if any(k in row_header_str for k in ["한밭", "INT충청", "701347"]):
                         current_remembered_dealer = "세종"
                     else:
                         for vd in valid_dealers:
@@ -318,7 +318,7 @@ def load_vdt_data():
 
                     hc_name = clean_str(row[3]) 
                     
-                    if hc_name and not any(x in hc_name for x in ['HC', 'HC명', '영업사원', '이름', '합계', '소계', '총계', '목표', '대리점']):
+                    if hc_name and not any(x in hc_name for x in ['HC', 'HC명', '영업사원', '이름', '합계', '소계', '총계', '목표', '대리점', '사번']):
                         est_val = clean_val(row[4]) if len(row) > 4 else 0.0
                         cnt_val = clean_val(row[5]) if len(row) > 5 else 0.0
                         amt_val = clean_val(row[15]) if len(row) > 15 else 0.0
@@ -347,11 +347,10 @@ def load_vdt_data():
                                 real_dealer_weekly[matched_dealer][wk]['cnt'] += cnt_val
                                 real_dealer_weekly[matched_dealer][wk]['amt'] += amt_val
                         
-        # 2️⃣ 당월매출 S열 스캔 (껍데기 빈 시트 방어 로직 추가!)
+        # 2️⃣ 당월매출 S열 스캔
         acts_sales = {clean_str(hc): 0 for _, hc, _ in hc_info}
         real_dealer_sales = {d: 0 for d in valid_dealers}
         
-        # 🚀 실적이 조금이라도 적혀 있는(빈 시트가 아닌) "진짜 최신 시트"만 골라냅니다!
         valid_latest_sheets = [ws for ws in daily_sheets if len(ws.get_all_values()) > 5]
         
         if valid_latest_sheets:
@@ -364,7 +363,7 @@ def load_vdt_data():
                 if len(row) > 3:
                     row_header_str = clean_str("".join([str(x) for x in row[:4]]))
                     
-                    if "한밭" in row_header_str or "INT충청" in row_header_str:
+                    if any(k in row_header_str for k in ["한밭", "INT충청", "701347"]):
                         current_remembered_dealer = "세종"
                     else:
                         for vd in valid_dealers:
@@ -374,7 +373,7 @@ def load_vdt_data():
                                 
                     hc_name_s = clean_str(row[3])
                     
-                    if hc_name_s and not any(x in hc_name_s for x in ['HC', 'HC명', '영업사원', '이름', '합계', '소계', '총계', '목표', '대리점']):
+                    if hc_name_s and not any(x in hc_name_s for x in ['HC', 'HC명', '영업사원', '이름', '합계', '소계', '총계', '목표', '대리점', '사번']):
                         s_str = str(row[18]).strip() if len(row) > 18 else ""
                         
                         if s_str != '':
@@ -414,10 +413,6 @@ def load_vdt_data():
             hc_clean = clean_str(hc)
             m_act = month_acts.get(hc_clean, {'amt': 0, 'est': 0, 'cnt': 0})
             s_act = acts_sales.get(hc_clean, 0)
-            
-            # 🚀 [0원 퇴사자 완벽 필터링] 목표가 0인데, 당월 모든 실적이 0이면 표에서 과감히 삭제!
-            if sales_tgt == 0.0 and m_act['amt'] == 0 and m_act['est'] == 0 and m_act['cnt'] == 0 and s_act == 0:
-                continue
 
             row_data = [dealer, hc]
             row_data.extend([sales_tgt, s_act, 0.0])
@@ -527,6 +522,15 @@ df_raw, date_headers, real_dealer_sales, real_dealer_monthly, real_dealer_weekly
 
 if not df_raw.empty:
     final_df = calculate_subtotals(df_raw, real_dealer_sales, real_dealer_monthly, real_dealer_weekly)
+    
+    # ---------------------------------------------------------
+    # 🚀 진단 메시지 안내 (김경율 님 실적 확인용)
+    # ---------------------------------------------------------
+    kim_df = final_df[final_df[('기본정보', 'HC명', 'HC명')].str.contains("김경율", na=False)]
+    if not kim_df.empty:
+        k_sales = kim_df.iloc[0][('🎯 당월매출', '인별매출(천)', 'ACT')]
+        k_amt = kim_df.iloc[0][('🌟 당월 합계', '계약액(천)', 'ACT')]
+        st.success(f"✅ '김경율' 님 데이터 로드 완료! (당월매출: {k_sales:,.0f}천원 | 당월계약액: {k_amt:,.0f}천원)")
     
     # ---------------------------------------------------------
     # 🚀 개인/대리점 선택 및 실적 차트 대시보드
