@@ -113,21 +113,20 @@ def clean_val(v):
     try: return float(v_str) * multiplier
     except: return 0.0
 
-# 🚀 [오류 완벽 해결] 시트 이름에 요일(화), 공백 등이 섞여 있어도 숫자만 뽑아서 정확히 주차를 인식합니다.
+# 🚀 날짜 인식 초강화: 어떤 형식(8.11, 8월 11일 등)이든 숫자 2개를 귀신같이 뽑아냅니다.
 def get_week_name(sheet_title):
     try:
-        m_search = re.search(r'(\d+)\s*/\s*(\d+)', sheet_title)
-        if not m_search: return None
-        m_val, d_val = int(m_search.group(1)), int(m_search.group(2))
-        
-        if m_val == 7 and d_val >= 27: return '0주차'
-        if m_val == 8:
-            if d_val <= 2: return '0주차'
-            elif d_val <= 9: return '1주차'
-            elif d_val <= 16: return '2주차'
-            elif d_val <= 23: return '3주차'
-            elif d_val <= 30: return '4주차'
-            else: return '5주차'
+        nums = re.findall(r'\d+', sheet_title)
+        if len(nums) >= 2:
+            m_val, d_val = int(nums[0]), int(nums[1])
+            if m_val == 7 and d_val >= 27: return '0주차'
+            if m_val == 8:
+                if d_val <= 2: return '0주차'
+                elif d_val <= 9: return '1주차'
+                elif d_val <= 16: return '2주차'
+                elif d_val <= 23: return '3주차'
+                elif d_val <= 30: return '4주차'
+                else: return '5주차'
     except:
         pass
     return None
@@ -238,9 +237,9 @@ def load_vdt_data():
         
         def sort_key(ws):
             try:
-                m_search = re.search(r'(\d+)\s*/\s*(\d+)', ws.title)
-                if m_search:
-                    return int(m_search.group(1)) * 100 + int(m_search.group(2))
+                nums = re.findall(r'\d+', ws.title)
+                if len(nums) >= 2:
+                    return int(nums[0]) * 100 + int(nums[1])
             except:
                 pass
             return 0
@@ -256,7 +255,7 @@ def load_vdt_data():
         real_dealer_monthly = {d: {'amt': 0, 'est': 0, 'cnt': 0} for d in valid_dealers}
         real_dealer_weekly = {d: {wk: {'amt': 0, 'est': 0, 'cnt': 0} for wk in week_keys} for d in valid_dealers}
         
-        # 1️⃣ 주차별 실적 누적 (과거부터 최신까지 모두 합산)
+        # 1️⃣ 주차별 & 당월 P/E/F 누적 (과거부터 최신 시트까지 싹 다 합산)
         for ws in daily_sheets:
             wk = get_week_name(ws.title)
             d_data = ws.get_all_values()
@@ -264,26 +263,26 @@ def load_vdt_data():
             current_remembered_dealer = ""
             
             for row in d_data:
-                # 🚀 [추가] 대리점 이름이 D열에 적힐 경우를 대비해 4칸까지 훑습니다.
-                row_header_str = " ".join([str(x).strip() for x in row[:4]])
-                
-                # 한밭대리점(INT충청) 실적을 세종 합계로 강제 편입!
-                if "한밭" in row_header_str or "INT충청" in row_header_str:
-                    current_remembered_dealer = "세종"
-                else:
-                    for vd in valid_dealers:
-                        if vd in row_header_str:
-                            current_remembered_dealer = vd
-                            break
+                # 🚀 [방패막 적용] 구글 시트가 빈칸을 잘라버려도 D열(이름)까지만 있으면 통과!
+                if len(row) > 3: 
+                    row_header_str = " ".join([str(x).strip() for x in row[:4]])
+                    
+                    if "한밭" in row_header_str or "INT충청" in row_header_str:
+                        current_remembered_dealer = "세종"
+                    else:
+                        for vd in valid_dealers:
+                            if vd in row_header_str:
+                                current_remembered_dealer = vd
+                                break
 
-                if len(row) > 15: 
                     hc_name = str(row[3]).strip()
                     if hc_name and not any(x in hc_name for x in ['HC', 'HC명', '영업사원', '이름', '합계', '소계', '총계', '목표', '대리점']):
-                        est_val = clean_val(row[4])
-                        cnt_val = clean_val(row[5])
-                        amt_val = clean_val(row[15])
+                        # 🚀 데이터가 잘려도 안전하게 0.0으로 보호해서 꺼내옵니다.
+                        est_val = clean_val(row[4]) if len(row) > 4 else 0.0
+                        cnt_val = clean_val(row[5]) if len(row) > 5 else 0.0
+                        amt_val = clean_val(row[15]) if len(row) > 15 else 0.0
                         
-                        # (A) 인별 실적 누적 (같은 사람이 여러 줄에 있어도 알아서 다 더해집니다)
+                        # (A) 인별 실적 누적 (같은 사람이 세종, 한밭 양쪽에 있어도 무조건 += 로 더해짐!)
                         if hc_name in acts:
                             if wk:
                                 acts[hc_name][wk]['est'] += est_val
@@ -294,7 +293,7 @@ def load_vdt_data():
                             month_acts[hc_name]['cnt'] += cnt_val
                             month_acts[hc_name]['amt'] += amt_val
                         
-                        # (B) 대리점 찐 합계 누적 
+                        # (B) 대리점 찐 합계 누적 (한밭대리점도 세종으로 통합되어 += 됨!)
                         matched_dealer = current_remembered_dealer
                         if not matched_dealer:
                             matched_dealer = hc_to_dealer.get(hc_name, "")
@@ -309,7 +308,7 @@ def load_vdt_data():
                                 real_dealer_weekly[matched_dealer][wk]['cnt'] += cnt_val
                                 real_dealer_weekly[matched_dealer][wk]['amt'] += amt_val
                         
-        # 2️⃣ 당월매출(S열) 대리점 찐 합계 (가장 최신 시트 단 1개에서만)
+        # 2️⃣ 당월매출 S열 대리점 찐 합계 (가장 최신 시트 단 1개에서만 긁어옴)
         acts_sales = {hc: 0 for _, hc, _ in hc_info}
         real_dealer_sales = {d: 0 for d in valid_dealers}
         
@@ -320,7 +319,8 @@ def load_vdt_data():
             current_remembered_dealer = ""
             
             for row in l_data:
-                if len(row) > 18:
+                # 🚀 S열도 잘림 방지 로직 적용
+                if len(row) > 3:
                     row_header_str = " ".join([str(x).strip() for x in row[:4]])
                     
                     if "한밭" in row_header_str or "INT충청" in row_header_str:
@@ -332,13 +332,14 @@ def load_vdt_data():
                                 break
                                 
                     hc_name_s = str(row[3]).strip()
-                    s_str = str(row[18]).strip()
                     
                     if hc_name_s and not any(x in hc_name_s for x in ['HC', 'HC명', '영업사원', '이름', '합계', '소계', '총계', '목표', '대리점']):
+                        s_str = str(row[18]).strip() if len(row) > 18 else ""
+                        
                         if s_str != '':
                             s_val = clean_val(s_str)
                             
-                            # (A) 인별 당월매출 누적 (동일 인물이 세종/한밭 양쪽에 쓰여도 +로 누적합산!)
+                            # (A) 인별 당월매출 누적 (김경율님이 양쪽에 쓰여도 +로 누적합산!)
                             if hc_name_s in acts_sales:
                                 acts_sales[hc_name_s] += s_val
                                 
