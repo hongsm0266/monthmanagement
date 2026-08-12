@@ -875,8 +875,8 @@ if not df_raw.empty:
             
             is_first_of_week = is_curr and col[1] == '계약액(천)' and col[2] == '목표'
             is_last_of_week = is_curr and col[1] == '계약건' and col[2] == '달성율(%)'
-            is_last_of_sales = col[0] == '🎯 당월매출' and col_obj[2] == '달성율(%)'
-            is_last_monthly = "🌟 당월 합계" in col[0] and col_obj[1] == '계약건' and col_obj[2] == '달성율(%)'
+            is_last_of_sales = col[0] == '🎯 당월매출' and col[2] == '달성율(%)'
+            is_last_monthly = "🌟 당월 합계" in col[0] and col[1] == '계약건' and col[2] == '달성율(%)'
             
             style_parts = []
             if is_curr:
