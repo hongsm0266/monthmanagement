@@ -94,7 +94,6 @@ st.markdown("""
         box-shadow: 0 4px 6px rgba(0,0,0,0.05);
     }
     
-    /* 🚀 요약 지표(Metric) 제목 디자인 업그레이드 */
     [data-testid="stMetricLabel"] {
         background-color: #e2e8f0 !important;
         padding: 6px 12px !important;
@@ -111,7 +110,6 @@ st.markdown("""
         letter-spacing: -0.3px;
     }
     
-    /* 🚀 요약 지표(Metric) 실제 숫자값 및 달성률 디자인 업그레이드 */
     [data-testid="stMetricValue"] > div {
         font-size: 28px !important;
         font-weight: 900 !important;
@@ -841,6 +839,7 @@ if not df_raw.empty:
         
         html = ["<div class='vdt-table-container'><table class='vdt-table'><thead>"]
         
+        # --- 1행 (대분류) ---
         html.append("<tr>")
         html.append(f"<th rowspan='3' style='position: sticky; top: 0; left: 0; z-index: 20; background-color: #0f172a; min-width: {col_widths[0]}px; max-width: {col_widths[0]}px; border-right: 1px solid #cbd5e1;'>대리점</th>")
         html.append(f"<th rowspan='3' style='position: sticky; top: 0; left: {col_lefts[1]}px; z-index: 20; background-color: #0f172a; min-width: {col_widths[1]}px; max-width: {col_widths[1]}px; border-right: 2px solid #94a3b8;'>HC명</th>")
@@ -864,16 +863,16 @@ if not df_raw.empty:
                 
             if h1 == '🎯 당월매출':
                 style_parts.extend([f"left: {col_lefts[2]}px;", "z-index: 15;", "border-right: 3px solid #1e293b;"])
+                html.append(f"<th colspan='3' style='{'; '.join(style_parts)}'>{h1}</th>")
             elif "🌟 당월 합계" in h1:
                 style_parts.extend([f"left: {col_lefts[5]}px;", "z-index: 15;", "border-right: 4px solid #94a3b8;"])
+                html.append(f"<th colspan='9' style='{'; '.join(style_parts)}'>{h1}</th>")
             else:
                 style_parts.append("z-index: 10;")
-                
-            bg_style = f"style='{'; '.join(style_parts)}'"
-            if "🎯" in h1: html.append(f"<th colspan='3' {bg_style}>{h1}</th>")
-            else: html.append(f"<th colspan='9' {bg_style}>{h1}</th>")
+                html.append(f"<th colspan='9' style='{'; '.join(style_parts)}'>{h1}</th>")
         html.append("</tr>")
         
+        # --- 2행 (중분류) ---
         html.append("<tr>")
         for h1 in headers_l1:
             is_curr = CURRENT_WEEK in h1
@@ -898,13 +897,13 @@ if not df_raw.empty:
                 html.append(f"<th colspan='3' style='{'; '.join(s2)}'>견적건</th>")
                 html.append(f"<th colspan='3' style='{'; '.join(s3)}'>계약건</th>")
             else:
-                s_parts = base_styles.copy() + ["z-index: 10;"]
-                bg_style = f"style='{'; '.join(s_parts)}'"
+                bg_style = f"style='{'; '.join(base_styles + ['z-index: 10;'])}'"
                 html.append(f"<th colspan='3' {bg_style}>계약액(천)</th>")
                 html.append(f"<th colspan='3' {bg_style}>견적건</th>")
                 html.append(f"<th colspan='3' {bg_style}>계약건</th>")
         html.append("</tr>")
         
+        # --- 3행 (소분류) ---
         html.append("<tr>")
         for c_idx, col in enumerate(df.columns[2:]):
             abs_idx = c_idx + 2
@@ -941,6 +940,7 @@ if not df_raw.empty:
             html.append(f"<th {bg_style}>{col[2]}</th>")
         html.append("</tr></thead><tbody>")
         
+        # --- 본문 데이터 ---
         for r_idx in range(len(df)):
             row = df.iloc[r_idx]
             dealer = row[dealer_col]
@@ -979,6 +979,7 @@ if not df_raw.empty:
                     if is_first_of_week: style_parts.append("border-left: 3px solid #3b82f6;")
                     if is_last_of_week: style_parts.append("border-right: 3px solid #3b82f6;")
                 elif is_monthly:
+                    # ✅ 당월 합계까지 스크롤 뒷글자가 비치지 않게 배경색을 완전 불투명 처리
                     if abs_idx <= 13: 
                         solid_bg = '#ebf6f2'
                         if bg_color == '#f8fafc': solid_bg = '#e4f1ef'
@@ -990,8 +991,9 @@ if not df_raw.empty:
                 else:
                     style_parts.append(f"background-color: {bg_color};")
                 
+                # ✅ 당월 합계(13번 인덱스)까지 sticky left 속성 및 폭, Z-index 재적용
                 if abs_idx <= 13:
-                    style_parts.extend([f"position: sticky; left: {col_lefts[abs_idx]}px;", "z-index: 5;"])
+                    style_parts.extend([f"position: sticky; left: {col_lefts[abs_idx]}px;", "z-index: 5;", f"min-width: {col_widths[abs_idx]}px;", f"max-width: {col_widths[abs_idx]}px;"])
                 
                 if is_last_of_sales:
                     style_parts.append("border-right: 3px solid #1e293b;")
