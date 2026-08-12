@@ -137,10 +137,8 @@ def get_week_name(sheet_title):
         pass
     return None
 
-# 🚀 [추가] 다중 대리점 이름을 하나로 묶어주는 강력한 매핑 도우미 함수
 def get_mapped_dealer(raw_d):
     c_d = clean_str(raw_d)
-    # 목표 시트의 "세종2" 나 일보의 "한밭", "INT충청", "701347"은 무조건 "세종"으로 통일!
     if any(k in c_d for k in ["한밭", "INT충청", "701347", "세종2"]):
         return "세종"
     return raw_d.strip()
@@ -190,7 +188,6 @@ def load_vdt_data():
         hc_info_dict = {}         
         dealer_sales_sum = {} 
         
-        # 🚀 [수정] 목표 시트에서 "세종2 김경율"과 "세종 김경율"을 한 줄로 병합하여 저장합니다!
         for row in hc_target_data:
             if len(row) >= 4 and str(row[0]).strip() and str(row[1]).strip():
                 raw_dealer = str(row[0]).strip()
@@ -201,16 +198,13 @@ def load_vdt_data():
                     
                 if hc_name.isdigit(): continue
                 
-                # "세종2"가 들어와도 "세종"으로 강제 변경
                 dealer = get_mapped_dealer(raw_dealer)
                 sales_target = clean_val(row[3]) / 1000.0
                 
                 key = (dealer, hc_name)
-                # 동일 인물이면 목표(Target)를 더해서 하나로 합칩니다.
                 hc_info_dict[key] = hc_info_dict.get(key, 0.0) + sales_target
                 dealer_sales_sum[dealer] = dealer_sales_sum.get(dealer, 0.0) + sales_target
 
-        # 합쳐진 딕셔너리를 리스트로 변환 (중복 제거 완료)
         hc_info = [(d, h, t) for (d, h), t in hc_info_dict.items()]
 
         status_box.info("🎯 2단계: 대리점 주차별 목표 스캔 중...")
@@ -234,7 +228,6 @@ def load_vdt_data():
         }
         week_keys = list(week_cols.keys())
         
-        # 대리점 목표도 "세종2"가 있으면 "세종"에 합산합니다.
         dealer_targets = {}
         for row in target_data:
             if len(row) > 0 and str(row[0]).strip():
@@ -269,8 +262,17 @@ def load_vdt_data():
         existing_hcs = [clean_str(h) for d, h, t in hc_info]
         valid_dealers = list(set([d for d, _, _ in hc_info]))
         
-        # 신규 인원 스캔 로직
+        # 🚀 [당월 범위에 해당하는 시트만 골라내기 + 월(Month) 추출]
+        valid_daily_sheets = []
         for ws in daily_sheets:
+            wk = get_week_name(ws.title)
+            nums = re.findall(r'\d+', ws.title)
+            if wk and len(nums) >= 2: 
+                m_val = int(nums[0]) # 7월인지 8월인지 추출
+                valid_daily_sheets.append((m_val, wk, ws))
+        
+        # 신규 인원 스캔 로직 (해당 범위 시트 한정)
+        for m_val, wk, ws in valid_daily_sheets:
             d_data = ws.get_all_values()
             current_rem_dealer = ""
             for row in d_data:
@@ -279,7 +281,6 @@ def load_vdt_data():
                 
                 header_str = clean_str("".join([safe_get(row, i) for i in range(4)]))
                 
-                # 🚀 매핑 함수 활용
                 mapped_d = get_mapped_dealer(header_str)
                 if mapped_d == "세종":
                     current_rem_dealer = "세종"
@@ -324,9 +325,8 @@ def load_vdt_data():
         real_dealer_monthly = {d: {'amt': 0, 'est': 0, 'cnt': 0} for d in valid_dealers}
         real_dealer_weekly = {d: {wk: {'amt': 0, 'est': 0, 'cnt': 0} for wk in week_keys} for d in valid_dealers}
         
-        # 1️⃣ 주차별 실적 누적 (🚀 스마트 상속 + 세종 완벽 매핑 적용!)
-        for ws in daily_sheets:
-            wk = get_week_name(ws.title)
+        # 1️⃣ 주차별 & 당월 실적 누적 (🚀 당월 합계는 무조건 "현재 월(8월)" 시트만 합산!)
+        for m_val, wk, ws in valid_daily_sheets:
             d_data = ws.get_all_values()
             
             current_remembered_dealer = ""
@@ -336,7 +336,6 @@ def load_vdt_data():
                 if len(row) > 3: 
                     row_header_str = clean_str("".join([safe_get(row, i) for i in range(4)]))
                     
-                    # 🚀 세종 관련 키워드(한밭, INT충청, 701347, 세종2) 통합 매핑 적용
                     if get_mapped_dealer(row_header_str) == "세종":
                         current_remembered_dealer = "세종"
                     else:
@@ -369,37 +368,40 @@ def load_vdt_data():
                         cached_est, cached_cnt, cached_amt = 0.0, 0.0, 0.0
                         
                         if hc_name in acts:
-                            if wk:
-                                acts[hc_name][wk]['est'] += est_val
-                                acts[hc_name][wk]['cnt'] += cnt_val
-                                acts[hc_name][wk]['amt'] += amt_val
+                            # [주차별 실적] 7월 27~31일이든 8월이든 주차(0주차)에 맞게 전부 더함
+                            acts[hc_name][wk]['est'] += est_val
+                            acts[hc_name][wk]['cnt'] += cnt_val
+                            acts[hc_name][wk]['amt'] += amt_val
                             
-                            month_acts[hc_name]['est'] += est_val
-                            month_acts[hc_name]['cnt'] += cnt_val
-                            month_acts[hc_name]['amt'] += amt_val
+                            # 🚀 [당월 합계 실적] 오직 이번 달(8월) 일보인 경우에만 더함!
+                            if m_val == current_month:
+                                month_acts[hc_name]['est'] += est_val
+                                month_acts[hc_name]['cnt'] += cnt_val
+                                month_acts[hc_name]['amt'] += amt_val
                         
                         matched_dealer = current_remembered_dealer
                         if not matched_dealer:
                             matched_dealer = hc_to_dealer.get(hc_name, "")
                             
                         if matched_dealer in valid_dealers:
-                            real_dealer_monthly[matched_dealer]['est'] += est_val
-                            real_dealer_monthly[matched_dealer]['cnt'] += cnt_val
-                            real_dealer_monthly[matched_dealer]['amt'] += amt_val
-                            
-                            if wk and wk in real_dealer_weekly[matched_dealer]:
+                            if wk in real_dealer_weekly[matched_dealer]:
                                 real_dealer_weekly[matched_dealer][wk]['est'] += est_val
                                 real_dealer_weekly[matched_dealer][wk]['cnt'] += cnt_val
                                 real_dealer_weekly[matched_dealer][wk]['amt'] += amt_val
+
+                            # 🚀 대리점 당월 찐 합계도 8월 일보 실적만 더함!
+                            if m_val == current_month:
+                                real_dealer_monthly[matched_dealer]['est'] += est_val
+                                real_dealer_monthly[matched_dealer]['cnt'] += cnt_val
+                                real_dealer_monthly[matched_dealer]['amt'] += amt_val
                         
-        # 2️⃣ 당월매출 S열 스캔 (여기도 S열 스마트 상속 + 통합 매핑 도입!)
+        # 2️⃣ 당월매출 S열 스캔
         acts_sales = {clean_str(hc): 0 for _, hc, _ in hc_info}
         real_dealer_sales = {d: 0 for d in valid_dealers}
         
-        valid_latest_sheets = [ws for ws in daily_sheets if len(ws.get_all_values()) > 5]
-        
-        if valid_latest_sheets:
-            latest_sheet = valid_latest_sheets[-1] 
+        # 최신 시트 골라내기 (0~5주차 범위 안에서 가장 마지막 시트)
+        if valid_daily_sheets:
+            latest_m, latest_wk, latest_sheet = valid_daily_sheets[-1] 
             l_data = latest_sheet.get_all_values()
             
             current_remembered_dealer = ""
@@ -469,7 +471,7 @@ def load_vdt_data():
             m_act = month_acts.get(hc_clean, {'amt': 0, 'est': 0, 'cnt': 0})
             s_act = acts_sales.get(hc_clean, 0)
 
-            # 🚀 0원 퇴사자 숨김 필터
+            # 0원 퇴사자 숨김 필터
             if sales_tgt == 0.0 and m_act['amt'] == 0 and m_act['est'] == 0 and m_act['cnt'] == 0 and s_act == 0:
                 continue
 
@@ -931,7 +933,7 @@ if not df_raw.empty:
                 
                 is_first_of_week = is_curr and col[1] == '계약액(천)' and col[2] == '목표'
                 is_last_of_week = is_curr and col[1] == '계약건' and col[2] == '달성율(%)'
-                is_last_of_sales = col[0] == '🎯 당월매출' and col_obj[2] == '달성율(%)'
+                is_last_of_sales = col[0] == '🎯 당월매출' and col[obj[2] == '달성율(%)'
                 is_last_monthly = "🌟 당월 합계" in col[0] and col_obj[1] == '계약건' and col_obj[2] == '달성율(%)'
                 
                 style_parts = []
