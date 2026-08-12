@@ -96,15 +96,17 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# 메인 제목
 current_month = datetime.now().month
 st.markdown(f"<div class='title-box'><h1>📊 충청호남팀 영업사원 주차별 VDT 목표 관리 ({current_month}월)</h1></div>", unsafe_allow_html=True)
 
 def clean_str(val):
-    return str(val).replace(" ", "").strip()
+    return re.sub(r'\s+', '', str(val))
+
+def safe_get(row, idx):
+    return str(row[idx]).strip() if len(row) > idx else ""
 
 def clean_val(v):
-    if not v or pd.isna(v) or str(v).strip() == '': return 0.0
+    if not v or pd.isna(v): return 0.0
     v_str = str(v).replace('%', '').replace(',', '').replace('원', '').replace('건', '').strip()
     multiplier = 1
     if '억' in v_str:
@@ -113,6 +115,8 @@ def clean_val(v):
     elif '만' in v_str:
         v_str = v_str.replace('만', '')
         multiplier = 10000
+    v_str = re.sub(r'[^\d\.-]', '', v_str)
+    if not v_str: return 0.0
     try: return float(v_str) * multiplier
     except: return 0.0
 
@@ -246,30 +250,32 @@ def load_vdt_data():
         existing_hcs = [clean_str(h) for d, h, t in hc_info]
         valid_dealers = list(set([d for d, _, _ in hc_info]))
         
-        # 🚀 [캡쳐화면 보정] INT충청 / 한밭 / 701347 대리점을 세종으로 매핑
+        # 신규 인원 스캔 로직
         for ws in daily_sheets:
             d_data = ws.get_all_values()
             current_rem_dealer = ""
             for row in d_data:
-                if len(row) > 3:
-                    header_str = clean_str("".join([str(x) for x in row[:4]]))
-                    
-                    if any(k in header_str for k in ["한밭", "INT충청", "701347"]):
-                        current_rem_dealer = "세종"
-                    else:
-                        for vd in valid_dealers:
-                            if clean_str(vd) in header_str:
-                                current_rem_dealer = vd
-                                break
-                                
-                    hc_name = clean_str(row[3])
-                    if hc_name and not any(x in hc_name for x in ['HC', 'HC명', '영업사원', '이름', '합계', '소계', '총계', '목표', '대리점', '비고', '사번']):
-                        if hc_name not in existing_hcs:
-                            new_dealer = current_rem_dealer if current_rem_dealer else "세종"
-                            hc_info.append((new_dealer, hc_name, 0.0))
-                            existing_hcs.append(hc_name)
-                            if new_dealer not in valid_dealers:
-                                valid_dealers.append(new_dealer)
+                hc_name_raw = safe_get(row, 3)
+                if not hc_name_raw: continue
+                
+                header_str = clean_str("".join([safe_get(row, i) for i in range(4)]))
+                
+                if "한밭" in header_str or "INT충청" in header_str or "701347" in header_str:
+                    current_rem_dealer = "세종"
+                else:
+                    for vd in valid_dealers:
+                        if clean_str(vd) in header_str:
+                            current_rem_dealer = vd
+                            break
+                            
+                hc_name = clean_str(hc_name_raw)
+                if hc_name and not any(x in hc_name for x in ['HC', 'HC명', '영업사원', '이름', '합계', '소계', '총계', '목표', '대리점', '비고', '사번']):
+                    if hc_name not in existing_hcs:
+                        new_dealer = current_rem_dealer if current_rem_dealer else "기타"
+                        hc_info.append((new_dealer, hc_name, 0.0))
+                        existing_hcs.append(hc_name)
+                        if new_dealer not in valid_dealers:
+                            valid_dealers.append(new_dealer)
 
         hc_weights = {}
         for dealer, hc, target in hc_info:
@@ -297,18 +303,19 @@ def load_vdt_data():
         real_dealer_monthly = {d: {'amt': 0, 'est': 0, 'cnt': 0} for d in valid_dealers}
         real_dealer_weekly = {d: {wk: {'amt': 0, 'est': 0, 'cnt': 0} for wk in week_keys} for d in valid_dealers}
         
-        # 1️⃣ 주차별 실적 누적
+        # 1️⃣ 주차별 실적 누적 (🚀 스마트 상속 로직 도입!)
         for ws in daily_sheets:
             wk = get_week_name(ws.title)
             d_data = ws.get_all_values()
             
             current_remembered_dealer = ""
+            cached_est, cached_cnt, cached_amt = 0.0, 0.0, 0.0 # 윗줄 실적을 담아둘 임시 기억 장치
             
             for row in d_data:
                 if len(row) > 3: 
-                    row_header_str = clean_str("".join([str(x) for x in row[:4]]))
+                    row_header_str = clean_str("".join([safe_get(row, i) for i in range(4)]))
                     
-                    if any(k in row_header_str for k in ["한밭", "INT충청", "701347"]):
+                    if "한밭" in row_header_str or "INT충청" in row_header_str or "701347" in row_header_str:
                         current_remembered_dealer = "세종"
                     else:
                         for vd in valid_dealers:
@@ -316,12 +323,34 @@ def load_vdt_data():
                                 current_remembered_dealer = vd
                                 break
 
-                    hc_name = clean_str(row[3]) 
+                    # 이 줄에 적힌 실적을 일단 스캔합니다.
+                    temp_est = clean_val(safe_get(row, 4))
+                    temp_cnt = clean_val(safe_get(row, 5))
+                    temp_amt = clean_val(safe_get(row, 15))
                     
-                    if hc_name and not any(x in hc_name for x in ['HC', 'HC명', '영업사원', '이름', '합계', '소계', '총계', '목표', '대리점', '사번']):
-                        est_val = clean_val(row[4]) if len(row) > 4 else 0.0
-                        cnt_val = clean_val(row[5]) if len(row) > 5 else 0.0
-                        amt_val = clean_val(row[15]) if len(row) > 15 else 0.0
+                    hc_name_raw = safe_get(row, 3)
+                    hc_name = clean_str(hc_name_raw)
+                    
+                    # (예외처리) 요약행이면 스킵하되 캐시도 날려버립니다.
+                    if any(x in hc_name for x in ['합계', '소계', '총계', '목표', '대리점', '사번', '비고']):
+                        cached_est, cached_cnt, cached_amt = 0.0, 0.0, 0.0
+                        continue
+                        
+                    # 💡 [핵심] 대리점 이름만 있고 사람은 없는 줄인데 실적이 있다면? -> 잠시 기억(캐시)해 둡니다!
+                    if not hc_name:
+                        if temp_est > 0 or temp_cnt > 0 or temp_amt > 0:
+                            cached_est, cached_cnt, cached_amt = temp_est, temp_cnt, temp_amt
+                        continue
+                        
+                    # 💡 사람 이름이 등장한 줄! (김경율 등)
+                    if hc_name:
+                        # 이 줄에 실적이 비어있다면, 아까 기억해둔 윗줄(대리점 줄)의 실적을 쏙 끌어옵니다!
+                        est_val = temp_est if temp_est > 0 else cached_est
+                        cnt_val = temp_cnt if temp_cnt > 0 else cached_cnt
+                        amt_val = temp_amt if temp_amt > 0 else cached_amt
+                        
+                        # 썼으면 캐시는 바로 지워줍니다 (다음 사람에게 안 넘어가도록)
+                        cached_est, cached_cnt, cached_amt = 0.0, 0.0, 0.0
                         
                         if hc_name in acts:
                             if wk:
@@ -347,7 +376,7 @@ def load_vdt_data():
                                 real_dealer_weekly[matched_dealer][wk]['cnt'] += cnt_val
                                 real_dealer_weekly[matched_dealer][wk]['amt'] += amt_val
                         
-        # 2️⃣ 당월매출 S열 스캔
+        # 2️⃣ 당월매출 S열 스캔 (여기도 S열 스마트 상속 도입!)
         acts_sales = {clean_str(hc): 0 for _, hc, _ in hc_info}
         real_dealer_sales = {d: 0 for d in valid_dealers}
         
@@ -358,12 +387,13 @@ def load_vdt_data():
             l_data = latest_sheet.get_all_values()
             
             current_remembered_dealer = ""
+            cached_s = 0.0
             
             for row in l_data:
                 if len(row) > 3:
-                    row_header_str = clean_str("".join([str(x) for x in row[:4]]))
+                    row_header_str = clean_str("".join([safe_get(row, i) for i in range(4)]))
                     
-                    if any(k in row_header_str for k in ["한밭", "INT충청", "701347"]):
+                    if "한밭" in row_header_str or "INT충청" in row_header_str or "701347" in row_header_str:
                         current_remembered_dealer = "세종"
                     else:
                         for vd in valid_dealers:
@@ -371,14 +401,25 @@ def load_vdt_data():
                                 current_remembered_dealer = vd
                                 break
                                 
-                    hc_name_s = clean_str(row[3])
+                    hc_name_s = clean_str(safe_get(row, 3))
+                    temp_s = clean_val(safe_get(row, 18))
                     
-                    if hc_name_s and not any(x in hc_name_s for x in ['HC', 'HC명', '영업사원', '이름', '합계', '소계', '총계', '목표', '대리점', '사번']):
-                        s_str = str(row[18]).strip() if len(row) > 18 else ""
+                    if any(x in hc_name_s for x in ['합계', '소계', '총계', '목표', '대리점', '사번', '비고']):
+                        cached_s = 0.0
+                        continue
                         
-                        if s_str != '':
-                            s_val = clean_val(s_str)
-                            
+                    # 💡 대리점명만 있는 줄에 S열 실적이 적혀있다면 캐시
+                    if not hc_name_s:
+                        if temp_s > 0:
+                            cached_s = temp_s
+                        continue
+                        
+                    # 💡 사람 이름 등장 시
+                    if hc_name_s:
+                        s_val = temp_s if temp_s > 0 else cached_s
+                        cached_s = 0.0 # 초기화
+                        
+                        if s_val > 0:
                             if hc_name_s in acts_sales:
                                 acts_sales[hc_name_s] += s_val
                                 
@@ -413,6 +454,10 @@ def load_vdt_data():
             hc_clean = clean_str(hc)
             m_act = month_acts.get(hc_clean, {'amt': 0, 'est': 0, 'cnt': 0})
             s_act = acts_sales.get(hc_clean, 0)
+
+            # 🚀 0원 퇴사자 숨김 필터
+            if sales_tgt == 0.0 and m_act['amt'] == 0 and m_act['est'] == 0 and m_act['cnt'] == 0 and s_act == 0:
+                continue
 
             row_data = [dealer, hc]
             row_data.extend([sales_tgt, s_act, 0.0])
@@ -522,15 +567,6 @@ df_raw, date_headers, real_dealer_sales, real_dealer_monthly, real_dealer_weekly
 
 if not df_raw.empty:
     final_df = calculate_subtotals(df_raw, real_dealer_sales, real_dealer_monthly, real_dealer_weekly)
-    
-    # ---------------------------------------------------------
-    # 🚀 진단 메시지 안내 (김경율 님 실적 확인용)
-    # ---------------------------------------------------------
-    kim_df = final_df[final_df[('기본정보', 'HC명', 'HC명')].str.contains("김경율", na=False)]
-    if not kim_df.empty:
-        k_sales = kim_df.iloc[0][('🎯 당월매출', '인별매출(천)', 'ACT')]
-        k_amt = kim_df.iloc[0][('🌟 당월 합계', '계약액(천)', 'ACT')]
-        st.success(f"✅ '김경율' 님 데이터 로드 완료! (당월매출: {k_sales:,.0f}천원 | 당월계약액: {k_amt:,.0f}천원)")
     
     # ---------------------------------------------------------
     # 🚀 개인/대리점 선택 및 실적 차트 대시보드
