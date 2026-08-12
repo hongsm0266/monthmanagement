@@ -61,13 +61,8 @@ st.markdown("""
     .vdt-table thead th {
         height: 34px;
         box-sizing: border-box;
-        position: sticky;
-        z-index: 10;
         background-clip: padding-box; 
     }
-    .vdt-table thead tr:nth-child(1) th { top: 0; }
-    .vdt-table thead tr:nth-child(2) th { top: 33px; }
-    .vdt-table thead tr:nth-child(3) th { top: 66px; }
 
     .vdt-table th {
         background-color: #0f172a;
@@ -740,7 +735,7 @@ if not df_raw.empty:
         act_cnt = acts[3:]
         tt_cnt = text_targets[3:]
         ta_cnt = text_acts[3:]
-        ac_cnt = act_colors[3:]
+        ac_cnt = act_colors[:3]
 
         fig = go.Figure()
         
@@ -807,9 +802,15 @@ if not df_raw.empty:
         for idx, d in enumerate(unique_dealers):
             dealer_colors[d] = colors[idx % len(colors)]
             
+        # 🚀 [틀 고정] 컬럼별 너비(px)와 좌측 오프셋(left)을 픽셀 단위로 정확하게 계산
+        col_widths = [80, 90, 70, 70, 70, 70, 70, 70, 55, 55, 55, 55, 55, 55]
+        col_lefts = [0, 80, 170, 240, 310, 380, 450, 520, 590, 645, 700, 755, 810, 865]
+        
         html = ["<div class='vdt-table-container'><table class='vdt-table'><thead>"]
         
-        html.append("<tr><th rowspan='3' style='position: sticky; top: 0; left: 0; z-index: 15; background-color: #0f172a; min-width: 90px; max-width: 90px;'>대리점</th><th rowspan='3' style='position: sticky; top: 0; left: 90px; z-index: 15; background-color: #0f172a; min-width: 110px; max-width: 110px; border-right: 2px solid #94a3b8;'>HC명</th>")
+        html.append("<tr>")
+        html.append(f"<th rowspan='3' style='position: sticky; top: 0; left: 0; z-index: 20; background-color: #0f172a; min-width: {col_widths[0]}px; max-width: {col_widths[0]}px; border-right: 1px solid #cbd5e1;'>대리점</th>")
+        html.append(f"<th rowspan='3' style='position: sticky; top: 0; left: {col_lefts[1]}px; z-index: 20; background-color: #0f172a; min-width: {col_widths[1]}px; max-width: {col_widths[1]}px; border-right: 2px solid #94a3b8;'>HC명</th>")
         
         headers_l1 = []
         for col in df.columns[2:]:
@@ -819,23 +820,23 @@ if not df_raw.empty:
             is_curr = CURRENT_WEEK in h1
             is_monthly = "당월" in h1
             
-            style_parts = []
+            style_parts = ["position: sticky; top: 0;"]
+            
             if is_curr:
-                style_parts.append("background-color: #1e3a8a")
-                style_parts.append("border: 3px solid #60a5fa") 
+                style_parts.extend(["background-color: #1e3a8a;", "border: 3px solid #60a5fa;"])
             elif is_monthly:
-                style_parts.append("background-color: #064e3b") 
-                style_parts.append("color: #a7f3d0") 
-                style_parts.append("border-top: 2px solid #047857")
-            
+                style_parts.extend(["background-color: #064e3b;", "color: #a7f3d0;", "border-top: 2px solid #047857;"])
+            else:
+                style_parts.append("background-color: #0f172a;")
+                
             if h1 == '🎯 당월매출':
-                style_parts.append("border-right: 3px solid #1e293b")
+                style_parts.extend([f"left: {col_lefts[2]}px;", "z-index: 15;", "border-right: 3px solid #1e293b;"])
+            elif "🌟 당월 합계" in h1:
+                style_parts.extend([f"left: {col_lefts[5]}px;", "z-index: 15;", "border-right: 4px solid #94a3b8;"])
+            else:
+                style_parts.append("z-index: 10;")
                 
-            if "🌟 당월 합계" in h1:
-                style_parts.append("border-right: 4px solid #94a3b8")
-                
-            bg_style = f"style='{'; '.join(style_parts)}'" if style_parts else ""
-            
+            bg_style = f"style='{'; '.join(style_parts)}'"
             if "🎯" in h1: html.append(f"<th colspan='3' {bg_style}>{h1}</th>")
             else: html.append(f"<th colspan='9' {bg_style}>{h1}</th>")
         html.append("</tr>")
@@ -845,31 +846,35 @@ if not df_raw.empty:
             is_curr = CURRENT_WEEK in h1
             is_monthly = "당월" in h1
             
-            style_parts = []
+            base_styles = ["position: sticky; top: 33px;"]
             if is_curr:
-                style_parts.append("background-color: #1e40af")
-                style_parts.append("border-left: 3px solid #60a5fa")
-                style_parts.append("border-right: 3px solid #60a5fa")
+                base_styles.extend(["background-color: #1e40af;", "border-left: 3px solid #60a5fa;", "border-right: 3px solid #60a5fa;"])
             elif is_monthly:
-                style_parts.append("background-color: #065f46")
-                style_parts.append("color: #a7f3d0")
+                base_styles.extend(["background-color: #065f46;", "color: #a7f3d0;"])
+            else:
+                base_styles.append("background-color: #0f172a;")
             
             if h1 == '🎯 당월매출':
-                style_parts.append("border-right: 3px solid #1e293b")
-                
-            if "🌟 당월 합계" in h1: style_parts.append("border-right: 4px solid #94a3b8")
-                
-            bg_style = f"style='{'; '.join(style_parts)}'" if style_parts else ""
-            
-            if "🎯" in h1: html.append(f"<th colspan='3' {bg_style}>인별매출(천)</th>")
+                s_parts = base_styles.copy() + [f"left: {col_lefts[2]}px;", "z-index: 15;", "border-right: 3px solid #1e293b;"]
+                html.append(f"<th colspan='3' style='{'; '.join(s_parts)}'>인별매출(천)</th>")
+            elif "🌟 당월 합계" in h1:
+                s1 = base_styles.copy() + [f"left: {col_lefts[5]}px;", "z-index: 15;"]
+                s2 = base_styles.copy() + [f"left: {col_lefts[8]}px;", "z-index: 15;"]
+                s3 = base_styles.copy() + [f"left: {col_lefts[11]}px;", "z-index: 15;", "border-right: 4px solid #94a3b8;"]
+                html.append(f"<th colspan='3' style='{'; '.join(s1)}'>계약액(천)</th>")
+                html.append(f"<th colspan='3' style='{'; '.join(s2)}'>견적건</th>")
+                html.append(f"<th colspan='3' style='{'; '.join(s3)}'>계약건</th>")
             else:
+                s_parts = base_styles.copy() + ["z-index: 10;"]
+                bg_style = f"style='{'; '.join(s_parts)}'"
                 html.append(f"<th colspan='3' {bg_style}>계약액(천)</th>")
                 html.append(f"<th colspan='3' {bg_style}>견적건</th>")
                 html.append(f"<th colspan='3' {bg_style}>계약건</th>")
         html.append("</tr>")
         
         html.append("<tr>")
-        for col in df.columns[2:]:
+        for c_idx, col in enumerate(df.columns[2:]):
+            abs_idx = c_idx + 2
             is_curr = CURRENT_WEEK in col[0]
             is_monthly = "당월" in col[0]
             
@@ -878,22 +883,28 @@ if not df_raw.empty:
             is_last_of_sales = col[0] == '🎯 당월매출' and col[2] == '달성율(%)'
             is_last_monthly = "🌟 당월 합계" in col[0] and col[1] == '계약건' and col[2] == '달성율(%)'
             
-            style_parts = []
+            style_parts = ["position: sticky; top: 66px;"]
+            
             if is_curr:
-                style_parts.append("background-color: #1d4ed8")
-                style_parts.append("border-bottom: 3px solid #60a5fa")
-                if is_first_of_week: style_parts.append("border-left: 3px solid #60a5fa")
-                if is_last_of_week: style_parts.append("border-right: 3px solid #60a5fa")
+                style_parts.extend(["background-color: #1d4ed8;", "border-bottom: 3px solid #60a5fa;"])
+                if is_first_of_week: style_parts.append("border-left: 3px solid #60a5fa;")
+                if is_last_of_week: style_parts.append("border-right: 3px solid #60a5fa;")
             elif is_monthly:
-                style_parts.append("background-color: #047857")
-                style_parts.append("color: #a7f3d0")
+                style_parts.extend(["background-color: #047857;", "color: #a7f3d0;"])
+            else:
+                style_parts.append("background-color: #0f172a;")
+                
+            if abs_idx <= 13:
+                style_parts.extend([f"left: {col_lefts[abs_idx]}px;", "z-index: 15;", f"min-width: {col_widths[abs_idx]}px;", f"max-width: {col_widths[abs_idx]}px;"])
+            else:
+                style_parts.extend(["z-index: 10;", "min-width: 60px;"])
             
             if is_last_of_sales:
-                style_parts.append("border-right: 3px solid #1e293b")
+                style_parts.append("border-right: 3px solid #1e293b;")
+            if is_last_monthly: 
+                style_parts.append("border-right: 4px solid #94a3b8;")
                 
-            if is_last_monthly: style_parts.append("border-right: 4px solid #94a3b8")
-                
-            bg_style = f"style='{'; '.join(style_parts)}'" if style_parts else ""
+            bg_style = f"style='{'; '.join(style_parts)}'"
             html.append(f"<th {bg_style}>{col[2]}</th>")
         html.append("</tr></thead><tbody>")
         
@@ -914,31 +925,45 @@ if not df_raw.empty:
                 
             html.append(f"<tr {row_bg}>")
             
-            html.append(f"<td class='text-center' style='position: sticky; left: 0; z-index: 5; background-color: {bg_color}; min-width: 90px; max-width: 90px; border-right: 1px solid #cbd5e1;'>{dealer}</td>")
-            html.append(f"<td class='text-center' style='position: sticky; left: 90px; z-index: 5; background-color: {bg_color}; min-width: 110px; max-width: 110px; border-right: 2px solid #94a3b8;'>{hc}</td>")
+            html.append(f"<td class='text-center' style='position: sticky; left: 0; z-index: 6; background-color: {bg_color}; min-width: {col_widths[0]}px; max-width: {col_widths[0]}px; border-right: 1px solid #cbd5e1;'>{dealer}</td>")
+            html.append(f"<td class='text-center' style='position: sticky; left: {col_lefts[1]}px; z-index: 6; background-color: {bg_color}; min-width: {col_widths[1]}px; max-width: {col_widths[1]}px; border-right: 2px solid #94a3b8;'>{hc}</td>")
             
             for c_idx, val in enumerate(row[2:]):
+                abs_idx = c_idx + 2
                 col_obj = df.columns[c_idx + 2]
                 is_curr = CURRENT_WEEK in col_obj[0]
                 is_monthly = "당월" in col_obj[0]
                 
-                is_first_of_week = is_curr and col[1] == '계약액(천)' and col[2] == '목표'
-                is_last_of_week = is_curr and col[1] == '계약건' and col[2] == '달성율(%)'
-                is_last_of_sales = col[0] == '🎯 당월매출' and col_obj[2] == '달성율(%)'
-                is_last_monthly = "🌟 당월 합계" in col[0] and col_obj[1] == '계약건' and col_obj[2] == '달성율(%)'
+                is_first_of_week = is_curr and col_obj[1] == '계약액(천)' and col_obj[2] == '목표'
+                is_last_of_week = is_curr and col_obj[1] == '계약건' and col_obj[2] == '달성율(%)'
+                is_last_of_sales = col_obj[0] == '🎯 당월매출' and col_obj[2] == '달성율(%)'
+                is_last_monthly = "🌟 당월 합계" in col_obj[0] and col_obj[1] == '계약건' and col_obj[2] == '달성율(%)'
                 
                 style_parts = []
+                
                 if is_curr:
-                    style_parts.append("background-color: rgba(37, 99, 235, 0.12)") 
-                    if is_first_of_week: style_parts.append("border-left: 3px solid #3b82f6")
-                    if is_last_of_week: style_parts.append("border-right: 3px solid #3b82f6")
+                    style_parts.append("background-color: rgba(37, 99, 235, 0.12);")
+                    if is_first_of_week: style_parts.append("border-left: 3px solid #3b82f6;")
+                    if is_last_of_week: style_parts.append("border-right: 3px solid #3b82f6;")
                 elif is_monthly:
-                    style_parts.append("background-color: rgba(5, 150, 105, 0.08)") 
+                    if abs_idx <= 13: 
+                        solid_bg = '#ebf6f2'
+                        if bg_color == '#f8fafc': solid_bg = '#e4f1ef'
+                        elif bg_color == '#e2e8f0': solid_bg = '#d1dbda'
+                        elif bg_color == '#cbd5e1': solid_bg = '#bcc7c7'
+                        style_parts.append(f"background-color: {solid_bg};")
+                    else:
+                        style_parts.append("background-color: rgba(5, 150, 105, 0.08);")
+                else:
+                    style_parts.append(f"background-color: {bg_color};")
+                
+                if abs_idx <= 13:
+                    style_parts.extend([f"position: sticky; left: {col_lefts[abs_idx]}px;", "z-index: 5;"])
                 
                 if is_last_of_sales:
-                    style_parts.append("border-right: 3px solid #1e293b")
-                    
-                if is_last_monthly: style_parts.append("border-right: 4px solid #94a3b8")
+                    style_parts.append("border-right: 3px solid #1e293b;")
+                if is_last_monthly: 
+                    style_parts.append("border-right: 4px solid #94a3b8;")
                     
                 if col_obj[2] == '달성율(%)':
                     val_str = f"{val:.1f}%"
