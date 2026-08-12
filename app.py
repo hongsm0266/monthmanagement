@@ -262,16 +262,14 @@ def load_vdt_data():
         existing_hcs = [clean_str(h) for d, h, t in hc_info]
         valid_dealers = list(set([d for d, _, _ in hc_info]))
         
-        # 🚀 [당월 범위에 해당하는 시트만 골라내기 + 월(Month) 추출]
         valid_daily_sheets = []
         for ws in daily_sheets:
             wk = get_week_name(ws.title)
             nums = re.findall(r'\d+', ws.title)
             if wk and len(nums) >= 2: 
-                m_val = int(nums[0]) # 7월인지 8월인지 추출
+                m_val = int(nums[0]) 
                 valid_daily_sheets.append((m_val, wk, ws))
         
-        # 신규 인원 스캔 로직 (해당 범위 시트 한정)
         for m_val, wk, ws in valid_daily_sheets:
             d_data = ws.get_all_values()
             current_rem_dealer = ""
@@ -325,7 +323,6 @@ def load_vdt_data():
         real_dealer_monthly = {d: {'amt': 0, 'est': 0, 'cnt': 0} for d in valid_dealers}
         real_dealer_weekly = {d: {wk: {'amt': 0, 'est': 0, 'cnt': 0} for wk in week_keys} for d in valid_dealers}
         
-        # 1️⃣ 주차별 & 당월 실적 누적 (🚀 당월 합계는 무조건 "현재 월(8월)" 시트만 합산!)
         for m_val, wk, ws in valid_daily_sheets:
             d_data = ws.get_all_values()
             
@@ -368,12 +365,10 @@ def load_vdt_data():
                         cached_est, cached_cnt, cached_amt = 0.0, 0.0, 0.0
                         
                         if hc_name in acts:
-                            # [주차별 실적] 7월 27~31일이든 8월이든 주차(0주차)에 맞게 전부 더함
                             acts[hc_name][wk]['est'] += est_val
                             acts[hc_name][wk]['cnt'] += cnt_val
                             acts[hc_name][wk]['amt'] += amt_val
                             
-                            # 🚀 [당월 합계 실적] 오직 이번 달(8월) 일보인 경우에만 더함!
                             if m_val == current_month:
                                 month_acts[hc_name]['est'] += est_val
                                 month_acts[hc_name]['cnt'] += cnt_val
@@ -389,17 +384,14 @@ def load_vdt_data():
                                 real_dealer_weekly[matched_dealer][wk]['cnt'] += cnt_val
                                 real_dealer_weekly[matched_dealer][wk]['amt'] += amt_val
 
-                            # 🚀 대리점 당월 찐 합계도 8월 일보 실적만 더함!
                             if m_val == current_month:
                                 real_dealer_monthly[matched_dealer]['est'] += est_val
                                 real_dealer_monthly[matched_dealer]['cnt'] += cnt_val
                                 real_dealer_monthly[matched_dealer]['amt'] += amt_val
                         
-        # 2️⃣ 당월매출 S열 스캔
         acts_sales = {clean_str(hc): 0 for _, hc, _ in hc_info}
         real_dealer_sales = {d: 0 for d in valid_dealers}
         
-        # 최신 시트 골라내기 (0~5주차 범위 안에서 가장 마지막 시트)
         if valid_daily_sheets:
             latest_m, latest_wk, latest_sheet = valid_daily_sheets[-1] 
             l_data = latest_sheet.get_all_values()
@@ -471,7 +463,6 @@ def load_vdt_data():
             m_act = month_acts.get(hc_clean, {'amt': 0, 'est': 0, 'cnt': 0})
             s_act = acts_sales.get(hc_clean, 0)
 
-            # 0원 퇴사자 숨김 필터
             if sales_tgt == 0.0 and m_act['amt'] == 0 and m_act['est'] == 0 and m_act['cnt'] == 0 and s_act == 0:
                 continue
 
@@ -884,8 +875,8 @@ if not df_raw.empty:
             
             is_first_of_week = is_curr and col[1] == '계약액(천)' and col[2] == '목표'
             is_last_of_week = is_curr and col[1] == '계약건' and col[2] == '달성율(%)'
-            is_last_of_sales = col[0] == '🎯 당월매출' and col[2] == '달성율(%)'
-            is_last_monthly = "🌟 당월 합계" in col[0] and col[1] == '계약건' and col[2] == '달성율(%)'
+            is_last_of_sales = col[0] == '🎯 당월매출' and col_obj[2] == '달성율(%)'
+            is_last_monthly = "🌟 당월 합계" in col[0] and col_obj[1] == '계약건' and col_obj[2] == '달성율(%)'
             
             style_parts = []
             if is_curr:
@@ -933,7 +924,7 @@ if not df_raw.empty:
                 
                 is_first_of_week = is_curr and col[1] == '계약액(천)' and col[2] == '목표'
                 is_last_of_week = is_curr and col[1] == '계약건' and col[2] == '달성율(%)'
-                is_last_of_sales = col[0] == '🎯 당월매출' and col[obj[2] == '달성율(%)'
+                is_last_of_sales = col[0] == '🎯 당월매출' and col_obj[2] == '달성율(%)'
                 is_last_monthly = "🌟 당월 합계" in col[0] and col_obj[1] == '계약건' and col_obj[2] == '달성율(%)'
                 
                 style_parts = []
