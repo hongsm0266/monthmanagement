@@ -61,8 +61,13 @@ st.markdown("""
     .vdt-table thead th {
         height: 34px;
         box-sizing: border-box;
+        position: sticky;
+        z-index: 10;
         background-clip: padding-box; 
     }
+    .vdt-table thead tr:nth-child(1) th { top: 0; }
+    .vdt-table thead tr:nth-child(2) th { top: 33px; }
+    .vdt-table thead tr:nth-child(3) th { top: 66px; }
 
     .vdt-table th {
         background-color: #0f172a;
@@ -84,9 +89,38 @@ st.markdown("""
     div[data-testid="metric-container"] {
         background-color: #f8fafc;
         border: 1px solid #e2e8f0;
-        border-radius: 8px;
-        padding: 15px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        border-radius: 12px;
+        padding: 20px;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+    }
+    
+    /* 🚀 요약 지표(Metric) 제목 디자인 업그레이드 */
+    [data-testid="stMetricLabel"] {
+        background-color: #e2e8f0 !important;
+        padding: 6px 12px !important;
+        border-radius: 6px !important;
+        border-left: 5px solid #3b82f6 !important;
+        display: inline-block !important;
+        margin-bottom: 8px !important;
+        box-shadow: 1px 2px 4px rgba(0,0,0,0.08) !important;
+    }
+    [data-testid="stMetricLabel"] * {
+        font-size: 15px !important;
+        font-weight: 900 !important;
+        color: #0f172a !important;
+        letter-spacing: -0.3px;
+    }
+    
+    /* 🚀 요약 지표(Metric) 실제 숫자값 및 달성률 디자인 업그레이드 */
+    [data-testid="stMetricValue"] > div {
+        font-size: 28px !important;
+        font-weight: 900 !important;
+        color: #1e3a8a !important;
+        margin-top: 5px;
+    }
+    [data-testid="stMetricDelta"] * {
+        font-size: 14px !important;
+        font-weight: 800 !important;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -735,7 +769,7 @@ if not df_raw.empty:
         act_cnt = acts[3:]
         tt_cnt = text_targets[3:]
         ta_cnt = text_acts[3:]
-        ac_cnt = act_colors[:3]
+        ac_cnt = act_colors[3:]
 
         fig = go.Figure()
         
@@ -802,7 +836,6 @@ if not df_raw.empty:
         for idx, d in enumerate(unique_dealers):
             dealer_colors[d] = colors[idx % len(colors)]
             
-        # 🚀 [틀 고정] 컬럼별 너비(px)와 좌측 오프셋(left)을 픽셀 단위로 정확하게 계산
         col_widths = [80, 90, 70, 70, 70, 70, 70, 70, 55, 55, 55, 55, 55, 55]
         col_lefts = [0, 80, 170, 240, 310, 380, 450, 520, 590, 645, 700, 755, 810, 865]
         
