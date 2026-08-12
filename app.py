@@ -250,16 +250,13 @@ def load_vdt_data():
         existing_hcs = [clean_str(h) for d, h, t in hc_info]
         valid_dealers = list(set([d for d, _, _ in hc_info]))
         
-        # 신규 인원 스캔 로직
+        # 🚀 [오류 1 완벽 수정] 대리점 기억을 "무조건 먼저" 한 뒤에 이름 빈칸을 스킵합니다!
         for ws in daily_sheets:
             d_data = ws.get_all_values()
             current_rem_dealer = ""
             for row in d_data:
-                hc_name_raw = safe_get(row, 3)
-                if not hc_name_raw: continue
-                
+                # 1️⃣ 대리점 정보를 먼저 읽고 기억 장치에 저장!
                 header_str = clean_str("".join([safe_get(row, i) for i in range(4)]))
-                
                 if "한밭" in header_str or "INT충청" in header_str or "701347" in header_str:
                     current_rem_dealer = "세종"
                 else:
@@ -268,6 +265,10 @@ def load_vdt_data():
                             current_rem_dealer = vd
                             break
                             
+                # 2️⃣ 그 다음에 사원 이름이 비어있으면 다음 줄로 넘어감 (기억은 유지됨!)
+                hc_name_raw = safe_get(row, 3)
+                if not hc_name_raw: continue
+                
                 hc_name = clean_str(hc_name_raw)
                 if hc_name and not any(x in hc_name for x in ['HC', 'HC명', '영업사원', '이름', '합계', '소계', '총계', '목표', '대리점', '비고', '사번']):
                     if hc_name not in existing_hcs:
@@ -303,132 +304,96 @@ def load_vdt_data():
         real_dealer_monthly = {d: {'amt': 0, 'est': 0, 'cnt': 0} for d in valid_dealers}
         real_dealer_weekly = {d: {wk: {'amt': 0, 'est': 0, 'cnt': 0} for wk in week_keys} for d in valid_dealers}
         
-        # 1️⃣ 주차별 실적 누적 (🚀 스마트 상속 로직 도입!)
+        # 1️⃣ 주차별 실적 누적 (🚀 뻥튀기 중복 합산 로직 완전 제거 + 대리점 기억 순서 수정)
         for ws in daily_sheets:
             wk = get_week_name(ws.title)
             d_data = ws.get_all_values()
             
             current_remembered_dealer = ""
-            cached_est, cached_cnt, cached_amt = 0.0, 0.0, 0.0 # 윗줄 실적을 담아둘 임시 기억 장치
-            
             for row in d_data:
-                if len(row) > 3: 
-                    row_header_str = clean_str("".join([safe_get(row, i) for i in range(4)]))
-                    
-                    if "한밭" in row_header_str or "INT충청" in row_header_str or "701347" in row_header_str:
-                        current_remembered_dealer = "세종"
-                    else:
-                        for vd in valid_dealers:
-                            if clean_str(vd) in row_header_str:
-                                current_remembered_dealer = vd
-                                break
+                # 1️⃣ 대리점 정보를 무조건 먼저 업데이트! (김경율님이 다음 줄에 있어도 세종으로 매핑됨)
+                row_header_str = clean_str("".join([safe_get(row, i) for i in range(4)]))
+                if "한밭" in row_header_str or "INT충청" in row_header_str or "701347" in row_header_str:
+                    current_remembered_dealer = "세종"
+                else:
+                    for vd in valid_dealers:
+                        if clean_str(vd) in row_header_str:
+                            current_remembered_dealer = vd
+                            break
 
-                    # 이 줄에 적힌 실적을 일단 스캔합니다.
-                    temp_est = clean_val(safe_get(row, 4))
-                    temp_cnt = clean_val(safe_get(row, 5))
-                    temp_amt = clean_val(safe_get(row, 15))
+                # 2️⃣ 이름 칸(D열)이 비어있는 소계/합계 행은 여기서 무조건 차단! (뻥튀기 원인 완벽 제거)
+                hc_name_raw = safe_get(row, 3)
+                if not hc_name_raw: continue
+                
+                hc_name = clean_str(hc_name_raw)
+                
+                # 순수하게 '사람 이름'이 적혀 있는 줄의 실적만 가져와서 더합니다.
+                if hc_name and not any(x in hc_name for x in ['HC', 'HC명', '영업사원', '이름', '합계', '소계', '총계', '목표', '대리점', '사번']):
+                    est_val = clean_val(safe_get(row, 4))
+                    cnt_val = clean_val(safe_get(row, 5))
+                    amt_val = clean_val(safe_get(row, 15))
                     
-                    hc_name_raw = safe_get(row, 3)
-                    hc_name = clean_str(hc_name_raw)
+                    if hc_name in acts:
+                        if wk:
+                            acts[hc_name][wk]['est'] += est_val
+                            acts[hc_name][wk]['cnt'] += cnt_val
+                            acts[hc_name][wk]['amt'] += amt_val
+                        
+                        month_acts[hc_name]['est'] += est_val
+                        month_acts[hc_name]['cnt'] += cnt_val
+                        month_acts[hc_name]['amt'] += amt_val
                     
-                    # (예외처리) 요약행이면 스킵하되 캐시도 날려버립니다.
-                    if any(x in hc_name for x in ['합계', '소계', '총계', '목표', '대리점', '사번', '비고']):
-                        cached_est, cached_cnt, cached_amt = 0.0, 0.0, 0.0
-                        continue
+                    matched_dealer = current_remembered_dealer
+                    if not matched_dealer:
+                        matched_dealer = hc_to_dealer.get(hc_name, "")
                         
-                    # 💡 [핵심] 대리점 이름만 있고 사람은 없는 줄인데 실적이 있다면? -> 잠시 기억(캐시)해 둡니다!
-                    if not hc_name:
-                        if temp_est > 0 or temp_cnt > 0 or temp_amt > 0:
-                            cached_est, cached_cnt, cached_amt = temp_est, temp_cnt, temp_amt
-                        continue
+                    if matched_dealer in valid_dealers:
+                        real_dealer_monthly[matched_dealer]['est'] += est_val
+                        real_dealer_monthly[matched_dealer]['cnt'] += cnt_val
+                        real_dealer_monthly[matched_dealer]['amt'] += amt_val
                         
-                    # 💡 사람 이름이 등장한 줄! (김경율 등)
-                    if hc_name:
-                        # 이 줄에 실적이 비어있다면, 아까 기억해둔 윗줄(대리점 줄)의 실적을 쏙 끌어옵니다!
-                        est_val = temp_est if temp_est > 0 else cached_est
-                        cnt_val = temp_cnt if temp_cnt > 0 else cached_cnt
-                        amt_val = temp_amt if temp_amt > 0 else cached_amt
+                        if wk and wk in real_dealer_weekly[matched_dealer]:
+                            real_dealer_weekly[matched_dealer][wk]['est'] += est_val
+                            real_dealer_weekly[matched_dealer][wk]['cnt'] += cnt_val
+                            real_dealer_weekly[matched_dealer][wk]['amt'] += amt_val
                         
-                        # 썼으면 캐시는 바로 지워줍니다 (다음 사람에게 안 넘어가도록)
-                        cached_est, cached_cnt, cached_amt = 0.0, 0.0, 0.0
-                        
-                        if hc_name in acts:
-                            if wk:
-                                acts[hc_name][wk]['est'] += est_val
-                                acts[hc_name][wk]['cnt'] += cnt_val
-                                acts[hc_name][wk]['amt'] += amt_val
-                            
-                            month_acts[hc_name]['est'] += est_val
-                            month_acts[hc_name]['cnt'] += cnt_val
-                            month_acts[hc_name]['amt'] += amt_val
-                        
-                        matched_dealer = current_remembered_dealer
-                        if not matched_dealer:
-                            matched_dealer = hc_to_dealer.get(hc_name, "")
-                            
-                        if matched_dealer in valid_dealers:
-                            real_dealer_monthly[matched_dealer]['est'] += est_val
-                            real_dealer_monthly[matched_dealer]['cnt'] += cnt_val
-                            real_dealer_monthly[matched_dealer]['amt'] += amt_val
-                            
-                            if wk and wk in real_dealer_weekly[matched_dealer]:
-                                real_dealer_weekly[matched_dealer][wk]['est'] += est_val
-                                real_dealer_weekly[matched_dealer][wk]['cnt'] += cnt_val
-                                real_dealer_weekly[matched_dealer][wk]['amt'] += amt_val
-                        
-        # 2️⃣ 당월매출 S열 스캔 (여기도 S열 스마트 상속 도입!)
+        # 2️⃣ 당월매출 S열 스캔 (가장 최신 시트 단 1개)
         acts_sales = {clean_str(hc): 0 for _, hc, _ in hc_info}
         real_dealer_sales = {d: 0 for d in valid_dealers}
         
-        valid_latest_sheets = [ws for ws in daily_sheets if len(ws.get_all_values()) > 5]
-        
-        if valid_latest_sheets:
-            latest_sheet = valid_latest_sheets[-1] 
+        if daily_sheets:
+            latest_sheet = daily_sheets[-1] 
             l_data = latest_sheet.get_all_values()
             
             current_remembered_dealer = ""
-            cached_s = 0.0
-            
             for row in l_data:
-                if len(row) > 3:
-                    row_header_str = clean_str("".join([safe_get(row, i) for i in range(4)]))
-                    
-                    if "한밭" in row_header_str or "INT충청" in row_header_str or "701347" in row_header_str:
-                        current_remembered_dealer = "세종"
-                    else:
-                        for vd in valid_dealers:
-                            if clean_str(vd) in row_header_str:
-                                current_remembered_dealer = vd
-                                break
-                                
-                    hc_name_s = clean_str(safe_get(row, 3))
-                    temp_s = clean_val(safe_get(row, 18))
-                    
-                    if any(x in hc_name_s for x in ['합계', '소계', '총계', '목표', '대리점', '사번', '비고']):
-                        cached_s = 0.0
-                        continue
+                row_header_str = clean_str("".join([safe_get(row, i) for i in range(4)]))
+                if "한밭" in row_header_str or "INT충청" in row_header_str or "701347" in row_header_str:
+                    current_remembered_dealer = "세종"
+                else:
+                    for vd in valid_dealers:
+                        if clean_str(vd) in row_header_str:
+                            current_remembered_dealer = vd
+                            break
+                            
+                hc_name_raw = safe_get(row, 3)
+                if not hc_name_raw: continue
+                
+                hc_name_s = clean_str(hc_name_raw)
+                if hc_name_s and not any(x in hc_name_s for x in ['HC', 'HC명', '영업사원', '이름', '합계', '소계', '총계', '목표', '대리점', '사번']):
+                    s_str = safe_get(row, 18)
+                    if s_str != '':
+                        s_val = clean_val(s_str)
                         
-                    # 💡 대리점명만 있는 줄에 S열 실적이 적혀있다면 캐시
-                    if not hc_name_s:
-                        if temp_s > 0:
-                            cached_s = temp_s
-                        continue
-                        
-                    # 💡 사람 이름 등장 시
-                    if hc_name_s:
-                        s_val = temp_s if temp_s > 0 else cached_s
-                        cached_s = 0.0 # 초기화
-                        
-                        if s_val > 0:
-                            if hc_name_s in acts_sales:
-                                acts_sales[hc_name_s] += s_val
-                                
-                            matched_dealer = current_remembered_dealer
-                            if not matched_dealer:
-                                matched_dealer = hc_to_dealer.get(hc_name_s, "")
-                                
-                            if matched_dealer in real_dealer_sales:
-                                real_dealer_sales[matched_dealer] += s_val
+                        if hc_name_s in acts_sales:
+                            acts_sales[hc_name_s] += s_val
+                            
+                        matched_dealer = current_remembered_dealer
+                        if not matched_dealer:
+                            matched_dealer = hc_to_dealer.get(hc_name_s, "")
+                            
+                        if matched_dealer in real_dealer_sales:
+                            real_dealer_sales[matched_dealer] += s_val
 
         status_box.info("✅ 데이터 구성 완료! 표 출력 중...")
         
