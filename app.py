@@ -11,6 +11,7 @@ import traceback
 from datetime import datetime
 import plotly.graph_objects as go 
 import re 
+import time  # 🚀 [추가] API 연속 호출 차단 방어(Rate Limit 방어)를 위한 모듈
 
 # 1. 화면 기본 설정
 st.set_page_config(page_title="충청호남팀 영업사원 주차별 VDT 목표 관리", layout="wide")
@@ -183,7 +184,8 @@ if CURRENT_WEEK:
     except:
         pass
 
-@st.cache_data(ttl=60)
+# 🚀 [수정] 60초(1분) -> 600초(10분)로 캐시를 늘려 사용자 인터랙션 중 데이터 리로드 완전 방지
+@st.cache_data(ttl=600)
 def load_vdt_data():
     if not client: return pd.DataFrame(), {}, {}, {}, {}
     
@@ -191,6 +193,7 @@ def load_vdt_data():
     try:
         status_box.info("🔍 0단계: 구글 시트 연결 중...")
         sh = client.open_by_url(SHEET_URL)
+        time.sleep(0.5) # 🚀 [추가] 연결 직후 딜레이
         all_worksheets = [ws.title for ws in sh.worksheets()]
         
         target_sheet_name = "주차별 목표 세팅"
@@ -201,6 +204,7 @@ def load_vdt_data():
         target_ws = sh.worksheet(target_sheet_name)
         
         status_box.info("📊 1단계: 인별 매출목표 및 비중 계산 중...")
+        time.sleep(0.5) # 🚀 [추가] 목표 세팅 시트 읽기 전 딜레이 부여
         all_targets = target_ws.get_all_values()
         
         split_idx = 15
@@ -237,12 +241,8 @@ def load_vdt_data():
         status_box.info("🎯 2단계: 대리점 주차별 목표 스캔 중...")
         
         date_headers = {
-            '0주차': '7/27~8/2',
-            '1주차': '8/3~8/9',
-            '2주차': '8/10~8/16',
-            '3주차': '8/17~8/23',
-            '4주차': '8/24~8/30',
-            '5주차': '8/31'
+            '0주차': '7/27~8/2', '1주차': '8/3~8/9', '2주차': '8/10~8/16',
+            '3주차': '8/17~8/23', '4주차': '8/24~8/30', '5주차': '8/31'
         }
         
         week_cols = {
@@ -271,17 +271,15 @@ def load_vdt_data():
                     dealer_targets[d_name][wk]['est'] += clean_val(safe_get(row, cols['est']))
                     dealer_targets[d_name][wk]['cnt'] += clean_val(safe_get(row, cols['cnt']))
 
-        status_box.info("📈 3단계: 일별 실적(ACT) 스캔 및 누적 취합 중...")
+        status_box.info("📈 3단계: 일별 실적(ACT) 스캔 및 누적 취합 중... (잠시 대기)")
         
         raw_daily_sheets = [ws for ws in sh.worksheets() if "/" in ws.title or "일" in ws.title]
         
         def sort_key(ws):
             try:
                 nums = re.findall(r'\d+', ws.title)
-                if len(nums) >= 2:
-                    return int(nums[0]) * 100 + int(nums[1])
-            except:
-                pass
+                if len(nums) >= 2: return int(nums[0]) * 100 + int(nums[1])
+            except: pass
             return 0
                 
         daily_sheets = sorted(raw_daily_sheets, key=sort_key)
@@ -298,6 +296,7 @@ def load_vdt_data():
                 valid_daily_sheets.append((m_val, wk, ws))
         
         for m_val, wk, ws in valid_daily_sheets:
+            time.sleep(0.4) # 🚀 [핵심 추가] 여러 시트를 가져올 때 구글 API 429 차단을 막기 위해 0.4초씩 딜레이
             d_data = ws.get_all_values()
             current_rem_dealer = ""
             for row in d_data:
@@ -351,6 +350,7 @@ def load_vdt_data():
         real_dealer_weekly = {d: {wk: {'amt': 0, 'est': 0, 'cnt': 0} for wk in week_keys} for d in valid_dealers}
         
         for m_val, wk, ws in valid_daily_sheets:
+            time.sleep(0.4) # 🚀 [핵심 추가] 두 번째 순회 시에도 429 에러 방지용 딜레이
             d_data = ws.get_all_values()
             
             current_remembered_dealer = ""
@@ -421,6 +421,7 @@ def load_vdt_data():
         
         if valid_daily_sheets:
             latest_m, latest_wk, latest_sheet = valid_daily_sheets[-1] 
+            time.sleep(0.5) # 🚀 [핵심 추가] 마지막 시트 호출 전 딜레이
             l_data = latest_sheet.get_all_values()
             
             current_remembered_dealer = ""
