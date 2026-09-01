@@ -84,11 +84,13 @@ def clean_val(v):
     try: return float(v_str) * multiplier
     except: return 0.0
 
+# 🚀 [수정] 9월 주차 계산 로직 추가
 def get_week_name(sheet_title):
     try:
         nums = re.findall(r'\d+', sheet_title)
         if len(nums) >= 2:
             m_val, d_val = int(nums[0]), int(nums[1])
+            # 8월 기준
             if m_val == 7 and d_val >= 27: return '0주차'
             if m_val == 8:
                 if d_val <= 2: return '0주차'
@@ -96,6 +98,13 @@ def get_week_name(sheet_title):
                 elif d_val <= 16: return '2주차'
                 elif d_val <= 23: return '3주차'
                 elif d_val <= 30: return '4주차'
+                else: return '5주차'
+            # 9월 기준 (회사 기준에 맞게 날짜 구간 조정 가능)
+            elif m_val == 9:
+                if d_val <= 6: return '1주차'
+                elif d_val <= 13: return '2주차'
+                elif d_val <= 20: return '3주차'
+                elif d_val <= 27: return '4주차'
                 else: return '5주차'
     except: pass
     return None
@@ -116,20 +125,19 @@ if CURRENT_WEEK:
         if curr_num > 0: PREV_WEEK = f"{curr_num - 1}주차"
     except: pass
 
-# 🚀 [추가] API 에러 방어용 자동 재시도(Retry) 함수
 def safe_api_call(func, *args, **kwargs):
-    max_retries = 4  # 최대 4번 재시도
+    max_retries = 4
     for attempt in range(max_retries):
         try:
             return func(*args, **kwargs)
         except gspread.exceptions.APIError as e:
-            if "429" in str(e): # 한도 초과 에러 발생 시
+            if "429" in str(e):
                 if attempt < max_retries - 1:
-                    wait_time = (attempt + 1) * 8 # 8초, 16초, 24초 대기 후 재시도
+                    wait_time = (attempt + 1) * 8
                     st.toast(f"⏳ 서버 요청 한도 도달. {wait_time}초 후 자동으로 재시도합니다... (새로고침 하지 마세요!)", icon="⚠️")
                     time.sleep(wait_time)
                     continue
-            raise e # 4번 다 실패하거나 다른 에러면 에러 발생
+            raise e
 
 @st.cache_data(ttl=600)
 def load_vdt_data():
@@ -138,7 +146,6 @@ def load_vdt_data():
     status_box = st.empty()
     try:
         status_box.info("🔍 0단계: 구글 시트 연결 중...")
-        # 🚀 safe_api_call 적용
         sh = safe_api_call(client.open_by_url, SHEET_URL)
         all_worksheets = [ws.title for ws in safe_api_call(sh.worksheets)]
         
@@ -148,9 +155,7 @@ def load_vdt_data():
             return pd.DataFrame(), {}, {}, {}, {}
         
         target_ws = sh.worksheet(target_sheet_name)
-        
         status_box.info("📊 1단계: 인별 매출목표 및 비중 계산 중...")
-        # 🚀 safe_api_call 적용
         all_targets = safe_api_call(target_ws.get_all_values)
         
         split_idx = 15
@@ -183,15 +188,30 @@ def load_vdt_data():
         hc_info = [(d, h, t) for (d, h), t in hc_info_dict.items()]
 
         status_box.info("🎯 2단계: 대리점 주차별 목표 스캔 중...")
-        date_headers = {
-            '0주차': '7/27~8/2', '1주차': '8/3~8/9', '2주차': '8/10~8/16',
-            '3주차': '8/17~8/23', '4주차': '8/24~8/30', '5주차': '8/31'
-        }
-        week_cols = {
-            '0주차': {'amt': 1, 'est': 2, 'cnt': 3}, '1주차': {'amt': 4, 'est': 5, 'cnt': 6},   
-            '2주차': {'amt': 7, 'est': 8, 'cnt': 9}, '3주차': {'amt': 10, 'est': 11, 'cnt': 12}, 
-            '4주차': {'amt': 13, 'est': 14, 'cnt': 15}, '5주차': {'amt': 16, 'est': 17, 'cnt': 18}, 
-        }
+        
+        # 🚀 [수정] 9월이면 9월 날짜 헤더로 자동 변경되도록 수정
+        if current_month == 9:
+            date_headers = {
+                '1주차': '9/1~9/6', '2주차': '9/7~9/13', '3주차': '9/14~9/20',
+                '4주차': '9/21~9/27', '5주차': '9/28~9/30'
+            }
+            # 참고: '주차별 목표 세팅' 시트의 열(Column) 인덱스 매핑. 구조가 바뀌었다면 이 숫자를 수정해야 합니다.
+            week_cols = {
+                '1주차': {'amt': 1, 'est': 2, 'cnt': 3}, '2주차': {'amt': 4, 'est': 5, 'cnt': 6},   
+                '3주차': {'amt': 7, 'est': 8, 'cnt': 9}, '4주차': {'amt': 10, 'est': 11, 'cnt': 12}, 
+                '5주차': {'amt': 13, 'est': 14, 'cnt': 15}, 
+            }
+        else: # 기본 8월 세팅
+            date_headers = {
+                '0주차': '7/27~8/2', '1주차': '8/3~8/9', '2주차': '8/10~8/16',
+                '3주차': '8/17~8/23', '4주차': '8/24~8/30', '5주차': '8/31'
+            }
+            week_cols = {
+                '0주차': {'amt': 1, 'est': 2, 'cnt': 3}, '1주차': {'amt': 4, 'est': 5, 'cnt': 6},   
+                '2주차': {'amt': 7, 'est': 8, 'cnt': 9}, '3주차': {'amt': 10, 'est': 11, 'cnt': 12}, 
+                '4주차': {'amt': 13, 'est': 14, 'cnt': 15}, '5주차': {'amt': 16, 'est': 17, 'cnt': 18}, 
+            }
+            
         week_keys = list(week_cols.keys())
         
         dealer_targets = {}
@@ -209,8 +229,7 @@ def load_vdt_data():
                     dealer_targets[d_name][wk]['est'] += clean_val(safe_get(row, cols['est']))
                     dealer_targets[d_name][wk]['cnt'] += clean_val(safe_get(row, cols['cnt']))
 
-        status_box.info("📈 3단계: 일별 실적(ACT) 스캔 및 누적 취합 중... (잠시 대기)")
-        # 🚀 safe_api_call 적용
+        status_box.info("📈 3단계: 일별 실적(ACT) 스캔 중 (최적화 적용됨)...")
         raw_daily_sheets = [ws for ws in safe_api_call(sh.worksheets) if "/" in ws.title or "일" in ws.title]
         
         def sort_key(ws):
@@ -230,10 +249,12 @@ def load_vdt_data():
             nums = re.findall(r'\d+', ws.title)
             if wk and len(nums) >= 2: 
                 m_val = int(nums[0]) 
-                valid_daily_sheets.append((m_val, wk, ws))
+                d_val = int(nums[1])
+                # 🚀 [핵심 최적화] 이전 달의 불필요한 시트는 무시하고 현재 달(current_month)의 시트만 가져와 API 호출 대폭 감소
+                if m_val == current_month or (current_month == 9 and m_val == 8 and d_val >= 31):
+                    valid_daily_sheets.append((m_val, wk, ws))
         
         for m_val, wk, ws in valid_daily_sheets:
-            # 🚀 safe_api_call 적용
             d_data = safe_api_call(ws.get_all_values)
             current_rem_dealer = ""
             for row in d_data:
@@ -279,13 +300,11 @@ def load_vdt_data():
         month_acts = {clean_str(hc): {'amt': 0, 'est': 0, 'cnt': 0} for _, hc, _ in hc_info}
         
         hc_to_dealer = {clean_str(hc): dealer for dealer, hc, _ in hc_info}
-        valid_dealers = list(set([d for d, _, _ in hc_info]))
         
         real_dealer_monthly = {d: {'amt': 0, 'est': 0, 'cnt': 0} for d in valid_dealers}
         real_dealer_weekly = {d: {wk: {'amt': 0, 'est': 0, 'cnt': 0} for wk in week_keys} for d in valid_dealers}
         
         for m_val, wk, ws in valid_daily_sheets:
-            # 🚀 safe_api_call 적용
             d_data = safe_api_call(ws.get_all_values)
             
             current_remembered_dealer = ""
@@ -321,9 +340,10 @@ def load_vdt_data():
                         cached_est, cached_cnt, cached_amt = 0.0, 0.0, 0.0
                         
                         if hc_name in acts:
-                            acts[hc_name][wk]['est'] += est_val
-                            acts[hc_name][wk]['cnt'] += cnt_val
-                            acts[hc_name][wk]['amt'] += amt_val
+                            if wk in acts[hc_name]:
+                                acts[hc_name][wk]['est'] += est_val
+                                acts[hc_name][wk]['cnt'] += cnt_val
+                                acts[hc_name][wk]['amt'] += amt_val
                             if m_val == current_month:
                                 month_acts[hc_name]['est'] += est_val
                                 month_acts[hc_name]['cnt'] += cnt_val
@@ -347,7 +367,6 @@ def load_vdt_data():
         
         if valid_daily_sheets:
             latest_m, latest_wk, latest_sheet = valid_daily_sheets[-1] 
-            # 🚀 safe_api_call 적용
             l_data = safe_api_call(latest_sheet.get_all_values)
             
             current_remembered_dealer = ""
