@@ -164,7 +164,7 @@ def load_vdt_data():
         target_data = all_targets[:split_idx]
         hc_target_data = all_targets[split_idx:]
         
-        hc_info_dict = {}         
+        hc_info_raw = []         
         dealer_sales_sum = {} 
         
         for row in hc_target_data:
@@ -178,11 +178,8 @@ def load_vdt_data():
                 dealer = get_mapped_dealer(raw_dealer)
                 sales_target = clean_val(row[3]) / 1000.0
                 
-                key = (dealer, hc_name)
-                hc_info_dict[key] = hc_info_dict.get(key, 0.0) + sales_target
+                hc_info_raw.append((dealer, hc_name, sales_target))
                 dealer_sales_sum[dealer] = dealer_sales_sum.get(dealer, 0.0) + sales_target
-
-        hc_info = [(d, h, t) for (d, h), t in hc_info_dict.items()]
 
         status_box.info("🎯 2단계: 대리점 주차별 목표 스캔 중...")
         if current_month == 9:
@@ -223,7 +220,7 @@ def load_vdt_data():
                     dealer_targets[d_name][wk]['est'] += clean_val(safe_get(row, cols['est']))
                     dealer_targets[d_name][wk]['cnt'] += clean_val(safe_get(row, cols['cnt']))
 
-        status_box.info("📈 3단계: 일별 실적(ACT) 스캔 중 (최적화 적용됨)...")
+        status_box.info("📈 3단계: 일별 실적(ACT) 스캔 및 데이터 캐싱 중...")
         raw_daily_sheets = [ws for ws in safe_api_call(sh.worksheets) if "/" in ws.title or "일" in ws.title]
         
         def sort_key(ws):
@@ -234,8 +231,6 @@ def load_vdt_data():
             return 0
                 
         daily_sheets = sorted(raw_daily_sheets, key=sort_key)
-        existing_hcs = [clean_str(h) for d, h, t in hc_info]
-        valid_dealers = list(set([d for d, _, _ in hc_info]))
         
         valid_daily_sheets = []
         for ws in daily_sheets:
@@ -247,10 +242,13 @@ def load_vdt_data():
                     valid_daily_sheets.append((m_val, wk, ws))
 
         sheet_data_cache = {}
-        status_box.info("📥 3-1단계: 일별 시트 데이터 일괄 캐싱 중... (최초 1회 한정)")
         for m_val, wk, ws in valid_daily_sheets:
             time.sleep(0.3) 
             sheet_data_cache[ws.id] = safe_api_call(ws.get_all_values)
+        
+        # 3-1: 인원 색출 및 ACT 컨테이너 준비
+        existing_hcs = [clean_str(h) for d, h, t in hc_info_raw]
+        valid_dealers = list(set([d for d, _, _ in hc_info_raw]))
         
         for m_val, wk, ws in valid_daily_sheets:
             d_data = sheet_data_cache[ws.id] 
@@ -272,36 +270,19 @@ def load_vdt_data():
                 if hc_name and not any(x in hc_name for x in ['HC', 'HC명', '영업사원', '이름', '합계', '소계', '총계', '목표', '대리점', '비고', '사번']):
                     if hc_name not in existing_hcs:
                         new_dealer = current_rem_dealer if current_rem_dealer else "기타"
-                        hc_info.append((new_dealer, hc_name, 0.0))
+                        hc_info_raw.append((new_dealer, hc_name, 0.0))
                         existing_hcs.append(hc_name)
                         if new_dealer not in valid_dealers:
                             valid_dealers.append(new_dealer)
 
-        hc_weights = {}
-        for dealer, hc, target in hc_info:
-            d_sum = dealer_sales_sum.get(dealer, 0.0)
-            hc_weights[hc] = (target / d_sum) if d_sum > 0 else 0.0
-            
-        targets = {}
-        for dealer, hc, _ in hc_info:
-            targets[hc] = {}
-            weight = hc_weights.get(hc, 0.0)
-            d_t = dealer_targets.get(dealer, {})
-            for wk in week_keys:
-                targets[hc][wk] = {
-                    'amt': d_t.get(wk, {}).get('amt', 0) * weight,
-                    'est': d_t.get(wk, {}).get('est', 0) * weight,
-                    'cnt': d_t.get(wk, {}).get('cnt', 0) * weight,
-                }
-                
-        acts = {clean_str(hc): {wk: {'amt': 0, 'est': 0, 'cnt': 0} for wk in week_keys} for _, hc, _ in hc_info}
-        month_acts = {clean_str(hc): {'amt': 0, 'est': 0, 'cnt': 0} for _, hc, _ in hc_info}
-        
-        hc_to_dealer = {clean_str(hc): dealer for dealer, hc, _ in hc_info}
+        acts = {clean_str(hc): {wk: {'amt': 0, 'est': 0, 'cnt': 0} for wk in week_keys} for _, hc, _ in hc_info_raw}
+        month_acts = {clean_str(hc): {'amt': 0, 'est': 0, 'cnt': 0} for _, hc, _ in hc_info_raw}
+        hc_to_dealer = {clean_str(hc): dealer for dealer, hc, _ in hc_info_raw}
         
         real_dealer_monthly = {d: {'amt': 0, 'est': 0, 'cnt': 0} for d in valid_dealers}
         real_dealer_weekly = {d: {wk: {'amt': 0, 'est': 0, 'cnt': 0} for wk in week_keys} for d in valid_dealers}
         
+        # 3-2: 주차/월간 견적,계약 실적 스캔
         for m_val, wk, ws in valid_daily_sheets:
             d_data = sheet_data_cache[ws.id] 
             current_remembered_dealer = ""
@@ -320,17 +301,11 @@ def load_vdt_data():
                     hc_name_raw = safe_get(row, 3)
                     hc_name = clean_str(hc_name_raw)
                     
-                    if any(x in hc_name for x in ['합계', '소계', '총계', '목표', '대리점', '사번', '비고']):
-                        continue
-                        
-                    # 🚀 [오류 수정] 사원명이 없는 빈 칸(대리점 합계 데이터 등)은 개인 실적으로 처리하지 않고 무시함
-                    if not hc_name:
-                        continue
+                    if any(x in hc_name for x in ['합계', '소계', '총계', '목표', '대리점', '사번', '비고']): continue
+                    if not hc_name: continue # 대리점 합계 등의 빈칸 데이터 캐싱 버그 완전 해결
                         
                     if hc_name:
-                        est_val = temp_est
-                        cnt_val = temp_cnt
-                        amt_val = temp_amt
+                        est_val, cnt_val, amt_val = temp_est, temp_cnt, temp_amt
                         
                         if hc_name in acts:
                             if wk in acts[hc_name]:
@@ -355,9 +330,10 @@ def load_vdt_data():
                                 real_dealer_monthly[matched_dealer]['cnt'] += cnt_val
                                 real_dealer_monthly[matched_dealer]['amt'] += amt_val
                         
-        acts_sales = {clean_str(hc): 0 for _, hc, _ in hc_info}
+        acts_sales = {clean_str(hc): 0 for _, hc, _ in hc_info_raw}
         real_dealer_sales = {d: 0 for d in valid_dealers}
         
+        # 3-3: 매출 실적 스캔
         if valid_daily_sheets:
             latest_m, latest_wk, latest_sheet = valid_daily_sheets[-1] 
             l_data = sheet_data_cache[latest_sheet.id] 
@@ -375,12 +351,8 @@ def load_vdt_data():
                                 
                     hc_name_s, temp_s = clean_str(safe_get(row, 3)), clean_val(safe_get(row, 18))
                     
-                    if any(x in hc_name_s for x in ['합계', '소계', '총계', '목표', '대리점', '사번', '비고']):
-                        continue
-                        
-                    # 🚀 [오류 수정] 사원명이 없는 행 무시
-                    if not hc_name_s:
-                        continue
+                    if any(x in hc_name_s for x in ['합계', '소계', '총계', '목표', '대리점', '사번', '비고']): continue
+                    if not hc_name_s: continue # 대리점 합계 등의 빈칸 데이터 캐싱 버그 완전 해결
                         
                     if hc_name_s:
                         s_val = temp_s 
@@ -389,6 +361,62 @@ def load_vdt_data():
                             matched_dealer = current_remembered_dealer
                             if not matched_dealer: matched_dealer = hc_to_dealer.get(hc_name_s, "")
                             if matched_dealer in real_dealer_sales: real_dealer_sales[matched_dealer] += s_val
+
+        # 🚀 4단계: 퇴사자(신규 실적 없는 인원) 목표 자동 제외 및 남은 팀원에게 배분
+        status_box.info("🎯 4단계: 실적 데이터 기반 목표 최적화 중...")
+        
+        dealer_active_hcs = {}
+        for dealer, hc, _ in hc_info_raw:
+            if dealer not in dealer_active_hcs: dealer_active_hcs[dealer] = []
+            hc_clean = clean_str(hc)
+            m_act = month_acts.get(hc_clean, {'amt': 0, 'est': 0, 'cnt': 0})
+            
+            # 신규 활동(견적, 계약, 계약금액)이 1건이라도 있으면 활성 인원으로 간주
+            if m_act['amt'] > 0 or m_act['est'] > 0 or m_act['cnt'] > 0:
+                dealer_active_hcs[dealer].append(hc_clean)
+                
+        dealer_sales_sum_active = {}
+        for dealer, hc, tgt in hc_info_raw:
+            hc_clean = clean_str(hc)
+            active_list = dealer_active_hcs.get(dealer, [])
+            if active_list: # 대리점에 활성 인원이 존재하면, 활성 인원만의 목표 합계 구하기
+                if hc_clean in active_list:
+                    dealer_sales_sum_active[dealer] = dealer_sales_sum_active.get(dealer, 0.0) + tgt
+            else: # 활성 인원이 아예 없는 월초 상황 방어용
+                dealer_sales_sum_active[dealer] = dealer_sales_sum_active.get(dealer, 0.0) + tgt
+
+        final_hc_sales_tgt = {}
+        hc_weights = {}
+        
+        for dealer, hc, tgt in hc_info_raw:
+            hc_clean = clean_str(hc)
+            active_list = dealer_active_hcs.get(dealer, [])
+            
+            # 퇴사자(신규 실적 0)는 목표를 0으로 만들고 배분 대상에서 완전 제외
+            if active_list and hc_clean not in active_list:
+                final_hc_sales_tgt[hc_clean] = 0.0
+                hc_weights[hc_clean] = 0.0
+            else:
+                d_sum_active = dealer_sales_sum_active.get(dealer, 0.0)
+                original_dealer_sum = dealer_sales_sum.get(dealer, 0.0)
+                
+                # 빈 목표 파이를 남은 인원들에게 비례해서 다시 얹어줌
+                weight = (tgt / d_sum_active) if d_sum_active > 0 else 0.0
+                final_hc_sales_tgt[hc_clean] = original_dealer_sum * weight
+                hc_weights[hc_clean] = weight 
+
+        targets = {}
+        for dealer, hc, _ in hc_info_raw:
+            hc_clean = clean_str(hc)
+            targets[hc_clean] = {}
+            weight = hc_weights.get(hc_clean, 0.0)
+            d_t = dealer_targets.get(dealer, {})
+            for wk in week_keys:
+                targets[hc_clean][wk] = {
+                    'amt': d_t.get(wk, {}).get('amt', 0) * weight,
+                    'est': d_t.get(wk, {}).get('est', 0) * weight,
+                    'cnt': d_t.get(wk, {}).get('cnt', 0) * weight,
+                }
 
         status_box.info("✅ 데이터 구성 완료! 표 출력 중...")
         
@@ -408,11 +436,13 @@ def load_vdt_data():
             
         columns = pd.MultiIndex.from_tuples(col_tuples, names=['주차', '항목', '구분'])
         rows = []
-        for dealer, hc, sales_tgt in hc_info:
+        for dealer, hc, raw_sales_tgt in hc_info_raw:
             hc_clean = clean_str(hc)
+            sales_tgt = final_hc_sales_tgt.get(hc_clean, 0.0) # 재조정된 목표 사용
             m_act = month_acts.get(hc_clean, {'amt': 0, 'est': 0, 'cnt': 0})
             s_act = acts_sales.get(hc_clean, 0)
 
+            # 목표 0 + 모든 ACT(매출, 계약, 견적) 0이면 완전 미활동자 -> 표에서 숨김
             if sales_tgt == 0.0 and m_act['amt'] == 0 and m_act['est'] == 0 and m_act['cnt'] == 0 and s_act == 0: continue
 
             row_data = [dealer, hc]
