@@ -84,13 +84,11 @@ def clean_val(v):
     try: return float(v_str) * multiplier
     except: return 0.0
 
-# 🚀 9월 주차 계산 로직 추가
 def get_week_name(sheet_title):
     try:
         nums = re.findall(r'\d+', sheet_title)
         if len(nums) >= 2:
             m_val, d_val = int(nums[0]), int(nums[1])
-            # 8월 기준
             if m_val == 7 and d_val >= 27: return '0주차'
             if m_val == 8:
                 if d_val <= 2: return '0주차'
@@ -99,7 +97,6 @@ def get_week_name(sheet_title):
                 elif d_val <= 23: return '3주차'
                 elif d_val <= 30: return '4주차'
                 else: return '5주차'
-            # 9월 기준 (회사 기준에 맞게 날짜 구간 조정)
             elif m_val == 9:
                 if d_val <= 6: return '1주차'
                 elif d_val <= 13: return '2주차'
@@ -188,20 +185,17 @@ def load_vdt_data():
         hc_info = [(d, h, t) for (d, h), t in hc_info_dict.items()]
 
         status_box.info("🎯 2단계: 대리점 주차별 목표 스캔 중...")
-        
-        # 🚀 9월이면 9월 날짜 헤더 및 열 위치 자동 변경
         if current_month == 9:
             date_headers = {
                 '1주차': '9/1~9/6', '2주차': '9/7~9/13', '3주차': '9/14~9/20',
                 '4주차': '9/21~9/27', '5주차': '9/28~9/30'
             }
-            # 주의: 주차별 목표 세팅 탭에서 B,C,D열이 1주차의 (금액, 견적, 계약)이어야 함
             week_cols = {
                 '1주차': {'amt': 1, 'est': 2, 'cnt': 3}, '2주차': {'amt': 4, 'est': 5, 'cnt': 6},   
                 '3주차': {'amt': 7, 'est': 8, 'cnt': 9}, '4주차': {'amt': 10, 'est': 11, 'cnt': 12}, 
                 '5주차': {'amt': 13, 'est': 14, 'cnt': 15}, 
             }
-        else: # 기본 8월 세팅 (예비용)
+        else:
             date_headers = {
                 '0주차': '7/27~8/2', '1주차': '8/3~8/9', '2주차': '8/10~8/16',
                 '3주차': '8/17~8/23', '4주차': '8/24~8/30', '5주차': '8/31'
@@ -249,20 +243,17 @@ def load_vdt_data():
             nums = re.findall(r'\d+', ws.title)
             if wk and len(nums) >= 2: 
                 m_val = int(nums[0]) 
-                d_val = int(nums[1])
-                # 🚀 [수정 완벽 적용] 8월 31일 중복 방지 - 오직 현재 접속한 달의 시트만 가져옴
                 if m_val == current_month:
                     valid_daily_sheets.append((m_val, wk, ws))
 
-        # 🚀 [핵심 최적화] API 호출 절반으로 줄이기! (시트 데이터를 메모리에 1번만 캐싱)
         sheet_data_cache = {}
         status_box.info("📥 3-1단계: 일별 시트 데이터 일괄 캐싱 중... (최초 1회 한정)")
         for m_val, wk, ws in valid_daily_sheets:
-            time.sleep(0.3) # API 429 에러 방어
+            time.sleep(0.3) 
             sheet_data_cache[ws.id] = safe_api_call(ws.get_all_values)
         
         for m_val, wk, ws in valid_daily_sheets:
-            d_data = sheet_data_cache[ws.id] # 🚀 캐시에서 데이터 가져오기 (API 호출 안함)
+            d_data = sheet_data_cache[ws.id] 
             current_rem_dealer = ""
             for row in d_data:
                 hc_name_raw = safe_get(row, 3)
@@ -312,10 +303,8 @@ def load_vdt_data():
         real_dealer_weekly = {d: {wk: {'amt': 0, 'est': 0, 'cnt': 0} for wk in week_keys} for d in valid_dealers}
         
         for m_val, wk, ws in valid_daily_sheets:
-            d_data = sheet_data_cache[ws.id] # 🚀 캐시에서 데이터 가져오기 (API 호출 안함)
-            
+            d_data = sheet_data_cache[ws.id] 
             current_remembered_dealer = ""
-            cached_est, cached_cnt, cached_amt = 0.0, 0.0, 0.0
             
             for row in d_data:
                 if len(row) > 3: 
@@ -332,19 +321,16 @@ def load_vdt_data():
                     hc_name = clean_str(hc_name_raw)
                     
                     if any(x in hc_name for x in ['합계', '소계', '총계', '목표', '대리점', '사번', '비고']):
-                        cached_est, cached_cnt, cached_amt = 0.0, 0.0, 0.0
                         continue
                         
+                    # 🚀 [오류 수정] 사원명이 없는 빈 칸(대리점 합계 데이터 등)은 개인 실적으로 처리하지 않고 무시함
                     if not hc_name:
-                        if temp_est > 0 or temp_cnt > 0 or temp_amt > 0:
-                            cached_est, cached_cnt, cached_amt = temp_est, temp_cnt, temp_amt
                         continue
                         
                     if hc_name:
-                        est_val = temp_est if temp_est > 0 else cached_est
-                        cnt_val = temp_cnt if temp_cnt > 0 else cached_cnt
-                        amt_val = temp_amt if temp_amt > 0 else cached_amt
-                        cached_est, cached_cnt, cached_amt = 0.0, 0.0, 0.0
+                        est_val = temp_est
+                        cnt_val = temp_cnt
+                        amt_val = temp_amt
                         
                         if hc_name in acts:
                             if wk in acts[hc_name]:
@@ -374,10 +360,8 @@ def load_vdt_data():
         
         if valid_daily_sheets:
             latest_m, latest_wk, latest_sheet = valid_daily_sheets[-1] 
-            l_data = sheet_data_cache[latest_sheet.id] # 🚀 캐시에서 데이터 가져오기 (API 호출 안함)
-            
+            l_data = sheet_data_cache[latest_sheet.id] 
             current_remembered_dealer = ""
-            cached_s = 0.0
             
             for row in l_data:
                 if len(row) > 3:
@@ -392,16 +376,14 @@ def load_vdt_data():
                     hc_name_s, temp_s = clean_str(safe_get(row, 3)), clean_val(safe_get(row, 18))
                     
                     if any(x in hc_name_s for x in ['합계', '소계', '총계', '목표', '대리점', '사번', '비고']):
-                        cached_s = 0.0
                         continue
                         
+                    # 🚀 [오류 수정] 사원명이 없는 행 무시
                     if not hc_name_s:
-                        if temp_s > 0: cached_s = temp_s
                         continue
                         
                     if hc_name_s:
-                        s_val = temp_s if temp_s > 0 else cached_s
-                        cached_s = 0.0 
+                        s_val = temp_s 
                         if s_val > 0:
                             if hc_name_s in acts_sales: acts_sales[hc_name_s] += s_val
                             matched_dealer = current_remembered_dealer
