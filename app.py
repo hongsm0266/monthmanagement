@@ -84,7 +84,7 @@ def clean_val(v):
     try: return float(v_str) * multiplier
     except: return 0.0
 
-# 🚀 [수정] 9월 주차 계산 로직 추가
+# 🚀 9월 주차 계산 로직 추가
 def get_week_name(sheet_title):
     try:
         nums = re.findall(r'\d+', sheet_title)
@@ -99,7 +99,7 @@ def get_week_name(sheet_title):
                 elif d_val <= 23: return '3주차'
                 elif d_val <= 30: return '4주차'
                 else: return '5주차'
-            # 9월 기준 (회사 기준에 맞게 날짜 구간 조정 가능)
+            # 9월 기준 (회사 기준에 맞게 날짜 구간 조정)
             elif m_val == 9:
                 if d_val <= 6: return '1주차'
                 elif d_val <= 13: return '2주차'
@@ -189,19 +189,19 @@ def load_vdt_data():
 
         status_box.info("🎯 2단계: 대리점 주차별 목표 스캔 중...")
         
-        # 🚀 [수정] 9월이면 9월 날짜 헤더로 자동 변경되도록 수정
+        # 🚀 9월이면 9월 날짜 헤더 및 열 위치 자동 변경
         if current_month == 9:
             date_headers = {
                 '1주차': '9/1~9/6', '2주차': '9/7~9/13', '3주차': '9/14~9/20',
                 '4주차': '9/21~9/27', '5주차': '9/28~9/30'
             }
-            # 참고: '주차별 목표 세팅' 시트의 열(Column) 인덱스 매핑. 구조가 바뀌었다면 이 숫자를 수정해야 합니다.
+            # 주의: 주차별 목표 세팅 탭에서 B,C,D열이 1주차의 (금액, 견적, 계약)이어야 함
             week_cols = {
                 '1주차': {'amt': 1, 'est': 2, 'cnt': 3}, '2주차': {'amt': 4, 'est': 5, 'cnt': 6},   
                 '3주차': {'amt': 7, 'est': 8, 'cnt': 9}, '4주차': {'amt': 10, 'est': 11, 'cnt': 12}, 
                 '5주차': {'amt': 13, 'est': 14, 'cnt': 15}, 
             }
-        else: # 기본 8월 세팅
+        else: # 기본 8월 세팅 (예비용)
             date_headers = {
                 '0주차': '7/27~8/2', '1주차': '8/3~8/9', '2주차': '8/10~8/16',
                 '3주차': '8/17~8/23', '4주차': '8/24~8/30', '5주차': '8/31'
@@ -250,12 +250,19 @@ def load_vdt_data():
             if wk and len(nums) >= 2: 
                 m_val = int(nums[0]) 
                 d_val = int(nums[1])
-                # 🚀 [핵심 최적화] 이전 달의 불필요한 시트는 무시하고 현재 달(current_month)의 시트만 가져와 API 호출 대폭 감소
-                if m_val == current_month or (current_month == 9 and m_val == 8 and d_val >= 31):
+                # 🚀 [수정 완벽 적용] 8월 31일 중복 방지 - 오직 현재 접속한 달의 시트만 가져옴
+                if m_val == current_month:
                     valid_daily_sheets.append((m_val, wk, ws))
+
+        # 🚀 [핵심 최적화] API 호출 절반으로 줄이기! (시트 데이터를 메모리에 1번만 캐싱)
+        sheet_data_cache = {}
+        status_box.info("📥 3-1단계: 일별 시트 데이터 일괄 캐싱 중... (최초 1회 한정)")
+        for m_val, wk, ws in valid_daily_sheets:
+            time.sleep(0.3) # API 429 에러 방어
+            sheet_data_cache[ws.id] = safe_api_call(ws.get_all_values)
         
         for m_val, wk, ws in valid_daily_sheets:
-            d_data = safe_api_call(ws.get_all_values)
+            d_data = sheet_data_cache[ws.id] # 🚀 캐시에서 데이터 가져오기 (API 호출 안함)
             current_rem_dealer = ""
             for row in d_data:
                 hc_name_raw = safe_get(row, 3)
@@ -305,7 +312,7 @@ def load_vdt_data():
         real_dealer_weekly = {d: {wk: {'amt': 0, 'est': 0, 'cnt': 0} for wk in week_keys} for d in valid_dealers}
         
         for m_val, wk, ws in valid_daily_sheets:
-            d_data = safe_api_call(ws.get_all_values)
+            d_data = sheet_data_cache[ws.id] # 🚀 캐시에서 데이터 가져오기 (API 호출 안함)
             
             current_remembered_dealer = ""
             cached_est, cached_cnt, cached_amt = 0.0, 0.0, 0.0
@@ -367,7 +374,7 @@ def load_vdt_data():
         
         if valid_daily_sheets:
             latest_m, latest_wk, latest_sheet = valid_daily_sheets[-1] 
-            l_data = safe_api_call(latest_sheet.get_all_values)
+            l_data = sheet_data_cache[latest_sheet.id] # 🚀 캐시에서 데이터 가져오기 (API 호출 안함)
             
             current_remembered_dealer = ""
             cached_s = 0.0
@@ -521,9 +528,6 @@ df_raw, date_headers, real_dealer_sales, real_dealer_monthly, real_dealer_weekly
 if not df_raw.empty:
     final_df = calculate_subtotals(df_raw, real_dealer_sales, real_dealer_monthly, real_dealer_weekly)
     
-    # ---------------------------------------------------------
-    # 🚀 개인/대리점 선택 및 실적 차트 대시보드
-    # ---------------------------------------------------------
     st.markdown("---")
     col_sel, col_btn = st.columns([7, 2]) 
     
@@ -656,7 +660,6 @@ if not df_raw.empty:
         )
         st.plotly_chart(fig, use_container_width=True)
         st.markdown("---")
-    # ---------------------------------------------------------
     
     st.markdown(f"""
     <div style='background-color: #f8fafc; padding: 15px; border-left: 5px solid #3b82f6; border-radius: 5px; margin-bottom: 20px;'>
@@ -717,9 +720,7 @@ if not df_raw.empty:
                 html.append(f"<th colspan='3' style='{'; '.join(s_parts)}'>인별매출(천)</th>")
             elif "🌟 당월 합계" in h1:
                 s1, s2, s3 = base_styles.copy() + [f"left: {col_lefts[5]}px;", "z-index: 15;"], base_styles.copy() + [f"left: {col_lefts[8]}px;", "z-index: 15;"], base_styles.copy() + [f"left: {col_lefts[11]}px;", "z-index: 15;", "border-right: 4px solid #94a3b8;"]
-                html.append(f"<th colspan='3' style='{'; '.join(s1)}'>계약액(천)</th>")
-                html.append(f"<th colspan='3' style='{'; '.join(s2)}'>견적건</th>")
-                html.append(f"<th colspan='3' style='{'; '.join(s3)}'>계약건</th>")
+                html.append(f"<th colspan='3' style='{'; '.join(s1)}'>계약액(천)</th><th colspan='3' style='{'; '.join(s2)}'>견적건</th><th colspan='3' style='{'; '.join(s3)}'>계약건</th>")
             else:
                 bg_style = f"style='{'; '.join(base_styles + ['z-index: 10;'])}'"
                 html.append(f"<th colspan='3' {bg_style}>계약액(천)</th><th colspan='3' {bg_style}>견적건</th><th colspan='3' {bg_style}>계약건</th>")
