@@ -1,819 +1,768 @@
-import socket
-socket.setdefaulttimeout(15.0) 
-
 import streamlit as st
 import pandas as pd
-import numpy as np
+from datetime import date
+import re
+import os
 import json
 import gspread
 from google.oauth2.service_account import Credentials
-import traceback
-from datetime import datetime
-import plotly.graph_objects as go 
-import re 
-import time
+import io
+import urllib.request
+import urllib.parse
+import base64
 
 # 1. 화면 기본 설정
-st.set_page_config(page_title="충청호남팀 영업사원 주차별 VDT 목표 관리", layout="wide")
+st.set_page_config(page_title="충청호남팀 견적 관리 및 TM 진도", layout="wide")
 
-SHEET_URL = "https://docs.google.com/spreadsheets/d/1yZdc4BL5CHLwBQ2QGp8zD5_ov7LDKsEcnrONdQvDyHI/edit?gid=1748736055#gid=1748736055"
+# --- 구글 시트 연동 설정 ---
+SHEET_NAME = "견적관리대장로우"
+
+# ⭐ 발급받으신 ImgBB API 키 영구 탑재 완료!
+IMGBB_API_KEY = "1cecb3f4e313203e40d78882356ef1ca"
 
 @st.cache_resource
 def init_connection():
     try:
         creds_json = st.secrets["gcp"]["key"]
         creds_dict = json.loads(creds_json)
-        scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
+        scopes = [
+            "https://www.googleapis.com/auth/spreadsheets",
+            "https://www.googleapis.com/auth/drive"
+        ]
         creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
-        return gspread.authorize(creds)
+        client = gspread.authorize(creds)
+        return client
     except Exception as e:
-        st.error(f"구글 API 키 오류: {e}")
+        st.error("구글 API 키(Secrets) 설정이 안 되어 있거나 오류가 발생했습니다. 세팅을 확인해주세요.")
         return None
 
 client = init_connection()
 
-# --- 커스텀 CSS ---
+if os.path.exists("logo.png"): HANSSEM_CI_URL = "logo.png"
+elif os.path.exists("hanssem.png"): HANSSEM_CI_URL = "hanssem.png"
+else: HANSSEM_CI_URL = "https://raw.githubusercontent.com/github/explore/main/topics/png/png.png"
+
+# --- 커스텀 CSS (PAPERLOGY 폰트 최적화 및 아이콘 보호 적용) ---
 st.markdown("""
 <style>
+    /* 💡 PAPERLOGY 웹폰트 CDN 로드 */
     @font-face { font-family: 'Paperlogy'; src: url('https://cdn.jsdelivr.net/gh/projectnoonnu/2408-3@1.0/Paperlogy-8Bold.woff2') format('woff2'); font-weight: 700; font-display: swap; }
-    html, body, [class*="css"], [class*="st-"], th, td { font-family: 'Paperlogy', sans-serif !important; }
-    
-    .vdt-table-container { width: 100%; max-height: 65vh; overflow: auto; border: 1px solid #cbd5e1; border-radius: 8px; margin-top: 10px; }
-    .vdt-table-container::-webkit-scrollbar { width: 14px; height: 14px; }
-    .vdt-table-container::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 8px; }
-    .vdt-table-container::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 8px; border: 3px solid #f1f5f9; }
-    .vdt-table-container::-webkit-scrollbar-thumb:hover { background: #64748b; }
+    @font-face { font-family: 'Paperlogy'; src: url('https://cdn.jsdelivr.net/gh/projectnoonnu/2408-3@1.0/Paperlogy-9Black.woff2') format('woff2'); font-weight: 900; font-display: swap; }
+    @font-face { font-family: 'Paperlogy'; src: url('https://cdn.jsdelivr.net/gh/projectnoonnu/2408-3@1.0/Paperlogy-6SemiBold.woff2') format('woff2'); font-weight: 600; font-display: swap; }
+    @font-face { font-family: 'Paperlogy'; src: url('https://cdn.jsdelivr.net/gh/projectnoonnu/2408-3@1.0/Paperlogy-5Medium.woff2') format('woff2'); font-weight: 500; font-display: swap; }
+    @font-face { font-family: 'Paperlogy'; src: url('https://cdn.jsdelivr.net/gh/projectnoonnu/2408-3@1.0/Paperlogy-4Regular.woff2') format('woff2'); font-weight: 400; font-display: swap; }
 
-    .vdt-table { width: 100%; border-collapse: collapse; font-size: 12px; white-space: nowrap; }
-    .vdt-table thead th { height: 34px; box-sizing: border-box; position: sticky; z-index: 10; background-clip: padding-box; }
-    .vdt-table thead tr:nth-child(1) th { top: 0; }
-    .vdt-table thead tr:nth-child(2) th { top: 33px; }
-    .vdt-table thead tr:nth-child(3) th { top: 66px; }
+    /* 💡 텍스트가 표시되는 영역에만 Paperlogy를 확실히 덮어씌움 */
+    html, body, p, span, label, button, input, select, textarea, h1, h2, h3, h4, h5, h6, th, td {
+        font-family: 'Paperlogy', -apple-system, sans-serif !important;
+    }
 
-    .vdt-table th { background-color: #0f172a; color: white; padding: 8px 10px; text-align: center; border: 1px solid #334155; font-weight: 600; }
-    .vdt-table td { padding: 6px 10px; text-align: right; border: 1px solid #e2e8f0; }
-    .vdt-table td.text-center { text-align: center; }
-    .title-box { background: linear-gradient(90deg, #1e3a8a 0%, #3b82f6 100%); color: white; padding: 20px; border-radius: 12px; margin-bottom: 20px; }
-    h1 { font-weight: 900 !important; color: white !important; font-size: 24px !important; margin: 0; }
+    /* 🚨 시스템 아이콘 영역(화살표, 구름 등) 폰트 변환 강제 차단 */
+    .stIconMaterial, .material-icons, [data-testid*="stIcon"], [data-baseweb="icon"] {
+        font-family: "Material Symbols Rounded", "Material Icons", sans-serif !important;
+        font-weight: 400 !important;
+    }
+
+    .main .block-container,
+    [data-testid="stMainBlockContainer"],
+    [data-testid="stAppViewBlockContainer"] {
+        max-width: 100% !important;
+        padding-left: 1rem !important; padding-right: 1rem !important;
+        padding-top: 1.5rem !important; padding-bottom: 1rem !important;
+    }
     
-    div[data-testid="metric-container"] { background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
-    [data-testid="stMetricLabel"] { background-color: #e2e8f0 !important; padding: 6px 12px !important; border-radius: 6px !important; border-left: 5px solid #3b82f6 !important; display: inline-block !important; margin-bottom: 8px !important; box-shadow: 1px 2px 4px rgba(0,0,0,0.08) !important; }
-    [data-testid="stMetricLabel"] * { font-size: 15px !important; font-weight: 900 !important; color: #0f172a !important; letter-spacing: -0.3px; }
-    [data-testid="stMetricValue"] > div { font-size: 28px !important; font-weight: 900 !important; color: #1e3a8a !important; margin-top: 5px; }
-    [data-testid="stMetricDelta"] * { font-size: 14px !important; font-weight: 800 !important; }
+    h1, h2, h3 { font-weight: 900 !important; color: #0f172a !important; font-size: 24px !important; letter-spacing: -0.5px !important; }
+
+    .login-card-title { color: #0f172a; font-size: 22px !important; font-weight: 900 !important; margin-top: 15px; margin-bottom: 5px; }
+    .login-card-sub { color: #64748b; font-size: 13px; margin-bottom: 20px; font-weight: 600; }
+    
+    div.stButton > button { 
+        background: linear-gradient(180deg, #2563eb 0%, #1d4ed8 100%) !important; color: white !important; font-size: 15px !important; font-weight: 800 !important; 
+        border-radius: 8px !important; padding: 10px 15px !important; border: none !important; height: auto !important; min-height: 45px; box-shadow: 0 4px 6px rgba(0,0,0,0.1) !important;
+        border-bottom: 4px solid #1e3a8a !important; transition: all 0.1s ease !important; 
+    }
+    div.stButton > button:hover { transform: translateY(-2px) !important; }
+    div.stButton > button:active { transform: translateY(2px) !important; border-bottom: 1px solid #1e3a8a !important; margin-bottom: 3px !important; }
+    
+    div.element-container:has(.red-btn) + div.element-container div.stButton > button { background: linear-gradient(180deg, #ef4444 0%, #dc2626 100%) !important; border-bottom: 4px solid #991b1b !important; }
+    div.element-container:has(.yellow-btn) + div.element-container div.stButton > button { background: linear-gradient(180deg, #facc15 0%, #eab308 100%) !important; border-bottom: 4px solid #a16207 !important; color: #1c1917 !important; }
+
+    .user-info-box { background-color: #f1f5f9; border: 2px solid #0284c7; padding: 12px 16px; border-radius: 8px; text-align: right; }
+    .user-info-name { font-size: 18px !important; font-weight: 900 !important; color: #0369a1 !important; }
+    .user-info-sub { font-size: 12px !important; color: #64748b !important; font-weight: 600; }
+    .table-header-banner { background-color: #0056b3; color: white; padding: 10px 16px; border-radius: 6px 6px 0 0; font-weight: 800; font-size: 16px; margin-bottom: -10px; display: flex; justify-content: space-between; align-items: center;}
+
+    [data-testid="stDataFrame"] th svg { display: none !important; }
+    [data-testid="stDataFrame"] th { font-weight: 900 !important; color: #0f172a !important; font-size: 14px !important; background-color: #f8fafc !important; }
+
+    .dash-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 8px; }
+    .dash-card { 
+        background: white; border-radius: 8px; padding: 14px 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.06); 
+        border: 1px solid #e2e8f0; text-align: center; border-top: 5px solid #3b82f6; 
+        display: flex; flex-direction: column; justify-content: center; align-items: center;
+    }
+    .dash-card.green { border-top-color: #10b981; }
+    .dash-card.purple { border-top-color: #8b5cf6; }
+    .dash-card.orange { border-top-color: #f97316; }
+    .dash-card.red { border-top-color: #ef4444; }
+    .dash-title { font-size: 12px; color: #64748b; font-weight: 700; margin-bottom: 6px; letter-spacing: -0.5px; word-break: keep-all;}
+    .dash-value { font-size: 18px; color: #0f172a; font-weight: 900; letter-spacing: -0.5px; word-break: keep-all;}
+    
+    [data-testid="stExpander"] {
+        background-color: #f8fafc !important;
+        border: 2px solid #cbd5e1 !important;
+        border-radius: 12px !important;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.05) !important;
+    }
+    [data-testid="stExpander"] summary {
+        background-color: #e0f2fe !important; 
+        border-radius: 10px 10px 0 0 !important;
+        padding-top: 12px !important;
+        padding-bottom: 12px !important;
+        border-bottom: 1px solid #bae6fd !important;
+    }
+    [data-testid="stExpander"] summary p {
+        font-size: 16px !important;
+        font-weight: 900 !important;
+        color: #0369a1 !important;
+    }
 </style>
 """, unsafe_allow_html=True)
 
-current_month = datetime.now().month
-st.markdown(f"<div class='title-box'><h1>📊 충청호남팀 영업사원 주차별 VDT 목표 관리 ({current_month}월)</h1></div>", unsafe_allow_html=True)
+# 🚨 신규 인원 3명 소속(둔산) 완벽 반영
+HC_DB = {
+    "00033448": {"name": "장재형", "dealer": "둔산"}, "00038617": {"name": "이대운", "dealer": "둔산"},
+    "00041990": {"name": "강지인", "dealer": "둔산"}, "00040110": {"name": "장영종", "dealer": "광양"},
+    "00040112": {"name": "임현", "dealer": "광양"}, "00040113": {"name": "하행우", "dealer": "광양"},
+    "00042008": {"name": "김경율", "dealer": "세종"}, "00044932": {"name": "강희성", "dealer": "세종"},
+    "00044933": {"name": "한유진", "dealer": "세종"}, "00040744": {"name": "빙지영", "dealer": "목포"},
+    "00040755": {"name": "윤덕수", "dealer": "목포"}, "00043657": {"name": "최병하", "dealer": "익산"},
+    "00043825": {"name": "이은혜", "dealer": "익산"}, "00033249": {"name": "임준수", "dealer": "충주"},
+    "00033479": {"name": "류승태", "dealer": "여수"}, "00042423": {"name": "라태현", "dealer": "여수"},
+    "00044183": {"name": "김동휘", "dealer": "여수"},
+    "00045152": {"name": "천민선", "dealer": "둔산"},
+    "00045153": {"name": "박준수", "dealer": "둔산"},
+    "00043761": {"name": "한지훈", "dealer": "둔산"}
+}
 
-def clean_str(val): return re.sub(r'\s+', '', str(val))
-def safe_get(row, idx): return str(row[idx]).strip() if len(row) > idx else ""
-def clean_val(v):
-    if not v or pd.isna(v): return 0.0
-    v_str = str(v).replace('%', '').replace(',', '').replace('원', '').replace('건', '').strip()
-    multiplier = 1
-    if '억' in v_str:
-        v_str = v_str.replace('억', '')
-        multiplier = 100000000
-    elif '만' in v_str:
-        v_str = v_str.replace('만', '')
-        multiplier = 10000
-    v_str = re.sub(r'[^\d\.-]', '', v_str)
-    if not v_str: return 0.0
-    try: return float(v_str) * multiplier
-    except: return 0.0
+REGION_MAP = {
+    "충청상권": ["둔산", "목포", "세종", "충주"], 
+    "호남상권": ["익산", "광양", "여수"]
+}
 
-def get_week_name(sheet_title):
-    try:
-        nums = re.findall(r'\d+', sheet_title)
-        if len(nums) >= 2:
-            m_val, d_val = int(nums[0]), int(nums[1])
-            if m_val == 7 and d_val >= 27: return '0주차'
-            if m_val == 8:
-                if d_val <= 2: return '0주차'
-                elif d_val <= 9: return '1주차'
-                elif d_val <= 16: return '2주차'
-                elif d_val <= 23: return '3주차'
-                elif d_val <= 30: return '4주차'
-                else: return '5주차'
-            elif m_val == 9:
-                if d_val <= 6: return '1주차'
-                elif d_val <= 13: return '2주차'
-                elif d_val <= 20: return '3주차'
-                elif d_val <= 27: return '4주차'
-                else: return '5주차'
-    except: pass
-    return None
+PRODUCT_KEYWORDS = {
+    "침실단품": ["화장대", "서랍장", "리즈"], "수납": ["붙박이장", "드레스룸", "옷장", "샘키즈", "샘베딩", "뮤트", "스케치", "아임빅", "바흐"],
+    "침실": ["침대", "매트리스", "포시즌", "노뜨", "그로브오크", "포에트", "호텔침대", "어반글로우"],
+    "거실": ["소파", "리클라이너", "스위브", "뉴플루드", "인피니", "뉴인피니", "테이즈", "키안티", "페타", "플로에", "거실장", "아카이브", "MVME"],
+    "다이닝": ["식탁", "테이블", "식탁의자", "디아고", "리브업", "인칸토", "리니아"],
+    "책상의자 - 알로/조이": ["책상의자", "알로"], "자녀방 책상": ["조이"]
+}
 
-def get_mapped_dealer(raw_d):
-    c_d = clean_str(raw_d)
-    if any(k in c_d for k in ["한밭", "INT충청", "701347", "세종2"]): return "세종"
-    return raw_d.strip()
+if 'logged_in' not in st.session_state: st.session_state.update({'logged_in': False, 'hc_id': '', 'hc_name': '', 'dealer': '', 'is_master': False})
+if 'success_msg' not in st.session_state: st.session_state['success_msg'] = ""
+if 'warning_msg' not in st.session_state: st.session_state['warning_msg'] = ""
+if 'uploader_key' not in st.session_state: st.session_state['uploader_key'] = 0
+if 'confirm_delete' not in st.session_state: st.session_state['confirm_delete'] = False
+if 'to_del_list' not in st.session_state: st.session_state['to_del_list'] = []
 
-now = datetime.now()
-CURRENT_WEEK = get_week_name(f"{now.month}/{now.day}") 
-if not CURRENT_WEEK: CURRENT_WEEK = '1주차'
+if not st.session_state['logged_in']:
+    st.write(""); st.write("")
+    col_left, col_center, col_right = st.columns([1, 1.2, 1])
+    with col_center:
+        st.markdown("<div style='text-align:center;'>", unsafe_allow_html=True)
+        st.image(HANSSEM_CI_URL, width=180) 
+        st.markdown("""<div class="login-card-title">충청호남팀 견적관리 로그인</div><div class="login-card-sub">견적 등록 및 TM 진도율 실시간 통합 시스템</div></div>""", unsafe_allow_html=True)
+        login_id = st.text_input("아이디 (사번)", placeholder="사번 8자리를 입력하세요")
+        login_pw = st.text_input("비밀번호", type="password", placeholder="비밀번호를 입력하세요")
+        st.write("")
+        if st.button("로그인", use_container_width=True):
+            # 🚀 [보강 1] 사번에 000이 빠져있어도 8자리로 자동 맞춤 처리
+            pad_id = str(login_id).strip().zfill(8) if login_id else ""
+            input_pw = str(login_pw).strip()
+            
+            if pad_id == "00000000" and input_pw == "0000":
+                st.session_state.update({'logged_in': True, 'hc_id': "0000", 'hc_name': "총괄관리자", 'dealer': "마스터", 'is_master': True}); st.rerun()
+            elif pad_id in HC_DB and str(login_id).strip() == input_pw: # 아이디/비번을 0 뺀 상태로 동일하게 쳐도 허용
+                st.session_state.update({'logged_in': True, 'hc_id': pad_id, 'hc_name': HC_DB[pad_id]['name'], 'dealer': HC_DB[pad_id]['dealer'], 'is_master': False}); st.rerun()
+            else: st.error("정보가 일치하지 않습니다.")
+    st.stop()
 
-PREV_WEEK = None
-if CURRENT_WEEK:
-    try:
-        curr_num = int(CURRENT_WEEK.replace("주차", ""))
-        if curr_num > 0: PREV_WEEK = f"{curr_num - 1}주차"
-    except: pass
+today = date.today()
+my_id, my_name, my_dealer, is_master = st.session_state['hc_id'], st.session_state['hc_name'], st.session_state['dealer'], st.session_state['is_master']
 
-def safe_api_call(func, *args, **kwargs):
-    max_retries = 4
-    for attempt in range(max_retries):
-        try:
-            return func(*args, **kwargs)
-        except gspread.exceptions.APIError as e:
-            if "429" in str(e):
-                if attempt < max_retries - 1:
-                    wait_time = (attempt + 1) * 8
-                    st.toast(f"⏳ 서버 요청 한도 도달. {wait_time}초 후 자동으로 재시도합니다... (새로고침 하지 마세요!)", icon="⚠️")
-                    time.sleep(wait_time)
-                    continue
-            raise e
-
-@st.cache_data(ttl=600)
-def load_vdt_data():
-    if not client: return pd.DataFrame(), {}, {}, {}, {}
+def clean_and_enforce_types(df):
+    req_cols = ['선택/삭제', '상담일', '상담번호', 'HC_ID', 'HC명', '대리점명', '고객명', '연락처', '주소', '상품', '현장유형', '견적금액', '1차_TM', '1차_TM_일자', '1차_증빙', '2차_TM', '2차_TM_일자', '2차_증빙', '3차_TM', '3차_TM_일자', '3차_증빙', '계약완료', '계약완료금액', '상담메모', 'is_self', '세부품목']
+    if df is None or df.empty:
+        edf = pd.DataFrame(columns=req_cols)
+        for col in ['선택/삭제', '1차_TM', '2차_TM', '3차_TM', '계약완료', 'is_self']: edf[col] = False
+        edf['견적금액'] = 0
+        edf['계약완료금액'] = 0
+        return edf
+    df = df.copy()
+    if '상품(대분류)' in df.columns: df = df.rename(columns={'상품(대분류)': '상품'})
+    for col in req_cols:
+        if col not in df.columns: df[col] = False if col in ['선택/삭제', '1차_TM', '2차_TM', '3차_TM', '계약완료', 'is_self'] else ''
+    for col in ['상담일', '1차_TM_일자', '2차_TM_일자', '3차_TM_일자']:
+        df[col] = pd.to_datetime(df[col], errors='coerce').dt.date
+        df[col] = df[col].apply(lambda x: None if pd.isna(x) else x)
+    for col in ['선택/삭제', '1차_TM', '2차_TM', '3차_TM', '계약완료', 'is_self']: df[col] = df[col].apply(lambda x: True if str(x).strip().upper() == 'TRUE' or x is True or x == 1 or x == '1' else False).astype(bool)
     
-    status_box = st.empty()
+    df['견적금액'] = pd.to_numeric(df['견적금액'], errors='coerce').fillna(0).astype(int)
+    df['계약완료금액'] = pd.to_numeric(df['계약완료금액'], errors='coerce').fillna(0).astype(int)
+    
+    for col in ['HC_ID', '상담번호', '연락처', '상담메모', '고객명', '주소', '상품', '현장유형', 'HC명', '대리점명', '1차_증빙', '2차_증빙', '3차_증빙', '세부품목']:
+        df[col] = df[col].astype(str).replace(['nan', 'NaN', 'None', '<NA>'], '')
+        # 시트에 0이 빠진 사번이 있어도 여기서 자동으로 8자리 채워줌
+        if col == 'HC_ID': df[col] = df[col].str.replace(r'\.0$', '', regex=True).apply(lambda x: str(x).strip().zfill(8) if str(x).strip() else '')
+        elif col == '상담번호': df[col] = df[col].str.replace(r'\.0$', '', regex=True)
+    return df[req_cols]
+
+def get_or_create_sheet(spreadsheet, sheet_name):
+    try: return spreadsheet.worksheet(sheet_name)
+    except: return spreadsheet.add_worksheet(title=sheet_name, rows="1000", cols="27")
+
+def load_data_from_sheet(gc_client, is_master_mode, current_user):
     try:
-        status_box.info("🔍 0단계: 구글 시트 연결 중...")
-        sh = safe_api_call(client.open_by_url, SHEET_URL)
-        all_worksheets = [ws.title for ws in safe_api_call(sh.worksheets)]
-        
-        target_sheet_name = "주차별 목표 세팅"
-        if target_sheet_name not in all_worksheets: 
-            st.error(f"🚨 '{target_sheet_name}' 탭을 찾을 수 없습니다.")
-            return pd.DataFrame(), {}, {}, {}, {}
-        
-        target_ws = sh.worksheet(target_sheet_name)
-        status_box.info("📊 1단계: 인별 매출목표 및 비중 계산 중...")
-        all_targets = safe_api_call(target_ws.get_all_values)
-        
-        split_idx = 15
-        for i, row in enumerate(all_targets):
-            if len(row) > 1 and clean_str(row[1]) in ['HC', 'HC명', '영업사원', '이름']:
-                split_idx = i
-                break
-                
-        target_data = all_targets[:split_idx]
-        hc_target_data = all_targets[split_idx:]
-        
-        hc_info_raw = []         
-        dealer_sales_sum = {} 
-        
-        for row in hc_target_data:
-            if len(row) >= 4 and str(row[0]).strip() and str(row[1]).strip():
-                raw_dealer = str(row[0]).strip()
-                hc_name = clean_str(row[1]) 
-                
-                if raw_dealer in ['대리점', '대리점명', '구분'] or hc_name in ['HC', 'HC명', '영업사원', '이름']: continue
-                if hc_name.isdigit(): continue
-                
-                dealer = get_mapped_dealer(raw_dealer)
-                sales_target = clean_val(row[3]) / 1000.0
-                
-                hc_info_raw.append((dealer, hc_name, sales_target))
-                dealer_sales_sum[dealer] = dealer_sales_sum.get(dealer, 0.0) + sales_target
-
-        status_box.info("🎯 2단계: 대리점 주차별 목표 스캔 중...")
-        if current_month == 9:
-            date_headers = {
-                '1주차': '9/1~9/6', '2주차': '9/7~9/13', '3주차': '9/14~9/20',
-                '4주차': '9/21~9/27', '5주차': '9/28~9/30'
-            }
-            week_cols = {
-                '1주차': {'amt': 1, 'est': 2, 'cnt': 3}, '2주차': {'amt': 4, 'est': 5, 'cnt': 6},   
-                '3주차': {'amt': 7, 'est': 8, 'cnt': 9}, '4주차': {'amt': 10, 'est': 11, 'cnt': 12}, 
-                '5주차': {'amt': 13, 'est': 14, 'cnt': 15}, 
-            }
+        spreadsheet = gc_client.open(SHEET_NAME)
+        if is_master_mode:
+            all_records = []
+            for name in list(set([info["name"] for info in HC_DB.values()])):
+                try: 
+                    records = spreadsheet.worksheet(name).get_all_records()
+                    if records: all_records.extend(records)
+                except: continue
+            return clean_and_enforce_types(pd.DataFrame(all_records) if all_records else None)
         else:
-            date_headers = {
-                '0주차': '7/27~8/2', '1주차': '8/3~8/9', '2주차': '8/10~8/16',
-                '3주차': '8/17~8/23', '4주차': '8/24~8/30', '5주차': '8/31'
-            }
-            week_cols = {
-                '0주차': {'amt': 1, 'est': 2, 'cnt': 3}, '1주차': {'amt': 4, 'est': 5, 'cnt': 6},   
-                '2주차': {'amt': 7, 'est': 8, 'cnt': 9}, '3주차': {'amt': 10, 'est': 11, 'cnt': 12}, 
-                '4주차': {'amt': 13, 'est': 14, 'cnt': 15}, '5주차': {'amt': 16, 'est': 17, 'cnt': 18}, 
-            }
-            
-        week_keys = list(week_cols.keys())
-        
-        dealer_targets = {}
-        for row in target_data:
-            if len(row) > 0 and str(row[0]).strip():
-                raw_d_name = str(row[0]).strip()
-                if raw_d_name in ['대리점명', '구분', '대리점']: continue
-                
-                d_name = get_mapped_dealer(raw_d_name)
-                if d_name not in dealer_targets:
-                    dealer_targets[d_name] = {wk: {'amt': 0, 'est': 0, 'cnt': 0} for wk in week_keys}
-                
-                for wk, cols in week_cols.items():
-                    dealer_targets[d_name][wk]['amt'] += (clean_val(safe_get(row, cols['amt'])) / 1000.0)
-                    dealer_targets[d_name][wk]['est'] += clean_val(safe_get(row, cols['est']))
-                    dealer_targets[d_name][wk]['cnt'] += clean_val(safe_get(row, cols['cnt']))
+            try: records = get_or_create_sheet(spreadsheet, current_user).get_all_records()
+            except: records = []
+            return clean_and_enforce_types(pd.DataFrame(records) if records else None)
+    except: return clean_and_enforce_types(None)
 
-        status_box.info("📈 3단계: 일별 실적(ACT) 스캔 및 데이터 캐싱 중...")
-        raw_daily_sheets = [ws for ws in safe_api_call(sh.worksheets) if "/" in ws.title or "일" in ws.title]
-        
-        def sort_key(ws):
-            try:
-                nums = re.findall(r'\d+', ws.title)
-                if len(nums) >= 2: return int(nums[0]) * 100 + int(nums[1])
-            except: pass
-            return 0
-                
-        daily_sheets = sorted(raw_daily_sheets, key=sort_key)
-        
-        valid_daily_sheets = []
-        for ws in daily_sheets:
-            wk = get_week_name(ws.title)
-            nums = re.findall(r'\d+', ws.title)
-            if wk and len(nums) >= 2: 
-                m_val = int(nums[0]) 
-                if m_val == current_month:
-                    valid_daily_sheets.append((m_val, wk, ws))
-
-        sheet_data_cache = {}
-        for m_val, wk, ws in valid_daily_sheets:
-            time.sleep(0.3) 
-            sheet_data_cache[ws.id] = safe_api_call(ws.get_all_values)
-        
-        existing_hcs = [clean_str(h) for d, h, t in hc_info_raw]
-        valid_dealers = list(set([d for d, _, _ in hc_info_raw]))
-        
-        for m_val, wk, ws in valid_daily_sheets:
-            d_data = sheet_data_cache[ws.id] 
-            current_rem_dealer = ""
-            for row in d_data:
-                hc_name_raw = safe_get(row, 3)
-                if not hc_name_raw: continue
-                
-                header_str = clean_str("".join([safe_get(row, i) for i in range(4)]))
-                mapped_d = get_mapped_dealer(header_str)
-                if mapped_d == "세종": current_rem_dealer = "세종"
-                else:
-                    for vd in valid_dealers:
-                        if clean_str(vd) in header_str:
-                            current_rem_dealer = vd
-                            break
-                            
-                hc_name = clean_str(hc_name_raw)
-                if hc_name and not any(x in hc_name for x in ['HC', 'HC명', '영업사원', '이름', '합계', '소계', '총계', '목표', '대리점', '비고', '사번']):
-                    if hc_name not in existing_hcs:
-                        new_dealer = current_rem_dealer if current_rem_dealer else "기타"
-                        hc_info_raw.append((new_dealer, hc_name, 0.0))
-                        existing_hcs.append(hc_name)
-                        if new_dealer not in valid_dealers:
-                            valid_dealers.append(new_dealer)
-
-        acts = {clean_str(hc): {wk: {'amt': 0, 'est': 0, 'cnt': 0} for wk in week_keys} for _, hc, _ in hc_info_raw}
-        month_acts = {clean_str(hc): {'amt': 0, 'est': 0, 'cnt': 0} for _, hc, _ in hc_info_raw}
-        hc_to_dealer = {clean_str(hc): dealer for dealer, hc, _ in hc_info_raw}
-        
-        real_dealer_monthly = {d: {'amt': 0, 'est': 0, 'cnt': 0} for d in valid_dealers}
-        real_dealer_weekly = {d: {wk: {'amt': 0, 'est': 0, 'cnt': 0} for wk in week_keys} for d in valid_dealers}
-        
-        for m_val, wk, ws in valid_daily_sheets:
-            d_data = sheet_data_cache[ws.id] 
-            current_remembered_dealer = ""
-            
-            for row in d_data:
-                if len(row) > 3: 
-                    row_header_str = clean_str("".join([safe_get(row, i) for i in range(4)]))
-                    if get_mapped_dealer(row_header_str) == "세종": current_remembered_dealer = "세종"
-                    else:
-                        for vd in valid_dealers:
-                            if clean_str(vd) in row_header_str:
-                                current_remembered_dealer = vd
-                                break
-
-                    temp_est, temp_cnt, temp_amt = clean_val(safe_get(row, 4)), clean_val(safe_get(row, 5)), clean_val(safe_get(row, 15))
-                    hc_name_raw = safe_get(row, 3)
-                    hc_name = clean_str(hc_name_raw)
-                    
-                    if any(x in hc_name for x in ['합계', '소계', '총계', '목표', '대리점', '사번', '비고']): continue
-                    if not hc_name: continue 
-                        
-                    if hc_name:
-                        est_val, cnt_val, amt_val = temp_est, temp_cnt, temp_amt
-                        
-                        if hc_name in acts:
-                            if wk in acts[hc_name]:
-                                acts[hc_name][wk]['est'] += est_val
-                                acts[hc_name][wk]['cnt'] += cnt_val
-                                acts[hc_name][wk]['amt'] += amt_val
-                            if m_val == current_month:
-                                month_acts[hc_name]['est'] += est_val
-                                month_acts[hc_name]['cnt'] += cnt_val
-                                month_acts[hc_name]['amt'] += amt_val
-                        
-                        matched_dealer = current_remembered_dealer
-                        if not matched_dealer: matched_dealer = hc_to_dealer.get(hc_name, "")
-                            
-                        if matched_dealer in valid_dealers:
-                            if wk in real_dealer_weekly[matched_dealer]:
-                                real_dealer_weekly[matched_dealer][wk]['est'] += est_val
-                                real_dealer_weekly[matched_dealer][wk]['cnt'] += cnt_val
-                                real_dealer_weekly[matched_dealer][wk]['amt'] += amt_val
-                            if m_val == current_month:
-                                real_dealer_monthly[matched_dealer]['est'] += est_val
-                                real_dealer_monthly[matched_dealer]['cnt'] += cnt_val
-                                real_dealer_monthly[matched_dealer]['amt'] += amt_val
-                        
-        acts_sales = {clean_str(hc): 0 for _, hc, _ in hc_info_raw}
-        real_dealer_sales = {d: 0 for d in valid_dealers}
-        
-        if valid_daily_sheets:
-            latest_m, latest_wk, latest_sheet = valid_daily_sheets[-1] 
-            l_data = sheet_data_cache[latest_sheet.id] 
-            current_remembered_dealer = ""
-            
-            for row in l_data:
-                if len(row) > 3:
-                    row_header_str = clean_str("".join([safe_get(row, i) for i in range(4)]))
-                    if get_mapped_dealer(row_header_str) == "세종": current_remembered_dealer = "세종"
-                    else:
-                        for vd in valid_dealers:
-                            if clean_str(vd) in row_header_str:
-                                current_remembered_dealer = vd
-                                break
-                                
-                    hc_name_s, temp_s = clean_str(safe_get(row, 3)), clean_val(safe_get(row, 18))
-                    
-                    if any(x in hc_name_s for x in ['합계', '소계', '총계', '목표', '대리점', '사번', '비고']): continue
-                    if not hc_name_s: continue 
-                        
-                    if hc_name_s:
-                        s_val = temp_s 
-                        if s_val > 0:
-                            if hc_name_s in acts_sales: acts_sales[hc_name_s] += s_val
-                            matched_dealer = current_remembered_dealer
-                            if not matched_dealer: matched_dealer = hc_to_dealer.get(hc_name_s, "")
-                            if matched_dealer in real_dealer_sales: real_dealer_sales[matched_dealer] += s_val
-
-        # 🚀 4단계: 명시적 지정 인원 기준 목표 배분
-        status_box.info("🎯 4단계: 실적 데이터 기반 목표 최적화 중...")
-        
-        # 🚨 [수정핵심] 제외 명단을 직접 하드코딩하여 명확히 분리! (여기에 없으면 휴무/무실적이라도 목표 할당됨)
-        EXCLUDED_HCS = ["장재형", "강지인", "신재민"]
-        
-        dealer_active_hcs = {}
-        for dealer, hc, _ in hc_info_raw:
-            if dealer not in dealer_active_hcs: dealer_active_hcs[dealer] = []
-            hc_clean = clean_str(hc)
-            
-            # 제외명단에 없으면 무조건 배분 대상(Active)으로 포함!
-            if hc_clean not in EXCLUDED_HCS:
-                dealer_active_hcs[dealer].append(hc_clean)
-                
-        dealer_sales_sum_active = {}
-        for dealer, hc, tgt in hc_info_raw:
-            hc_clean = clean_str(hc)
-            active_list = dealer_active_hcs.get(dealer, [])
-            if active_list: # 대리점에 배분 대상 인원이 존재하면
-                if hc_clean in active_list:
-                    dealer_sales_sum_active[dealer] = dealer_sales_sum_active.get(dealer, 0.0) + tgt
-            else: # 배분 대상 인원이 한 명도 없으면
-                dealer_sales_sum_active[dealer] = dealer_sales_sum_active.get(dealer, 0.0) + tgt
-
-        final_hc_sales_tgt = {}
-        hc_weights = {}
-        
-        for dealer, hc, tgt in hc_info_raw:
-            hc_clean = clean_str(hc)
-            active_list = dealer_active_hcs.get(dealer, [])
-            
-            # 제외 대상자(퇴사 등)는 목표를 0으로 만들고 배분에서 제외
-            if hc_clean in EXCLUDED_HCS:
-                final_hc_sales_tgt[hc_clean] = 0.0
-                hc_weights[hc_clean] = 0.0
-            else:
-                d_sum_active = dealer_sales_sum_active.get(dealer, 0.0)
-                original_dealer_sum = dealer_sales_sum.get(dealer, 0.0)
-                
-                # 빈 목표 파이를 남은 인원들에게 비례해서 다시 얹어줌
-                weight = (tgt / d_sum_active) if d_sum_active > 0 else 0.0
-                final_hc_sales_tgt[hc_clean] = original_dealer_sum * weight
-                hc_weights[hc_clean] = weight 
-
-        targets = {}
-        for dealer, hc, _ in hc_info_raw:
-            hc_clean = clean_str(hc)
-            targets[hc_clean] = {}
-            weight = hc_weights.get(hc_clean, 0.0)
-            d_t = dealer_targets.get(dealer, {})
-            for wk in week_keys:
-                targets[hc_clean][wk] = {
-                    'amt': d_t.get(wk, {}).get('amt', 0) * weight,
-                    'est': d_t.get(wk, {}).get('est', 0) * weight,
-                    'cnt': d_t.get(wk, {}).get('cnt', 0) * weight,
-                }
-
-        status_box.info("✅ 데이터 구성 완료! 표 출력 중...")
-        
-        col_tuples = [
-            ('기본정보', '대리점', '대리점'), ('기본정보', 'HC명', 'HC명'),
-            ('🎯 당월매출', '인별매출(천)', '목표'), ('🎯 당월매출', '인별매출(천)', 'ACT'), ('🎯 당월매출', '인별매출(천)', '달성율(%)'),
-            ('🌟 당월 합계', '계약액(천)', '목표'), ('🌟 당월 합계', '계약액(천)', 'ACT'), ('🌟 당월 합계', '계약액(천)', '달성율(%)'),
-            ('🌟 당월 합계', '견적건', '목표'), ('🌟 당월 합계', '견적건', 'ACT'), ('🌟 당월 합계', '견적건', '달성율(%)'),
-            ('🌟 당월 합계', '계약건', '목표'), ('🌟 당월 합계', '계약건', 'ACT'), ('🌟 당월 합계', '계약건', '달성율(%)')
-        ]
-        
-        for wk in week_keys:
-            wk_label = f"{wk} ({date_headers.get(wk, '')})"
-            col_tuples.extend([(wk_label, '계약액(천)', '목표'), (wk_label, '계약액(천)', 'ACT'), (wk_label, '계약액(천)', '달성율(%)')])
-            col_tuples.extend([(wk_label, '견적건', '목표'), (wk_label, '견적건', 'ACT'), (wk_label, '견적건', '달성율(%)')])
-            col_tuples.extend([(wk_label, '계약건', '목표'), (wk_label, '계약건', 'ACT'), (wk_label, '계약건', '달성율(%)')])
-            
-        columns = pd.MultiIndex.from_tuples(col_tuples, names=['주차', '항목', '구분'])
-        rows = []
-        for dealer, hc, raw_sales_tgt in hc_info_raw:
-            hc_clean = clean_str(hc)
-            sales_tgt = final_hc_sales_tgt.get(hc_clean, 0.0) # 재조정된 목표 사용
-            m_act = month_acts.get(hc_clean, {'amt': 0, 'est': 0, 'cnt': 0})
-            s_act = acts_sales.get(hc_clean, 0)
-
-            # 목표 0 + 모든 ACT 0 이면 표에서 숨김 (단, 잔여 실적이 있거나 원래 휴무자라 목표배분을 받았으면 보임!)
-            if sales_tgt == 0.0 and m_act['amt'] == 0 and m_act['est'] == 0 and m_act['cnt'] == 0 and s_act == 0: continue
-
-            row_data = [dealer, hc]
-            row_data.extend([sales_tgt, s_act, 0.0])
-            
-            m_tgt_amt = sum([targets.get(hc_clean, {}).get(wk, {}).get('amt', 0) for wk in week_keys])
-            m_tgt_est = sum([targets.get(hc_clean, {}).get(wk, {}).get('est', 0) for wk in week_keys])
-            m_tgt_cnt = sum([targets.get(hc_clean, {}).get(wk, {}).get('cnt', 0) for wk in week_keys])
-            
-            row_data.extend([m_tgt_amt, m_act['amt'], 0.0, m_tgt_est, m_act['est'], 0.0, m_tgt_cnt, m_act['cnt'], 0.0])
-            
-            for wk in week_keys:
-                t = targets.get(hc_clean, {}).get(wk, {'amt': 0, 'est': 0, 'cnt': 0})
-                a = acts.get(hc_clean, {}).get(wk, {'amt': 0, 'est': 0, 'cnt': 0})
-                row_data.extend([t['amt'], a['amt'], 0.0, t['est'], a['est'], 0.0, t['cnt'], a['cnt'], 0.0])
-                
-            rows.append(row_data)
-
-        df = pd.DataFrame(rows, columns=columns)
-        for col in df.columns[2:]:
-            if col[2] == '달성율(%)':
-                tgt_col, act_col = (col[0], col[1], '목표'), (col[0], col[1], 'ACT')
-                df[col] = np.where(df[tgt_col] > 0, (df[act_col] / df[tgt_col] * 100).round(1), 0)
-        
-        status_box.empty()
-        return df, date_headers, real_dealer_sales, real_dealer_monthly, real_dealer_weekly 
-
+@st.cache_data(ttl=60) 
+def load_perf_sheet(_gc_client):
+    try:
+        data = _gc_client.open(SHEET_NAME).worksheet("시트1").get("B32:AG200")
+        if data:
+            safe_rows = [r + [''] * (32 - len(r)) for r in data]
+            return pd.DataFrame(safe_rows)
+        return pd.DataFrame()
     except Exception as e:
-        status_box.empty()
-        st.error("🚨 데이터 구성 중 에러가 발생했습니다!")
-        with st.expander("🛠️ 상세 에러 보기"): st.code(traceback.format_exc())
-        return pd.DataFrame(), {}, {}, {}, {}
+        print(f"VDT 데이터를 가져오지 못했습니다 (API 한도 또는 시트 오류): {e}")
+        return pd.DataFrame()
 
-def calculate_subtotals(df, real_dealer_sales, real_dealer_monthly, real_dealer_weekly):
-    if df.empty: return df
+# 🚀 VDT 지표 매핑 (F=4, G=5, H=6, I=7, R=16, T=18, U=19, W=21, Y=23)
+def get_perf_metrics(perf_df, target_id, target_name):
+    default = { 'F': 0, 'G': 0, 'H': 0, 'I': 0, 'J': 0, 'R': 0, 'T': 0, 'U': 0, 'W': 0, 'Y': 0 }
+    if perf_df is None or perf_df.empty: return default
     
-    result_rows = []
-    dealer_col, hc_col = ('기본정보', '대리점', '대리점'), ('기본정보', 'HC명', 'HC명')
-    
-    for dealer, group in df.groupby(dealer_col, sort=False):
-        for _, row in group.iterrows(): result_rows.append(row)
+    def clean_val(v):
+        if not v or pd.isna(v): return 0.0
+        v_str = str(v).replace('%', '').replace(',', '').replace('원', '').replace('건', '').strip()
+        multiplier = 1
+        if '억' in v_str:
+            v_str = v_str.replace('억', '')
+            multiplier = 100000000
+        elif '만' in v_str:
+            v_str = v_str.replace('만', '')
+            multiplier = 10000
+        v_str = re.sub(r'[^\d\.-]', '', v_str)
+        if not v_str: return 0.0
+        try: return float(v_str) * multiplier
+        except: return 0.0
+
+    sums = { 'F': 0, 'G': 0, 'H': 0, 'I': 0, 'J': 0, 'R': 0, 'T': 0, 'U': 0, 'W': 0, 'Y': 0 }
+
+    if target_id == "ALL":
+        all_names = [v['name'] for v in HC_DB.values()]
+        for _, row in perf_df.iterrows():
+            vals = row.values
+            if any(n in "".join([str(x).strip() for x in vals]) for n in all_names):
+                sums['F'] += clean_val(vals[4]); sums['G'] += clean_val(vals[5]); sums['H'] += clean_val(vals[6]); sums['I'] += clean_val(vals[7])
+                sums['R'] += clean_val(vals[16]); sums['T'] += clean_val(vals[18]); sums['U'] += clean_val(vals[19]); sums['W'] += clean_val(vals[21]); sums['Y'] += clean_val(vals[23])
+        if sums['H'] > 0: sums['J'] = (sums['I'] / sums['H']) * 100
+        return sums
+        
+    elif str(target_id).startswith("REGION_"):
+        region_name = str(target_id).replace("REGION_", "")
+        allowed_dealers = REGION_MAP.get(region_name, [])
+        dealer_names = [v['name'] for v in HC_DB.values() if v['dealer'] in allowed_dealers]
+        for _, row in perf_df.iterrows():
+            vals = row.values
+            if any(n in "".join([str(x).strip() for x in vals]) for n in dealer_names):
+                sums['F'] += clean_val(vals[4]); sums['G'] += clean_val(vals[5]); sums['H'] += clean_val(vals[6]); sums['I'] += clean_val(vals[7])
+                sums['R'] += clean_val(vals[16]); sums['T'] += clean_val(vals[18]); sums['U'] += clean_val(vals[19]); sums['W'] += clean_val(vals[21]); sums['Y'] += clean_val(vals[23])
+        if sums['H'] > 0: sums['J'] = (sums['I'] / sums['H']) * 100
+        return sums
+        
+    elif str(target_id).startswith("DEALER_"):
+        dealer_name = str(target_id).replace("DEALER_", "")
+        dealer_names = [v['name'] for v in HC_DB.values() if v['dealer'] == dealer_name]
+        for _, row in perf_df.iterrows():
+            vals = row.values
+            if any(n in "".join([str(x).strip() for x in vals]) for n in dealer_names):
+                sums['F'] += clean_val(vals[4]); sums['G'] += clean_val(vals[5]); sums['H'] += clean_val(vals[6]); sums['I'] += clean_val(vals[7])
+                sums['R'] += clean_val(vals[16]); sums['T'] += clean_val(vals[18]); sums['U'] += clean_val(vals[19]); sums['W'] += clean_val(vals[21]); sums['Y'] += clean_val(vals[23])
+        if sums['H'] > 0: sums['J'] = (sums['I'] / sums['H']) * 100
+        return sums
+        
+    else:
+        # 🚀 [보강 2] 시트에 적힌 사번이 42008 이든 00042008 이든 둘 다 찾아서 누락 없이 합산
+        possible_ids = [
+            str(target_id), 
+            str(target_id).zfill(8), 
+            str(int(target_id)) if str(target_id).isdigit() else "",
+            target_name
+        ]
+        possible_ids = list(set([pid for pid in possible_ids if pid])) # 중복 제거 및 빈 값 제거
+        
+        for _, row in perf_df.iterrows():
+            vals = row.values
+            row_str = "".join([str(x).strip() for x in vals])
+            if any(pid in row_str for pid in possible_ids):
+                sums['F'] += clean_val(vals[4]); sums['G'] += clean_val(vals[5]); sums['H'] += clean_val(vals[6]); sums['I'] += clean_val(vals[7])
+                sums['R'] += clean_val(vals[16]); sums['T'] += clean_val(vals[18]); sums['U'] += clean_val(vals[19]); sums['W'] += clean_val(vals[21]); sums['Y'] += clean_val(vals[23])
+                
+        if sums['H'] > 0: sums['J'] = (sums['I'] / sums['H']) * 100
+        return sums
+
+def save_data_to_sheet(gc_client, df, is_master_mode, current_user):
+    try:
+        spreadsheet = gc_client.open(SHEET_NAME)
+        headers = [['선택/삭제', '상담일', '상담번호', 'HC_ID', 'HC명', '대리점명', '고객명', '연락처', '주소', '상품', '현장유형', '견적금액', '1차_TM', '1차_TM_일자', '1차_증빙', '2차_TM', '2차_TM_일자', '2차_증빙', '3차_TM', '3차_TM_일자', '3차_증빙', '계약완료', '계약완료금액', '상담메모', 'is_self', '세부품목']]
+        def _prepare(d):
+            safe_list = []
+            for row in [d.columns.values.tolist()] + d.values.tolist():
+                safe_row = []
+                for cell in row:
+                    if isinstance(cell, bool): safe_row.append("TRUE" if cell else "FALSE")
+                    else: safe_row.append("" if str(cell).strip().lower() in ['nan', 'none', 'nat', '<na>'] else str(cell))
+                safe_list.append(safe_row)
+            return safe_list
             
-        subtotal = group.select_dtypes(include=[np.number]).sum()
-        subtotal[dealer_col], subtotal[hc_col] = dealer, "합계"
-        
-        if dealer in real_dealer_sales: subtotal[('🎯 당월매출', '인별매출(천)', 'ACT')] = real_dealer_sales[dealer]
-        if dealer in real_dealer_monthly:
-            subtotal[('🌟 당월 합계', '계약액(천)', 'ACT')] = real_dealer_monthly[dealer]['amt']
-            subtotal[('🌟 당월 합계', '견적건', 'ACT')] = real_dealer_monthly[dealer]['est']
-            subtotal[('🌟 당월 합계', '계약건', 'ACT')] = real_dealer_monthly[dealer]['cnt']
-            
-        if dealer in real_dealer_weekly:
-            for wk, wk_data in real_dealer_weekly[dealer].items():
-                wk_cols = [c[0] for c in df.columns if wk in c[0]]
-                if wk_cols:
-                    w_c = wk_cols[0]
-                    subtotal[(w_c, '계약액(천)', 'ACT')] = wk_data['amt']
-                    subtotal[(w_c, '견적건', 'ACT')] = wk_data['est']
-                    subtotal[(w_c, '계약건', 'ACT')] = wk_data['cnt']
-        
-        for col in df.columns[2:]:
-            if col[2] == '달성율(%)':
-                tgt_col, act_col = (col[0], col[1], '목표'), (col[0], col[1], 'ACT')
-                subtotal[col] = round((subtotal[act_col] / subtotal[tgt_col] * 100), 1) if subtotal[tgt_col] > 0 else 0.0
-        result_rows.append(pd.Series(subtotal))
-
-    grand_total = df.select_dtypes(include=[np.number]).sum()
-    grand_total[dealer_col], grand_total[hc_col] = "🌟 총계", "🌟 총계"
-    
-    grand_total[('🎯 당월매출', '인별매출(천)', 'ACT')] = sum([real_dealer_sales.get(d, 0) for d in df[dealer_col].unique()])
-    grand_total[('🌟 당월 합계', '계약액(천)', 'ACT')] = sum([real_dealer_monthly.get(d, {}).get('amt', 0) for d in df[dealer_col].unique()])
-    grand_total[('🌟 당월 합계', '견적건', 'ACT')] = sum([real_dealer_monthly.get(d, {}).get('est', 0) for d in df[dealer_col].unique()])
-    grand_total[('🌟 당월 합계', '계약건', 'ACT')] = sum([real_dealer_monthly.get(d, {}).get('cnt', 0) for d in df[dealer_col].unique()])
-    
-    some_dealer = df[dealer_col].unique()[0] if not df.empty else None
-    if some_dealer and some_dealer in real_dealer_weekly:
-        for wk in real_dealer_weekly[some_dealer].keys():
-            wk_cols = [c[0] for c in df.columns if wk in c[0]]
-            if wk_cols:
-                w_c = wk_cols[0]
-                grand_total[(w_c, '계약액(천)', 'ACT')] = sum([real_dealer_weekly.get(d, {}).get(wk, {}).get('amt', 0) for d in df[dealer_col].unique()])
-                grand_total[(w_c, '견적건', 'ACT')] = sum([real_dealer_weekly.get(d, {}).get(wk, {}).get('est', 0) for d in df[dealer_col].unique()])
-                grand_total[(w_c, '계약건', 'ACT')] = sum([real_dealer_weekly.get(d, {}).get(wk, {}).get('cnt', 0) for d in df[dealer_col].unique()])
-
-    for col in df.columns[2:]:
-        if col[2] == '달성율(%)':
-            tgt_col, act_col = (col[0], col[1], '목표'), (col[0], col[1], 'ACT')
-            grand_total[col] = round((grand_total[act_col] / grand_total[tgt_col] * 100), 1) if grand_total[tgt_col] > 0 else 0.0
-    result_rows.append(pd.Series(grand_total))
-    
-    return pd.DataFrame(result_rows)
-
-df_raw, date_headers, real_dealer_sales, real_dealer_monthly, real_dealer_weekly = load_vdt_data()
-
-if not df_raw.empty:
-    final_df = calculate_subtotals(df_raw, real_dealer_sales, real_dealer_monthly, real_dealer_weekly)
-    
-    st.markdown("---")
-    col_sel, col_btn = st.columns([7, 2]) 
-    
-    with col_sel:
-        st.markdown("### 🔎 **인별 / 대리점별 상세 실적 확인**")
-        valid_choices = ["✨ 여기를 클릭하여 인원 또는 대리점을 선택하세요 (전체 표만 보기)"]
-        for r_idx in range(len(final_df)):
-            dealer, hc = final_df.iloc[r_idx][('기본정보', '대리점', '대리점')], final_df.iloc[r_idx][('기본정보', 'HC명', 'HC명')]
-            if hc == "🌟 총계": continue
-            if hc == "합계": valid_choices.append(f"🏢 [{dealer}] 대리점 합계")
-            else: valid_choices.append(f"👤 {dealer} - {hc}")
-        
-        selected_option = st.selectbox("👇 아래 입력창을 클릭(선택)하면 해당 인원의 실적 차트가 나타납니다.", options=valid_choices)
-        
-    with col_btn:
-        st.write("") 
-        st.write("") 
-        st.write("") 
-        if st.button("🔄 실적 데이터 새로고침", use_container_width=True):
-            st.cache_data.clear()
-            st.rerun()
-
-    if selected_option != valid_choices[0]:
-        st.markdown("---")
-        is_dealer_total = "대리점 합계" in selected_option
-        if is_dealer_total:
-            target_dealer = selected_option.replace("🏢 [", "").replace("] 대리점 합계", "")
-            target_hc, unit_str = "합계", "팀"
-            comp_df = final_df[final_df[('기본정보', 'HC명', 'HC명')] == "합계"]
+        if is_master_mode:
+            for name in list(set([info["name"] for info in HC_DB.values()])):
+                group_df = df[df['HC명'] == name]
+                sheet = get_or_create_sheet(spreadsheet, name); sheet.clear()
+                if not group_df.empty: sheet.update('A1', _prepare(group_df))
+                else: sheet.update('A1', headers)
         else:
-            parts = selected_option.replace("👤 ", "").split(" - ")
-            target_dealer, target_hc, unit_str = parts[0], parts[1], "명"
-            comp_df = final_df[~final_df[('기본정보', 'HC명', 'HC명')].str.contains("합계|총계", na=False)]
-            
-        t_row = final_df[(final_df[('기본정보', '대리점', '대리점')] == target_dealer) & (final_df[('기본정보', 'HC명', 'HC명')] == target_hc)].iloc[0]
-        total_competitors = len(comp_df)
-        
-        def get_rank_str(col_tuple, val):
-            if val == 0: return f"순위 제외"
-            ranks = comp_df[col_tuple].rank(method='min', ascending=False)
-            target_idx = comp_df[(comp_df[('기본정보', '대리점', '대리점')] == target_dealer) & (comp_df[('기본정보', 'HC명', 'HC명')] == target_hc)].index[0]
-            return f"🏆 {int(ranks.loc[target_idx])}등 / {total_competitors}{unit_str}"
+            sheet = get_or_create_sheet(spreadsheet, current_user); sheet.clear()
+            my_df = df[df['HC명'] == current_user]
+            if not my_df.empty: sheet.update('A1', _prepare(my_df))
+            else: sheet.update('A1', headers)
+        return True
+    except: return False
 
-        curr_wk_cols = [c[0] for c in final_df.columns if CURRENT_WEEK in c[0]]
-        cw_col = curr_wk_cols[0] if curr_wk_cols else None
-        prev_wk_cols = [c[0] for c in final_df.columns if PREV_WEEK and PREV_WEEK in c[0]]
-        pw_col = prev_wk_cols[0] if prev_wk_cols else None
-        
-        st.markdown(f"### ✨ **{selected_option.split(' ', 1)[1]}** 실적 요약 (당월 / 전주 / 당주)")
-        
-        act1, pct1 = t_row[('🎯 당월매출', '인별매출(천)', 'ACT')], t_row[('🎯 당월매출', '인별매출(천)', '달성율(%)')]
-        rk1 = get_rank_str(('🎯 당월매출', '인별매출(천)', '달성율(%)'), pct1)
-        
-        act2, pct2 = t_row[('🌟 당월 합계', '계약액(천)', 'ACT')], t_row[('🌟 당월 합계', '계약액(천)', '달성율(%)')]
-        rk2 = get_rank_str(('🌟 당월 합계', '계약액(천)', '달성율(%)'), pct2)
-        
-        act_m_est, pct_m_est = t_row[('🌟 당월 합계', '견적건', 'ACT')], t_row[('🌟 당월 합계', '견적건', '달성율(%)')]
-        rk_m_est = get_rank_str(('🌟 당월 합계', '견적건', '달성율(%)'), pct_m_est)
-        
-        act_pw_amt, pct_pw_amt = (t_row[(pw_col, '계약액(천)', 'ACT')], t_row[(pw_col, '계약액(천)', '달성율(%)')]) if pw_col else (0, 0)
-        rk_pw_amt = get_rank_str((pw_col, '계약액(천)', '달성율(%)'), pct_pw_amt) if pw_col else ""
-        
-        act_pw_cnt, pct_pw_cnt = (t_row[(pw_col, '계약건', 'ACT')], t_row[(pw_col, '계약건', '달성율(%)')]) if pw_col else (0, 0)
-        rk_pw_cnt = get_rank_str((pw_col, '계약건', '달성율(%)'), pct_pw_cnt) if pw_col else ""
-        
-        act_pw_est, pct_pw_est = (t_row[(pw_col, '견적건', 'ACT')], t_row[(pw_col, '견적건', '달성율(%)')]) if pw_col else (0, 0)
-        rk_pw_est = get_rank_str((pw_col, '견적건', '달성율(%)'), pct_pw_est) if pw_col else ""
-        
-        act3, pct3 = (t_row[(cw_col, '계약액(천)', 'ACT')], t_row[(cw_col, '계약액(천)', '달성율(%)')]) if cw_col else (0, 0)
-        rk3 = get_rank_str((cw_col, '계약액(천)', '달성율(%)'), pct3) if cw_col else ""
-        
-        act4, pct4 = (t_row[(cw_col, '계약건', 'ACT')], t_row[(cw_col, '계약건', '달성율(%)')]) if cw_col else (0, 0)
-        rk4 = get_rank_str((cw_col, '계약건', '달성율(%)'), pct4) if cw_col else ""
-        
-        act_cw_est, pct_cw_est = (t_row[(cw_col, '견적건', 'ACT')], t_row[(cw_col, '견적건', '달성율(%)')]) if cw_col else (0, 0)
-        rk_cw_est = get_rank_str((cw_col, '견적건', '달성율(%)'), pct_cw_est) if cw_col else ""
+if 'data' not in st.session_state:
+    loaded_data = load_data_from_sheet(client, is_master, my_name) if client else clean_and_enforce_types(None)
+    if loaded_data is not None and not loaded_data.empty:
+        loaded_data = loaded_data.sort_values(by='상담일', ascending=False).reset_index(drop=True)
+    st.session_state['data'] = loaded_data
 
-        mc1, mc2, mc3 = st.columns(3)
-        with mc1: 
-            st.metric("🌲 당월매출 (천원)", f"{act1:,.0f}", f"{pct1:.1f}% 달성 | {rk1}", delta_color="off")
-            st.metric("🌟 당월 합계 계약액 (천원)", f"{act2:,.0f}", f"{pct2:.1f}% 달성 | {rk2}", delta_color="off")
-            st.metric("🌟 당월 합계 견적건 (건)", f"{act_m_est:,.0f}", f"{pct_m_est:.1f}% 달성 | {rk_m_est}", delta_color="off")
-            
-        with mc2: 
-            if pw_col:
-                st.metric(f"⏪ 전주({PREV_WEEK}) 계약액 (천원)", f"{act_pw_amt:,.0f}", f"{pct_pw_amt:.1f}% 달성 | {rk_pw_amt}", delta_color="off")
-                st.metric(f"⏪ 전주({PREV_WEEK}) 계약건 (건)", f"{act_pw_cnt:,.0f}", f"{pct_pw_cnt:.1f}% 달성 | {rk_pw_cnt}", delta_color="off")
-                st.metric(f"⏪ 전주({PREV_WEEK}) 견적건 (건)", f"{act_pw_est:,.0f}", f"{pct_pw_est:.1f}% 달성 | {rk_pw_est}", delta_color="off")
-            else:
-                st.metric("⏪ 전주 계약액 (천원)", "-", "해당 데이터 없음", delta_color="off")
-                st.metric("⏪ 전주 계약건 (건)", "-", "해당 데이터 없음", delta_color="off")
-                st.metric("⏪ 전주 견적건 (건)", "-", "해당 데이터 없음", delta_color="off")
-                
-        with mc3: 
-            st.metric(f"🌊 당주({CURRENT_WEEK}) 계약액 (천원)", f"{act3:,.0f}", f"{pct3:.1f}% 달성 | {rk3}", delta_color="off")
-            st.metric(f"🌊 당주({CURRENT_WEEK}) 계약건 (건)", f"{act4:,.0f}", f"{pct4:.1f}% 달성 | {rk4}", delta_color="off")
-            st.metric(f"🌊 당주({CURRENT_WEEK}) 견적건 (건)", f"{act_cw_est:,.0f}", f"{pct_cw_est:.1f}% 달성 | {rk_cw_est}", delta_color="off")
-            
-        st.markdown("##### 📈 주요 항목 목표 대비 실적(ACT)")
-        
-        categories = ["당월매출", "당월 합계 계약액", f"{CURRENT_WEEK} 계약액", f"{CURRENT_WEEK} 견적건", f"{CURRENT_WEEK} 계약건"]
-        targets = [
-            t_row[('🎯 당월매출', '인별매출(천)', '목표')], t_row[('🌟 당월 합계', '계약액(천)', '목표')],
-            t_row[(cw_col, '계약액(천)', '목표')] if cw_col else 0, t_row[(cw_col, '견적건', '목표')] if cw_col else 0, t_row[(cw_col, '계약건', '목표')] if cw_col else 0
-        ]
-        acts = [
-            t_row[('🎯 당월매출', '인별매출(천)', 'ACT')], t_row[('🌟 당월 합계', '계약액(천)', 'ACT')],
-            t_row[(cw_col, '계약액(천)', 'ACT')] if cw_col else 0, t_row[(cw_col, '견적건', 'ACT')] if cw_col else 0, t_row[(cw_col, '계약건', 'ACT')] if cw_col else 0
-        ]
-        pcts = [pct1, pct2, pct3, t_row[(cw_col, '견적건', '달성율(%)')] if cw_col else 0, pct4]
+def upload_to_imgbb(file_obj, file_name):
+    try:
+        url = "https://api.imgbb.com/1/upload"
+        req = urllib.request.Request(url, data=urllib.parse.urlencode({"key": IMGBB_API_KEY, "image": base64.b64encode(file_obj.read()).decode("utf-8"), "name": file_name.split('.')[0]}).encode("utf-8"))
+        res = json.loads(urllib.request.urlopen(req).read().decode("utf-8"))
+        return res["data"]["url"] if res.get("success") else None
+    except: return None
 
-        text_targets = [f"{v:,.0f}건" if "건" in c else f"{v:,.0f}" for v, c in zip(targets, categories)]
-        text_acts = [f"{v:,.0f}건<br>({p:.1f}%)" if "건" in c else f"{v:,.0f}<br>({p:.1f}%)" for v, p, c in zip(acts, pcts, categories)]
-        act_colors = ['#10b981' if p >= 100 else '#3b82f6' for p in pcts]
+def parse_product_summary(block):
+    lines = [l.strip() for l in block.split("\n") if l.strip()]
+    prod_lines, in_prod = [], False
+    for l in lines:
+        if l in ["상담 상품", "상품정보"]: in_prod = True; continue
+        if l in ["구매 동기", "할인혜택 적용", "시방서", "시방서 (선택)"]: in_prod = False
+        if l.lower() == 'goods': continue
+        if in_prod and not re.search(r'^\d+$', l) and not re.search(r'[\d,]+원$', l) and l not in ["홈퍼니싱 솔루션", "홈플래너 설계"] and not re.match(r'^\d{6,}$', l) and len(l) > 3 and "고객님" not in l and "상담" not in l and "견적" not in l: 
+            prod_lines.append(l)
 
-        cat_amt, tgt_amt, act_amt, tt_amt, ta_amt, ac_amt = categories[:3], targets[:3], acts[:3], text_targets[:3], text_acts[:3], act_colors[:3]
-        cat_cnt, tgt_cnt, act_cnt, tt_cnt, ta_cnt, ac_cnt = categories[3:], targets[3:], acts[3:], text_targets[3:], text_acts[3:], act_colors[3:]
-
-        fig = go.Figure()
-        fig.add_trace(go.Bar(x=cat_amt, y=tgt_amt, name='🎯 목표', marker_color='#cbd5e1', text=tt_amt, textposition='outside', textfont=dict(size=14, color='#1e293b'), yaxis='y1'))
-        fig.add_trace(go.Bar(x=cat_amt, y=act_amt, name='🔥 실적(ACT)', marker_color=ac_amt, text=ta_amt, textposition='outside', textfont=dict(size=15, color='#0f172a'), yaxis='y1'))
-        fig.add_trace(go.Bar(x=cat_cnt, y=tgt_cnt, name='🎯 목표(건수)', marker_color='#cbd5e1', text=tt_cnt, textposition='outside', textfont=dict(size=14, color='#1e293b'), yaxis='y2', showlegend=False))
-        fig.add_trace(go.Bar(x=cat_cnt, y=act_cnt, name='🔥 실적(건수)', marker_color=ac_cnt, text=ta_cnt, textposition='outside', textfont=dict(size=15, color='#0f172a'), yaxis='y2', showlegend=False))
-        
-        fig.update_layout(
-            barmode='group', height=450, xaxis=dict(tickangle=0, tickfont=dict(size=16, color='black')), 
-            yaxis=dict(title=dict(text="<b>금액 (천원)</b>", font=dict(size=15, color='#1e3a8a')), tickfont=dict(size=14, color='#1e3a8a')),
-            yaxis2=dict(title=dict(text="<b>건수 (건)</b>", font=dict(size=15, color='#ea580c')), tickfont=dict(size=14, color='#ea580c'), overlaying='y', side='right'),
-            margin=dict(l=20, r=20, t=70, b=20), legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, font=dict(size=18, color='black')), plot_bgcolor='white'
-        )
-        st.plotly_chart(fig, use_container_width=True)
-        st.markdown("---")
+    res = []
+    for p in prod_lines:
+        matched = False
+        if "책상" in p and "의자" in p: res.append("책상의자 - 알로/조이"); continue
+        for cat, keywords in PRODUCT_KEYWORDS.items():
+            if any(k in p for k in keywords): res.append(cat); matched = True; break
+        if not matched: res.append("자녀방 책상" if "책상" in p else "기타(홈퍼니싱)")
     
-    st.markdown(f"""
-    <div style='background-color: #f8fafc; padding: 15px; border-left: 5px solid #3b82f6; border-radius: 5px; margin-bottom: 20px;'>
-        <h2 style='margin:0; color: #1e3a8a;'>📌 {current_month}월 {CURRENT_WEEK} VDT 현황</h2>
+    seen = set(); top = []
+    for r in res:
+        if r not in seen and r != "기타(홈퍼니싱)": seen.add(r); top.append(r)
+        if len(top) >= 3: break
+        
+    cat_summary = " / ".join(top) if top else "기타(홈퍼니싱)"
+    detail_str = re.sub(r'(?i)^goods\s*,\s*', '', " , ".join(prod_lines))
+    return cat_summary, detail_str
+
+def parse_raw_text(text, master_mode):
+    records, skipped = [], 0
+    for block in text.split("상담일\n")[1:]:
+        block = "상담일\n" + block 
+        hc_m = re.search(r'영업사원\n(\d+)\s+([가-힣]+)', block)
+        if hc_m:
+            # 🚀 [보강 3] 복사해 온 텍스트에 0이 빠져있어도 무조건 8자리 사번으로 패딩
+            p_id = hc_m.group(1).zfill(8)
+            if not master_mode and p_id != my_id: skipped += 1; continue
+            p_name = hc_m.group(2)
+        else: p_id, p_name = my_id, my_name
+                
+        d_m = re.search(r'상담일\n([\d-]+)', block)
+        n_m = re.search(r'상담번호\n(\d+)', block)
+        if d_m and n_m:
+            c_m = re.search(r'([가-힣]+)\s+고객님', block)
+            c_name = c_m.group(1) if c_m else ""
+            is_self = bool(c_name and p_name and c_name.strip() == p_name.strip())
+            amt_m = re.search(r'결제 예정 금액\n([\d,]+)', block)
+            ph_m = re.search(r'휴대폰 번호\n([\d-]+)', block)
+            ad_m = re.search(r'주소\n(.+)', block)
+            ty_m = re.search(r'현장 유형\n([^\n]+)', block)
+            
+            cat_summary, detail_str = parse_product_summary(block)
+            
+            records.append({
+                '선택/삭제': False, '상담일': pd.to_datetime(d_m.group(1)).date(),
+                '상담번호': n_m.group(1), 'HC_ID': p_id, 'HC명': p_name,
+                '대리점명': HC_DB.get(p_id, {}).get("dealer", my_dealer), '고객명': f"[본인] {c_name}" if is_self else c_name,
+                '연락처': ph_m.group(1) if ph_m else "", '주소': ad_m.group(1) if ad_m else "",
+                '상품': cat_summary, '현장유형': ty_m.group(1) if ty_m else "",
+                '견적금액': int(amt_m.group(1).replace(",", "")) if amt_m else 0,
+                '1차_TM': False, '1차_TM_일자': None, '1차_증빙': '', '2차_TM': False, '2차_TM_일자': None, '2차_증빙': '', '3차_TM': False, '3차_TM_일자': None, '3차_증빙': '', 
+                '계약완료': False, '계약완료금액': 0, '상담메모': '', 'is_self': is_self, '세부품목': detail_str 
+            })
+    return pd.DataFrame(records), skipped
+
+def add_quotes_callback():
+    txt = st.session_state.get('raw_input_area', '')
+    if txt.strip():
+        new_df, skipped = parse_raw_text(txt, is_master)
+        if not new_df.empty:
+            ldf = load_data_from_sheet(client, is_master, my_name)
+            udf = clean_and_enforce_types(pd.concat([ldf, new_df], ignore_index=True) if not ldf.empty else new_df).sort_values(by='상담일', ascending=False).reset_index(drop=True)
+            if save_data_to_sheet(client, udf, is_master, my_name):
+                st.session_state.update({'data': udf, 'success_msg': f"성공적으로 {len(new_df)}건을 추가했습니다!", 'uploader_key': st.session_state['uploader_key'] + 1})
+        else: st.session_state['warning_msg'] = "추가된 견적이 없습니다."
+        if skipped > 0: st.session_state['warning_msg'] = f"타 사원의 견적 {skipped}건 제외됨."
+        st.session_state['raw_input_area'] = ""
+
+col_head_left, col_head_right = st.columns([2, 1])
+with col_head_left:
+    st.title("충청호남팀 견적 관리 및 TM 진도")
+    st.caption(f"기준일: {today.strftime('%Y년 %m월 %d일')} | 실시간 자동 동기화 서버 연결됨")
+
+with col_head_right:
+    st.markdown("<div style='margin-top: 30px;'></div>", unsafe_allow_html=True)
+    sub_col1, sub_col2 = st.columns([3, 1])
+    with sub_col1:
+        if is_master: st.markdown(f"<div class='user-info-box'><span class='user-info-name'>{my_name} 님</span></div>", unsafe_allow_html=True)
+        else: st.markdown(f"<div class='user-info-box'><span class='user-info-name'>{my_name} 님 ({my_dealer})</span><br><span class='user-info-sub'>사번: {my_id}</span></div>", unsafe_allow_html=True)
+    with sub_col2:
+        if st.button("로그아웃"): 
+            st.session_state.clear() 
+            st.rerun()
+        
+    if is_master:
+        if 'selected_hc' not in st.session_state: st.session_state['selected_hc'] = "🌟 전체보기 (모든 영업사원)"
+        dealers = sorted(list(set([info['dealer'] for info in HC_DB.values()])))
+        all_hc_list = ["🌟 전체보기 (모든 영업사원)"]
+        all_hc_list.append("🌍 [충청상권] 통합 조회")
+        all_hc_list.append("🌍 [호남상권] 통합 조회")
+        for d in dealers: all_hc_list.append(f"🏢 [{d}] 대리점 전체보기")
+        for info in HC_DB.values(): all_hc_list.append(f"👤 {info['name']} ({info['dealer']})")
+        selected_hc = st.selectbox("마스터 전용 조회 필터", all_hc_list, key="selected_hc")
+
+if is_master:
+    my_df = st.session_state['data'].copy()
+    if selected_hc == "🌟 전체보기 (모든 영업사원)": pass
+    elif "통합 조회" in selected_hc:
+        region_name = selected_hc.split("[")[1].split("]")[0]
+        allowed_dealers = REGION_MAP.get(region_name, [])
+        my_df = my_df[my_df['대리점명'].isin(allowed_dealers)]
+    elif "대리점 전체보기" in selected_hc:
+        dealer_name = selected_hc.split("[")[1].split("]")[0]
+        my_df = my_df[my_df['대리점명'] == dealer_name]
+    else:
+        my_df = my_df[my_df['HC명'] == selected_hc.replace("👤 ", "").split(" (")[0]]
+else: 
+    my_df = st.session_state['data'][st.session_state['data']['HC_ID'] == my_id].copy()
+
+st.markdown("---")
+
+perf_df = load_perf_sheet(client)
+if is_master:
+    if selected_hc == "🌟 전체보기 (모든 영업사원)": target_id = target_name_perf = "ALL"
+    elif "통합 조회" in selected_hc:
+        region_name = selected_hc.split("[")[1].split("]")[0]
+        target_id = target_name_perf = f"REGION_{region_name}"
+    elif "대리점 전체보기" in selected_hc:
+        dealer_name = selected_hc.split("[")[1].split("]")[0]
+        target_id = target_name_perf = f"DEALER_{dealer_name}"
+    else:
+        target_name_perf = selected_hc.replace("👤 ", "").split(" (")[0]
+        target_id = next((k for k, v in HC_DB.items() if v['name'] == target_name_perf), my_id)
+else:
+    target_id, target_name_perf = my_id, my_name
+
+metrics = get_perf_metrics(perf_df, target_id, target_name_perf)
+def fmt(n): return f"{int(round(n)):,}"
+
+F_str, G_str, H_str, I_str = fmt(metrics['F']), fmt(metrics['G']), fmt(metrics['H']), fmt(metrics['I'])
+J_str = f"{int(round(metrics['J']))}%" 
+R_str, Y_str, W_str = fmt(metrics['R']), fmt(metrics['Y']), fmt(metrics['W'])
+T_str, U_str = fmt(metrics['T']), fmt(metrics['U'])
+
+growth = (metrics['T'] / metrics['U'] - 1) if metrics['U'] > 0 else 0
+growth_html = ""
+if metrics['U'] > 0:
+    g_pct = int(round(abs(growth) * 100))
+    if growth > 0: growth_html = f'<span style="color:#dc2626; font-size:14px; margin-left:4px;">(▲{g_pct}%)</span>'
+    elif growth < 0: growth_html = f'<span style="color:#2563eb; font-size:14px; margin-left:4px;">(▼{g_pct}%)</span>'
+    else: growth_html = f'<span style="color:#64748b; font-size:14px; margin-left:4px;">(-0%)</span>'
+
+combined_val_str = f'<span style="color:#dc2626;">{T_str}</span> <span style="color:#94a3b8;">/</span> <span style="color:#2563eb;">{U_str}</span> {growth_html} <span style="color:#94a3b8;">/</span> <span style="color:#10b981;">{W_str}</span>'
+
+dash_html = f"""
+<div style="background: #f1f5f9; padding: 16px; border-radius: 12px; border: 1px solid #cbd5e1; width: 100%;">
+    <div style="display:flex; justify-content: space-between; align-items:center; margin-bottom: 8px;">
+        <div style="font-size: 16px; font-weight: 900; color: #0f172a;">🏆 영업 VDT 실적 현황</div>
+        <div style="font-size: 12px; color: #64748b; font-weight: bold;">(당일 실시간 기준)</div>
     </div>
-    """, unsafe_allow_html=True)
+    <div class="dash-grid">
+        <div class="dash-card"><div class="dash-title">견적건 (일)</div><div class="dash-value">{F_str}</div></div>
+        <div class="dash-card"><div class="dash-title">견적건 (월누적)</div><div class="dash-value">{H_str}</div></div>
+        <div class="dash-card green"><div class="dash-title">계약건 (일)</div><div class="dash-value">{G_str}</div></div>
+        <div class="dash-card green"><div class="dash-title">계약건 (월누적)</div><div class="dash-value">{I_str}</div></div>
+        <div class="dash-card purple"><div class="dash-title">계약율</div><div class="dash-value" style="color:#9333ea;">{J_str}</div></div>
+        <div class="dash-card orange"><div class="dash-title">계약금액 (월누적)</div><div class="dash-value">{R_str}</div></div>
+        <div class="dash-card red"><div class="dash-title" style="letter-spacing:-1px;">당월/전월(동일자)/전월마감</div><div class="dash-value" style="font-size:14px; word-break:keep-all;">{combined_val_str}</div></div>
+        <div class="dash-card"><div class="dash-title">익월 매출</div><div class="dash-value">{Y_str}</div></div>
+    </div>
+</div>
+"""
+st.markdown(dash_html, unsafe_allow_html=True)
+st.markdown("<br>", unsafe_allow_html=True)
+
+# -------------------------------------------------------------
+# 🚀 9월/8월 고정 반영을 위한 로직 수정 부문
+# -------------------------------------------------------------
+st.subheader("📊 월별 견적 관리 지표 요약 (최근 2개월)")
+
+temp_dates = pd.to_datetime(my_df['상담일'], errors='coerce')
+valid_mask = temp_dates.notna()
+
+if valid_mask.any():
+    ym_series = temp_dates[valid_mask].dt.to_period('M')
+else:
+    ym_series = pd.Series(dtype='period[M]')
+
+curr_period = pd.Period(today.strftime('%Y-%m'))
+prev_period = curr_period - 1
+
+ym_unique = [curr_period, prev_period]
+
+month_cols = st.columns(len(ym_unique))
+for idx, ym in enumerate(ym_unique):
+    if valid_mask.any():
+        m_df = my_df[valid_mask & (ym_series == ym)]
+    else:
+        m_df = pd.DataFrame()
+        
+    t_quotes = len(m_df)
+    t_tm1 = len(m_df[m_df['1차_TM'] == True]) if not m_df.empty else 0
+    t_tm2 = len(m_df[m_df['2차_TM'] == True]) if not m_df.empty else 0
+    t_tm3 = len(m_df[m_df['3차_TM'] == True]) if not m_df.empty else 0
+    t_contract = int(m_df['계약완료'].sum()) if not m_df.empty else 0
+    t_tm_done = len(m_df[(m_df['1차_TM'] == True) | (m_df['2차_TM'] == True) | (m_df['3차_TM'] == True)]) if not m_df.empty else 0
     
-    def render_custom_html_table(df):
-        dealer_col, hc_col = ('기본정보', '대리점', '대리점'), ('기본정보', 'HC명', 'HC명')
-        unique_dealers = [d for d in df[dealer_col].unique() if d not in ["🌟 총계"]]
-        dealer_colors = {}
-        colors = ['#f8fafc', '#ffffff']
-        for idx, d in enumerate(unique_dealers): dealer_colors[d] = colors[idx % len(colors)]
-            
-        col_widths = [80, 90, 70, 70, 70, 70, 70, 70, 55, 55, 55, 55, 55, 55]
-        col_lefts = [0, 80, 170, 240, 310, 380, 450, 520, 590, 645, 700, 755, 810, 865]
-        html = ["<div class='vdt-table-container'><table class='vdt-table'><thead>"]
-        
-        # --- 1행 ---
-        html.append("<tr>")
-        html.append(f"<th rowspan='3' style='position: sticky; top: 0; left: 0; z-index: 20; background-color: #0f172a; min-width: {col_widths[0]}px; max-width: {col_widths[0]}px; border-right: 1px solid #cbd5e1;'>대리점</th>")
-        html.append(f"<th rowspan='3' style='position: sticky; top: 0; left: {col_lefts[1]}px; z-index: 20; background-color: #0f172a; min-width: {col_widths[1]}px; max-width: {col_widths[1]}px; border-right: 2px solid #94a3b8;'>HC명</th>")
-        
-        headers_l1 = []
-        for col in df.columns[2:]:
-            if col[0] not in headers_l1: headers_l1.append(col[0])
-                
-        for h1 in headers_l1:
-            is_curr, is_monthly = CURRENT_WEEK in h1, "당월" in h1
-            style_parts = ["position: sticky; top: 0;"]
-            
-            if is_curr: style_parts.extend(["background-color: #1e3a8a;", "border: 3px solid #60a5fa;"])
-            elif is_monthly: style_parts.extend(["background-color: #064e3b;", "color: #a7f3d0;", "border-top: 2px solid #047857;"])
-            else: style_parts.append("background-color: #0f172a;")
-                
-            if h1 == '🎯 당월매출':
-                style_parts.extend([f"left: {col_lefts[2]}px;", "z-index: 15;", "border-right: 3px solid #1e293b;"])
-                html.append(f"<th colspan='3' style='{'; '.join(style_parts)}'>{h1}</th>")
-            elif "🌟 당월 합계" in h1:
-                style_parts.extend([f"left: {col_lefts[5]}px;", "z-index: 15;", "border-right: 4px solid #94a3b8;"])
-                html.append(f"<th colspan='9' style='{'; '.join(style_parts)}'>{h1}</th>")
-            else:
-                style_parts.append("z-index: 10;")
-                html.append(f"<th colspan='9' style='{'; '.join(style_parts)}'>{h1}</th>")
-        html.append("</tr>")
-        
-        # --- 2행 ---
-        html.append("<tr>")
-        for h1 in headers_l1:
-            is_curr, is_monthly = CURRENT_WEEK in h1, "당월" in h1
-            base_styles = ["position: sticky; top: 33px;"]
-            if is_curr: base_styles.extend(["background-color: #1e40af;", "border-left: 3px solid #60a5fa;", "border-right: 3px solid #60a5fa;"])
-            elif is_monthly: base_styles.extend(["background-color: #065f46;", "color: #a7f3d0;"])
-            else: base_styles.append("background-color: #0f172a;")
-            
-            if h1 == '🎯 당월매출':
-                s_parts = base_styles.copy() + [f"left: {col_lefts[2]}px;", "z-index: 15;", "border-right: 3px solid #1e293b;"]
-                html.append(f"<th colspan='3' style='{'; '.join(s_parts)}'>인별매출(천)</th>")
-            elif "🌟 당월 합계" in h1:
-                s1, s2, s3 = base_styles.copy() + [f"left: {col_lefts[5]}px;", "z-index: 15;"], base_styles.copy() + [f"left: {col_lefts[8]}px;", "z-index: 15;"], base_styles.copy() + [f"left: {col_lefts[11]}px;", "z-index: 15;", "border-right: 4px solid #94a3b8;"]
-                html.append(f"<th colspan='3' style='{'; '.join(s1)}'>계약액(천)</th><th colspan='3' style='{'; '.join(s2)}'>견적건</th><th colspan='3' style='{'; '.join(s3)}'>계약건</th>")
-            else:
-                bg_style = f"style='{'; '.join(base_styles + ['z-index: 10;'])}'"
-                html.append(f"<th colspan='3' {bg_style}>계약액(천)</th><th colspan='3' {bg_style}>견적건</th><th colspan='3' {bg_style}>계약건</th>")
-        html.append("</tr>")
-        
-        # --- 3행 ---
-        html.append("<tr>")
-        for c_idx, col in enumerate(df.columns[2:]):
-            abs_idx = c_idx + 2
-            is_curr, is_monthly = CURRENT_WEEK in col[0], "당월" in col[0]
-            is_first_of_week, is_last_of_week = (is_curr and col[1] == '계약액(천)' and col[2] == '목표'), (is_curr and col[1] == '계약건' and col[2] == '달성율(%)')
-            is_last_of_sales, is_last_monthly = (col[0] == '🎯 당월매출' and col[2] == '달성율(%)'), ("🌟 당월 합계" in col[0] and col[1] == '계약건' and col[2] == '달성율(%)')
-            
-            style_parts = ["position: sticky; top: 66px;"]
-            if is_curr:
-                style_parts.extend(["background-color: #1d4ed8;", "border-bottom: 3px solid #60a5fa;"])
-                if is_first_of_week: style_parts.append("border-left: 3px solid #60a5fa;")
-                if is_last_of_week: style_parts.append("border-right: 3px solid #60a5fa;")
-            elif is_monthly: style_parts.extend(["background-color: #047857;", "color: #a7f3d0;"])
-            else: style_parts.append("background-color: #0f172a;")
-                
-            if abs_idx <= 13: style_parts.extend([f"left: {col_lefts[abs_idx]}px;", "z-index: 15;", f"min-width: {col_widths[abs_idx]}px;", f"max-width: {col_widths[abs_idx]}px;"])
-            else: style_parts.extend(["z-index: 10;", "min-width: 60px;"])
-            
-            if is_last_of_sales: style_parts.append("border-right: 3px solid #1e293b;")
-            if is_last_monthly: style_parts.append("border-right: 4px solid #94a3b8;")
-                
-            bg_style = f"style='{'; '.join(style_parts)}'"
-            html.append(f"<th {bg_style}>{col[2]}</th>")
-        html.append("</tr></thead><tbody>")
-        
-        # --- 본문 데이터 ---
-        for r_idx in range(len(df)):
-            row = df.iloc[r_idx]
-            dealer, hc = row[dealer_col], row[hc_col]
-            
-            if str(hc) == "합계": bg_color, row_bg = "#e2e8f0", "style='background-color: #e2e8f0; font-weight: bold;'"
-            elif "🌟" in str(hc): bg_color, row_bg = "#cbd5e1", "style='background-color: #cbd5e1; font-weight: bold;'"
-            else: bg_color, row_bg = dealer_colors.get(dealer, '#ffffff'), f"style='background-color: {dealer_colors.get(dealer, '#ffffff')};'"
-                
-            html.append(f"<tr {row_bg}>")
-            html.append(f"<td class='text-center' style='position: sticky; left: 0; z-index: 6; background-color: {bg_color}; min-width: {col_widths[0]}px; max-width: {col_widths[0]}px; border-right: 1px solid #cbd5e1;'>{dealer}</td>")
-            html.append(f"<td class='text-center' style='position: sticky; left: {col_lefts[1]}px; z-index: 6; background-color: {bg_color}; min-width: {col_widths[1]}px; max-width: {col_widths[1]}px; border-right: 2px solid #94a3b8;'>{hc}</td>")
-            
-            for c_idx, val in enumerate(row[2:]):
-                abs_idx = c_idx + 2
-                col_obj = df.columns[c_idx + 2]
-                is_curr, is_monthly = CURRENT_WEEK in col_obj[0], "당월" in col_obj[0]
-                is_first_of_week, is_last_of_week = (is_curr and col_obj[1] == '계약액(천)' and col_obj[2] == '목표'), (is_curr and col_obj[1] == '계약건' and col_obj[2] == '달성율(%)')
-                is_last_of_sales, is_last_monthly = (col_obj[0] == '🎯 당월매출' and col_obj[2] == '달성율(%)'), ("🌟 당월 합계" in col_obj[0] and col_obj[1] == '계약건' and col_obj[2] == '달성율(%)')
-                
-                style_parts = []
-                if is_curr:
-                    style_parts.append("background-color: rgba(37, 99, 235, 0.12);")
-                    if is_first_of_week: style_parts.append("border-left: 3px solid #3b82f6;")
-                    if is_last_of_week: style_parts.append("border-right: 3px solid #3b82f6;")
-                elif is_monthly:
-                    if abs_idx <= 13: 
-                        solid_bg = '#ebf6f2'
-                        if bg_color == '#f8fafc': solid_bg = '#e4f1ef'
-                        elif bg_color == '#e2e8f0': solid_bg = '#d1dbda'
-                        elif bg_color == '#cbd5e1': solid_bg = '#bcc7c7'
-                        style_parts.append(f"background-color: {solid_bg};")
-                    else: style_parts.append("background-color: rgba(5, 150, 105, 0.08);")
-                else: style_parts.append(f"background-color: {bg_color};")
-                
-                if abs_idx <= 13: style_parts.extend([f"position: sticky; left: {col_lefts[abs_idx]}px;", "z-index: 5;", f"min-width: {col_widths[abs_idx]}px;", f"max-width: {col_widths[abs_idx]}px;"])
-                if is_last_of_sales: style_parts.append("border-right: 3px solid #1e293b;")
-                if is_last_monthly: style_parts.append("border-right: 4px solid #94a3b8;")
-                    
-                if col_obj[2] == '달성율(%)':
-                    val_str = f"{val:.1f}%"
-                    if val >= 100: val_str = f"<span style='color: #047857; font-weight: 900;'>{val_str}</span>" if is_monthly else f"<span style='color: #1d4ed8; font-weight: 900;'>{val_str}</span>"
-                    elif val > 0: val_str = f"<span style='font-weight: 600;'>{val_str}</span>"
-                else: val_str = f"{val:,.0f}"
-                    
-                border_style = f"{'; '.join(style_parts)}" if style_parts else ""
-                html.append(f"<td style='{border_style}'>{val_str}</td>")
-            html.append("</tr>")
-            
-        html.append("</tbody></table></div>")
-        return "".join(html)
+    t_tm_rate = (t_tm_done / t_quotes * 100) if t_quotes > 0 else 0
+    t_cont_rate = (t_contract / t_quotes * 100) if t_quotes > 0 else 0
     
-    table_html = render_custom_html_table(final_df)
-    st.markdown(table_html, unsafe_allow_html=True)
+    month_badge = ""
+    if idx == 0:
+        month_badge = "<span style='color:white; background-color:#3b82f6; font-size:12px; padding:2px 8px; border-radius:10px; margin-left:6px; vertical-align:middle;'>(당월)</span>"
+    elif idx == 1:
+        month_badge = "<span style='color:white; background-color:#f59e0b; font-size:12px; padding:2px 8px; border-radius:10px; margin-left:6px; vertical-align:middle;'>(전월)</span>"
+    
+    with month_cols[idx]:
+        st.markdown(f"""
+        <div style="background:#f8fafc; padding:18px; border-radius:12px; border:2px solid #e2e8f0; margin-bottom:15px; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
+            <div style="font-size:18px; font-weight:900; color:#0f172a; margin-bottom:12px; border-bottom: 2px solid #cbd5e1; padding-bottom: 8px;">
+                📅 {ym.year}년 {ym.month}월 요약본 {month_badge}
+            </div>
+            <div style="display:flex; justify-content:space-between; margin-bottom:12px;">
+                <div style="text-align:center;"><div style="font-size:13px; color:#64748b; font-weight:bold;">총 견적</div><div style="font-size:22px; font-weight:900; color:#2563eb;">{t_quotes}건</div></div>
+                <div style="text-align:center;"><div style="font-size:13px; color:#64748b; font-weight:bold;">전체 TM 진행률</div><div style="font-size:22px; font-weight:900; color:#dc2626;">{t_tm_rate:.1f}%</div></div>
+                <div style="text-align:center;"><div style="font-size:13px; color:#64748b; font-weight:bold;">계약 완료(율)</div><div style="font-size:20px; font-weight:900; color:#10b981;">{t_contract}건 <span style="font-size:14px;">({t_cont_rate:.1f}%)</span></div></div>
+            </div>
+            <div style="font-size:15px; color:#334155; text-align:center; background:#e2e8f0; border-radius:8px; padding:10px; margin-top: 8px;">
+                <b style="color:#0f172a; font-size:16px;">✔️ 세부 진행건수</b> &nbsp;👉&nbsp;
+                1차 완료 <span style="font-size:18px; font-weight:900; color:#2563eb;">{t_tm1}</span>건 &nbsp;|&nbsp; 
+                2차 완료 <span style="font-size:18px; font-weight:900; color:#10b981;">{t_tm2}</span>건 &nbsp;|&nbsp; 
+                3차 완료 <span style="font-size:18px; font-weight:900; color:#8b5cf6;">{t_tm3}</span>건
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+st.markdown("---")
+
+if is_master and 'selected_hc' in st.session_state and st.session_state['selected_hc'] != "🌟 전체보기 (모든 영업사원)":
+    if "통합 조회" in st.session_state['selected_hc']:
+        region_name = st.session_state['selected_hc'].split("[")[1].split("]")[0]
+        st.markdown(f"<h3>견적 및 TM 목록 <span style='color: #0369a1; font-size: 20px; background-color: #e0f2fe; padding: 4px 12px; border-radius: 8px; border: 2px solid #7dd3fc; margin-left: 8px; vertical-align: middle;'>👉 현재 선택: 🌍 [{region_name}] 통합 조회 중</span></h3>", unsafe_allow_html=True)
+    elif "대리점 전체보기" in st.session_state['selected_hc']:
+        dealer_name = st.session_state['selected_hc'].split("[")[1].split("]")[0]
+        st.markdown(f"<h3>견적 및 TM 목록 <span style='color: #0369a1; font-size: 20px; background-color: #e0f2fe; padding: 4px 12px; border-radius: 8px; border: 2px solid #7dd3fc; margin-left: 8px; vertical-align: middle;'>👉 현재 선택: 🏢 [{dealer_name}] 대리점 전체 조회 중</span></h3>", unsafe_allow_html=True)
+    else:
+        sel_name = st.session_state['selected_hc'].replace("👤 ", "").split(" (")[0]
+        sel_id = next((k for k, v in HC_DB.items() if v['name'] == sel_name), "알수없음")
+        st.markdown(f"<h3>견적 및 TM 목록 <span style='color: #0369a1; font-size: 20px; background-color: #e0f2fe; padding: 4px 12px; border-radius: 8px; border: 2px solid #7dd3fc; margin-left: 8px; vertical-align: middle;'>👉 현재 선택: 👤 {sel_name} (사번: {sel_id})</span></h3>", unsafe_allow_html=True)
+else:
+    if is_master: st.markdown(f"<h3>견적 및 TM 목록 <span style='color: #0369a1; font-size: 20px; background-color: #e0f2fe; padding: 4px 12px; border-radius: 8px; border: 2px solid #7dd3fc; margin-left: 8px; vertical-align: middle;'>👉 현재 선택: 🌟 모든 영업사원 통합</span></h3>", unsafe_allow_html=True)
+    else: st.subheader("견적 및 TM 목록")
+
+filter_tab = st.radio("표시 모드 선택", ["전체 목록 보기", "본인 작성 견적만 보기"], horizontal=True)
+
+display_df = my_df.copy()
+if filter_tab == "본인 작성 견적만 보기": display_df = display_df[display_df['is_self'] == True]
+
+col_add, col_up = st.columns([1, 1])
+
+with col_add:
+    with st.expander("➕ 한샘 시스템 복사해서 새 견적 추가", expanded=True):
+        st.text_area("텍스트를 붙여넣으세요", height=150, key="raw_input_area", label_visibility="collapsed")
+        st.button("🚀 견적 추가 및 시트 저장", on_click=add_quotes_callback, use_container_width=True)
+
+with col_up:
+    with st.expander("📸 TM 증빙 퀵 업로더 (적용할 견적을 확인 후 바로 올리세요!)", expanded=True):
+        temp_df = display_df.copy()
+        if not temp_df.empty:
+            quote_list = ["--- 견적을 선택하세요 ---"] + (temp_df['상담일'].astype(str) + " | " + temp_df['고객명'] + " (" + temp_df['상담번호'] + ")").tolist()
+            
+            u1, u2 = st.columns([2, 1])
+            with u1: sel_quote = st.selectbox("견적 선택", quote_list, label_visibility="collapsed", key=f"q_{st.session_state['uploader_key']}")
+            with u2: sel_tm = st.selectbox("TM 차수", ["1차_증빙", "2차_증빙", "3차_증빙"], label_visibility="collapsed", key=f"t_{st.session_state['uploader_key']}")
+            
+            u3, u4 = st.columns([2, 1])
+            with u3: uploaded_img = st.file_uploader("사진 선택", type=['jpg', 'jpeg', 'png'], label_visibility="collapsed", key=f"f_{st.session_state['uploader_key']}")
+            with u4:
+                st.markdown("<div style='margin-top:2px;'></div>", unsafe_allow_html=True)
+                if st.button("📤 사진 즉시 업로드", use_container_width=True, type="primary"):
+                    if sel_quote == "--- 견적을 선택하세요 ---" or not uploaded_img: st.warning("견적 선택 및 사진을 올려주세요!")
+                    else:
+                        q_no = re.search(r'\((.*?)\)', sel_quote).group(1)
+                        with st.spinner("서버에 전송 중..."):
+                            img_url = upload_to_imgbb(io.BytesIO(uploaded_img.read()), f"{q_no}_{sel_tm}_{today.strftime('%Y%m%d')}.jpg")
+                            if img_url:
+                                st.session_state['data'].loc[st.session_state['data']['상담번호'] == q_no, sel_tm] = img_url
+                                if save_data_to_sheet(client, st.session_state['data'], is_master, my_name):
+                                    st.success("업로드 완료!"); st.session_state['uploader_key'] += 1; st.rerun()
+                                else: st.error("시트 저장 실패.")
+        else:
+            st.info("먼저 견적을 등록해주세요!")
+
+if st.session_state['success_msg']: st.success(st.session_state['success_msg']); st.session_state['success_msg'] = ""
+if st.session_state['warning_msg']: st.warning(st.session_state['warning_msg']); st.session_state['warning_msg'] = ""
+
+if not display_df.empty:
+    alert_list = []
+    for _, row in display_df.iterrows():
+        msgs = []
+        for i in [1, 2, 3]:
+            if row.get(f'{i}차_TM') == True:
+                missing = []
+                d_val = row.get(f'{i}차_TM_일자')
+                p_val = row.get(f'{i}차_증빙')
+                if pd.isna(d_val) or str(d_val).strip() in ['', 'None']: missing.append("일자")
+                if pd.isna(p_val) or str(p_val).strip() in ['', 'None']: missing.append("증빙")
+                if missing: msgs.append(f"{i}차({','.join(missing)})")
+        if msgs: alert_list.append(" ".join(msgs))
+        else: alert_list.append("")
+    display_df['🚨 TM누락 확인'] = alert_list
+
+col_order = ["선택/삭제", "상담일", "상담번호", "HC명", "대리점명", "고객명", "연락처", "주소", "상품", "세부품목", "현장유형", "견적금액", "🚨 TM누락 확인", "1차_TM", "1차_TM_일자", "1차_증빙", "2차_TM", "2차_TM_일자", "2차_증빙", "3차_TM", "3차_TM_일자", "3차_증빙", "계약완료", "계약완료금액", "상담메모"] if is_master else ["선택/삭제", "상담일", "상담번호", "고객명", "연락처", "주소", "상품", "세부품목", "현장유형", "견적금액", "🚨 TM누락 확인", "1차_TM", "1차_TM_일자", "1차_증빙", "2차_TM", "2차_TM_일자", "2차_증빙", "3차_TM", "3차_TM_일자", "3차_증빙", "계약완료", "계약완료금액", "상담메모"]
+
+if not display_df.empty:
+    action_placeholder = st.empty()
+    
+    col_banner, col_check = st.columns([3, 1])
+    with col_banner:
+        st.markdown("<div style='margin-top: 5px;' class='table-header-banner'>상세 견적 목록 (수정 후 바로 위쪽의 '저장' 버튼을 꼭 눌러주세요!)</div>", unsafe_allow_html=True)
+    with col_check:
+        st.markdown("<div style='margin-top: 15px;'></div>", unsafe_allow_html=True)
+        select_all = st.checkbox("✅ 현재 목록 전체 선택", key=f"sel_all_{st.session_state['uploader_key']}")
+        if select_all:
+            display_df['선택/삭제'] = True
+    
+    edited_df = st.data_editor(display_df, column_order=col_order, column_config={
+        "선택/삭제": st.column_config.CheckboxColumn("선택/삭제", width="small"), 
+        "상담일": st.column_config.DateColumn("상담일", format="MM/DD", width="small"),
+        "상담번호": st.column_config.TextColumn("상담번호", width="small", disabled=True), 
+        "고객명": st.column_config.TextColumn("고객명", width="small"),
+        "연락처": st.column_config.TextColumn("연락처", width="small"),
+        "주소": st.column_config.TextColumn("주소", width="medium"),
+        "상품": st.column_config.TextColumn("상품", width="small"),
+        "세부품목": st.column_config.TextColumn("세부품목 (더블클릭)", width="medium", help="더블클릭하여 전체 내용을 확인하세요."),
+        "현장유형": st.column_config.TextColumn("현장유형", width="small"),
+        "견적금액": st.column_config.NumberColumn("견적금액", format="%,d", width="small"), 
+        "🚨 TM누락 확인": st.column_config.TextColumn("🚨 TM누락 확인", width="small", disabled=True), 
+        "1차_TM": st.column_config.CheckboxColumn("1차", width="small"),
+        "1차_TM_일자": st.column_config.DateColumn("1차 일자", format="MM/DD", width="small"), 
+        "1차_증빙": st.column_config.LinkColumn("1차 증빙", display_text="🔗보기", width="small"),
+        "2차_TM": st.column_config.CheckboxColumn("2차", width="small"), 
+        "2차_TM_일자": st.column_config.DateColumn("2차 일자", format="MM/DD", width="small"),
+        "2차_증빙": st.column_config.LinkColumn("2차 증빙", display_text="🔗보기", width="small"), 
+        "3차_TM": st.column_config.CheckboxColumn("3차", width="small"),
+        "3차_TM_일자": st.column_config.DateColumn("3차 일자", format="MM/DD", width="small"), 
+        "3차_증빙": st.column_config.LinkColumn("3차 증빙", display_text="🔗보기", width="small"),
+        "계약완료": st.column_config.CheckboxColumn("계약완료", width="small"), 
+        "계약완료금액": st.column_config.NumberColumn("최종계약액", format="%,d", width="small"),
+        "상담메모": st.column_config.TextColumn("상담메모", width="medium")
+    }, hide_index=True, use_container_width=True, height=550) 
+    
+    with action_placeholder.container():
+        action_col2, action_col3 = st.columns([1, 1])
+        with action_col2:
+            if not st.session_state['confirm_delete']:
+                st.markdown('<span class="red-btn"></span>', unsafe_allow_html=True)
+                if st.button("🗑️ 1번 - 선택한 견적 완전 삭제하기", use_container_width=True):
+                    to_del = edited_df[edited_df['선택/삭제'] == True]['상담번호'].tolist()
+                    if to_del:
+                        st.session_state['confirm_delete'] = True
+                        st.session_state['to_del_list'] = to_del
+                        st.rerun()
+                    else: 
+                        st.warning("삭제할 항목을 먼저 체크해 주세요!")
+            else:
+                st.markdown(f"<div style='background-color:#fee2e2; border: 2px solid #ef4444; padding:8px; border-radius:8px; color:#b91c1c; font-weight:900; text-align:center; margin-bottom:8px;'>⚠️ 정말 {len(st.session_state['to_del_list'])}건을 영구 삭제하시겠습니까? (이 작업은 되돌릴 수 없습니다!)</div>", unsafe_allow_html=True)
+                del_c1, del_c2 = st.columns(2)
+                with del_c1:
+                    st.markdown('<span class="red-btn"></span>', unsafe_allow_html=True)
+                    if st.button("✅ 네, 완전히 삭제합니다", use_container_width=True):
+                        with st.spinner("삭제 중..."):
+                            st.session_state['data'] = clean_and_enforce_types(st.session_state['data'][~st.session_state['data']['상담번호'].isin(st.session_state['to_del_list'])])
+                            if save_data_to_sheet(client, st.session_state['data'], is_master, my_name): 
+                                st.success("삭제 완료!")
+                                st.session_state['uploader_key'] += 1
+                                st.session_state['confirm_delete'] = False
+                                st.rerun()
+                with del_c2:
+                    if st.button("❌ 아니오, 취소합니다", use_container_width=True):
+                        st.session_state['confirm_delete'] = False
+                        st.rerun()
+
+        with action_col3:
+            st.markdown('<span class="yellow-btn"></span>', unsafe_allow_html=True)
+            if st.button("💾 2번 - 견적 리스트 작성 / 수정 후 최종 저장 (필수)", use_container_width=True):
+                with st.spinner("저장 중..."):
+                    tdf = edited_df.copy()
+                    if '🚨 TM누락 확인' in tdf.columns: tdf = tdf.drop(columns=['🚨 TM누락 확인'])
+                    tdf['선택/삭제'] = False 
+                    
+                    global_df = st.session_state['data'].copy()
+                    global_df = global_df.drop(display_df.index, errors='ignore')
+                    new_global_df = clean_and_enforce_types(pd.concat([global_df, tdf]).sort_values(by='상담일', ascending=False).reset_index(drop=True))
+                    
+                    if save_data_to_sheet(client, new_global_df, is_master, my_name): 
+                        st.session_state['data'] = new_global_df
+                        st.success("안전하게 전체 수정사항이 덮어쓰기 되었습니다!")
+                        st.session_state['uploader_key'] += 1
+                        st.rerun()
