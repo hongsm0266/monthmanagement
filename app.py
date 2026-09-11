@@ -237,7 +237,7 @@ def load_vdt_data():
             wk = get_week_name(ws.title)
             nums = re.findall(r'\d+', ws.title)
             if wk and len(nums) >= 2: 
-                m_val = int(nums[0]) 
+                m_val = int(nums[0])
                 if m_val == current_month:
                     valid_daily_sheets.append((m_val, wk, ws))
 
@@ -253,26 +253,28 @@ def load_vdt_data():
             d_data = sheet_data_cache[ws.id] 
             current_rem_dealer = ""
             for row in d_data:
-                hc_name_raw = safe_get(row, 3)
-                if not hc_name_raw: continue
-                
-                header_str = clean_str("".join([safe_get(row, i) for i in range(4)]))
-                mapped_d = get_mapped_dealer(header_str)
-                if mapped_d == "세종": current_rem_dealer = "세종"
-                else:
-                    for vd in valid_dealers:
-                        if clean_str(vd) in header_str:
-                            current_rem_dealer = vd
-                            break
-                            
-                hc_name = clean_str(hc_name_raw)
-                if hc_name and not any(x in hc_name for x in ['HC', 'HC명', '영업사원', '이름', '합계', '소계', '총계', '목표', '대리점', '비고', '사번']):
-                    if hc_name not in existing_hcs:
-                        new_dealer = current_rem_dealer if current_rem_dealer else "기타"
-                        hc_info_raw.append((new_dealer, hc_name, 0.0))
-                        existing_hcs.append(hc_name)
-                        if new_dealer not in valid_dealers:
-                            valid_dealers.append(new_dealer)
+                # 🚀 안전 강화: 데이터가 비정상적으로 들어와 있어도 최대한 스캔하도록 방어
+                if len(row) > 3: 
+                    hc_name_raw = safe_get(row, 3)
+                    if not hc_name_raw: continue
+                    
+                    header_str = clean_str("".join([safe_get(row, i) for i in range(4)]))
+                    mapped_d = get_mapped_dealer(header_str)
+                    if mapped_d == "세종": current_rem_dealer = "세종"
+                    else:
+                        for vd in valid_dealers:
+                            if clean_str(vd) in header_str:
+                                current_rem_dealer = vd
+                                break
+                                
+                    hc_name = clean_str(hc_name_raw)
+                    if hc_name and not any(x in hc_name for x in ['HC', 'HC명', '영업사원', '이름', '합계', '소계', '총계', '목표', '대리점', '비고', '사번']):
+                        if hc_name not in existing_hcs:
+                            new_dealer = current_rem_dealer if current_rem_dealer else "기타"
+                            hc_info_raw.append((new_dealer, hc_name, 0.0))
+                            existing_hcs.append(hc_name)
+                            if new_dealer not in valid_dealers:
+                                valid_dealers.append(new_dealer)
 
         acts = {clean_str(hc): {wk: {'amt': 0, 'est': 0, 'cnt': 0} for wk in week_keys} for _, hc, _ in hc_info_raw}
         month_acts = {clean_str(hc): {'amt': 0, 'est': 0, 'cnt': 0} for _, hc, _ in hc_info_raw}
@@ -286,6 +288,7 @@ def load_vdt_data():
             current_remembered_dealer = ""
             
             for row in d_data:
+                # 🚀 안전 강화: 데이터가 아무리 밑에 박혀 있어도, 누락 없이 100% 탐색!
                 if len(row) > 3: 
                     row_header_str = clean_str("".join([safe_get(row, i) for i in range(4)]))
                     if get_mapped_dealer(row_header_str) == "세종": current_remembered_dealer = "세종"
@@ -306,6 +309,7 @@ def load_vdt_data():
                         est_val, cnt_val, amt_val = temp_est, temp_cnt, temp_amt
                         
                         if hc_name in acts:
+                            # 🚀 '김경율' 이라는 이름이 발견될 때마다 누적해서 '무조건' 더해줍니다!
                             if wk in acts[hc_name]:
                                 acts[hc_name][wk]['est'] += est_val
                                 acts[hc_name][wk]['cnt'] += cnt_val
@@ -359,10 +363,9 @@ def load_vdt_data():
                             if not matched_dealer: matched_dealer = hc_to_dealer.get(hc_name_s, "")
                             if matched_dealer in real_dealer_sales: real_dealer_sales[matched_dealer] += s_val
 
-        # 🚀 4단계: 명시적 지정 인원 기준 목표 배분
         status_box.info("🎯 4단계: 실적 데이터 기반 목표 최적화 중...")
         
-        # 🚨 목표 제외 명단 하드코딩 (이 분들은 목표를 0으로 만들고 남은 팀원에게 배분)
+        # 🚨 목표 제외 명단 하드코딩
         EXCLUDED_HCS = ["장재형", "강지인", "신재민"]
         
         dealer_active_hcs = {}
