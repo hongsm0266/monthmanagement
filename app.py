@@ -90,24 +90,17 @@ def get_week_name(sheet_title):
         nums = re.findall(r'\d+', sheet_title)
         if len(nums) >= 2:
             m_val, d_val = int(nums[0]), int(nums[1])
-            if m_val == 8:
-                if d_val <= 2: return '0주차'
-                elif d_val <= 9: return '1주차'
-                elif d_val <= 16: return '2주차'
-                elif d_val <= 23: return '3주차'
-                elif d_val <= 30: return '4주차'
+            if m_val == 10:
+                if d_val <= 4: return '1주차'
+                elif d_val <= 11: return '2주차'
+                elif d_val <= 18: return '3주차'
+                elif d_val <= 25: return '4주차'
                 else: return '5주차'
             elif m_val == 9:
                 if d_val <= 6: return '1주차'
                 elif d_val <= 13: return '2주차'
                 elif d_val <= 20: return '3주차'
                 elif d_val <= 27: return '4주차'
-                else: return '5주차'
-            elif m_val == 10:
-                if d_val <= 4: return '1주차'
-                elif d_val <= 11: return '2주차'
-                elif d_val <= 18: return '3주차'
-                elif d_val <= 25: return '4주차'
                 else: return '5주차'
     except: pass
     return None
