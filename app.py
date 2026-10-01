@@ -84,12 +84,12 @@ def clean_val(v):
     try: return float(v_str) * multiplier
     except: return 0.0
 
+# 🚀 10월 주차별 날짜 기준 완벽 업데이트
 def get_week_name(sheet_title):
     try:
         nums = re.findall(r'\d+', sheet_title)
         if len(nums) >= 2:
             m_val, d_val = int(nums[0]), int(nums[1])
-            if m_val == 7 and d_val >= 27: return '0주차'
             if m_val == 8:
                 if d_val <= 2: return '0주차'
                 elif d_val <= 9: return '1주차'
@@ -102,6 +102,12 @@ def get_week_name(sheet_title):
                 elif d_val <= 13: return '2주차'
                 elif d_val <= 20: return '3주차'
                 elif d_val <= 27: return '4주차'
+                else: return '5주차'
+            elif m_val == 10:
+                if d_val <= 4: return '1주차'
+                elif d_val <= 11: return '2주차'
+                elif d_val <= 18: return '3주차'
+                elif d_val <= 25: return '4주차'
                 else: return '5주차'
     except: pass
     return None
@@ -131,7 +137,7 @@ def safe_api_call(func, *args, **kwargs):
             if "429" in str(e):
                 if attempt < max_retries - 1:
                     wait_time = (attempt + 1) * 8
-                    st.toast(f"⏳ 서버 요청 한도 도달. {wait_time}초 후 자동으로 재시도합니다... (새로고침 하지 마세요!)", icon="⚠️")
+                    st.toast(f"⏳ 서버 요청 한도 도달. {wait_time}초 후 자동으로 재시도합니다... (새로고침 하지 마세요!)", icon="⚠️️")
                     time.sleep(wait_time)
                     continue
             raise e
@@ -182,7 +188,19 @@ def load_vdt_data():
                 dealer_sales_sum[dealer] = dealer_sales_sum.get(dealer, 0.0) + sales_target
 
         status_box.info("🎯 2단계: 대리점 주차별 목표 스캔 중...")
-        if current_month == 9:
+        
+        # 🚀 10월 표기 및 열 매핑 업데이트
+        if current_month == 10:
+            date_headers = {
+                '1주차': '10/1~10/4', '2주차': '10/5~10/11', '3주차': '10/12~10/18',
+                '4주차': '10/19~10/25', '5주차': '10/26~10/31'
+            }
+            week_cols = {
+                '1주차': {'amt': 1, 'est': 2, 'cnt': 3}, '2주차': {'amt': 4, 'est': 5, 'cnt': 6},   
+                '3주차': {'amt': 7, 'est': 8, 'cnt': 9}, '4주차': {'amt': 10, 'est': 11, 'cnt': 12}, 
+                '5주차': {'amt': 13, 'est': 14, 'cnt': 15}, 
+            }
+        elif current_month == 9:
             date_headers = {
                 '1주차': '9/1~9/6', '2주차': '9/7~9/13', '3주차': '9/14~9/20',
                 '4주차': '9/21~9/27', '5주차': '9/28~9/30'
@@ -194,13 +212,13 @@ def load_vdt_data():
             }
         else:
             date_headers = {
-                '0주차': '7/27~8/2', '1주차': '8/3~8/9', '2주차': '8/10~8/16',
-                '3주차': '8/17~8/23', '4주차': '8/24~8/30', '5주차': '8/31'
+                '1주차': '1주차', '2주차': '2주차', '3주차': '3주차',
+                '4주차': '4주차', '5주차': '5주차'
             }
             week_cols = {
-                '0주차': {'amt': 1, 'est': 2, 'cnt': 3}, '1주차': {'amt': 4, 'est': 5, 'cnt': 6},   
-                '2주차': {'amt': 7, 'est': 8, 'cnt': 9}, '3주차': {'amt': 10, 'est': 11, 'cnt': 12}, 
-                '4주차': {'amt': 13, 'est': 14, 'cnt': 15}, '5주차': {'amt': 16, 'est': 17, 'cnt': 18}, 
+                '1주차': {'amt': 1, 'est': 2, 'cnt': 3}, '2주차': {'amt': 4, 'est': 5, 'cnt': 6},   
+                '3주차': {'amt': 7, 'est': 8, 'cnt': 9}, '4주차': {'amt': 10, 'est': 11, 'cnt': 12}, 
+                '5주차': {'amt': 13, 'est': 14, 'cnt': 15}, 
             }
             
         week_keys = list(week_cols.keys())
@@ -237,7 +255,7 @@ def load_vdt_data():
             wk = get_week_name(ws.title)
             nums = re.findall(r'\d+', ws.title)
             if wk and len(nums) >= 2: 
-                m_val = int(nums[0])
+                m_val = int(nums[0]) 
                 if m_val == current_month:
                     valid_daily_sheets.append((m_val, wk, ws))
 
@@ -253,7 +271,6 @@ def load_vdt_data():
             d_data = sheet_data_cache[ws.id] 
             current_rem_dealer = ""
             for row in d_data:
-                # 🚀 안전 강화: 데이터가 비정상적으로 들어와 있어도 최대한 스캔하도록 방어
                 if len(row) > 3: 
                     hc_name_raw = safe_get(row, 3)
                     if not hc_name_raw: continue
@@ -288,7 +305,6 @@ def load_vdt_data():
             current_remembered_dealer = ""
             
             for row in d_data:
-                # 🚀 안전 강화: 데이터가 아무리 밑에 박혀 있어도, 누락 없이 100% 탐색!
                 if len(row) > 3: 
                     row_header_str = clean_str("".join([safe_get(row, i) for i in range(4)]))
                     if get_mapped_dealer(row_header_str) == "세종": current_remembered_dealer = "세종"
@@ -309,7 +325,6 @@ def load_vdt_data():
                         est_val, cnt_val, amt_val = temp_est, temp_cnt, temp_amt
                         
                         if hc_name in acts:
-                            # 🚀 '김경율' 이라는 이름이 발견될 때마다 누적해서 '무조건' 더해줍니다!
                             if wk in acts[hc_name]:
                                 acts[hc_name][wk]['est'] += est_val
                                 acts[hc_name][wk]['cnt'] += cnt_val
@@ -441,7 +456,6 @@ def load_vdt_data():
             m_act = month_acts.get(hc_clean, {'amt': 0, 'est': 0, 'cnt': 0})
             s_act = acts_sales.get(hc_clean, 0)
 
-            # 목표 0 + 모든 ACT 0 이면 표에서 숨김
             if sales_tgt == 0.0 and m_act['amt'] == 0 and m_act['est'] == 0 and m_act['cnt'] == 0 and s_act == 0: continue
 
             row_data = [dealer, hc]
