@@ -84,23 +84,23 @@ def clean_val(v):
     try: return float(v_str) * multiplier
     except: return 0.0
 
-# 🚀 10월 주차별 날짜 기준 완벽 업데이트
+# 🚀 11월 기준 자동 감지 추가
 def get_week_name(sheet_title):
     try:
         nums = re.findall(r'\d+', sheet_title)
         if len(nums) >= 2:
             m_val, d_val = int(nums[0]), int(nums[1])
-            if m_val == 10:
+            if m_val == 11:
+                if d_val <= 7: return '1주차'
+                elif d_val <= 14: return '2주차'
+                elif d_val <= 21: return '3주차'
+                elif d_val <= 28: return '4주차'
+                else: return '5주차'
+            elif m_val == 10:
                 if d_val <= 4: return '1주차'
                 elif d_val <= 11: return '2주차'
                 elif d_val <= 18: return '3주차'
                 elif d_val <= 25: return '4주차'
-                else: return '5주차'
-            elif m_val == 9:
-                if d_val <= 6: return '1주차'
-                elif d_val <= 13: return '2주차'
-                elif d_val <= 20: return '3주차'
-                elif d_val <= 27: return '4주차'
                 else: return '5주차'
     except: pass
     return None
@@ -130,14 +130,14 @@ def safe_api_call(func, *args, **kwargs):
             if "429" in str(e):
                 if attempt < max_retries - 1:
                     wait_time = (attempt + 1) * 8
-                    st.toast(f"⏳ 서버 요청 한도 도달. {wait_time}초 후 자동으로 재시도합니다... (새로고침 하지 마세요!)", icon="⚠️️")
+                    st.toast(f"⏳ 서버 요청 한도 도달. {wait_time}초 후 자동으로 재시도합니다... (새로고침 하지 마세요!)", icon="⚠️")
                     time.sleep(wait_time)
                     continue
             raise e
 
 @st.cache_data(ttl=600)
 def load_vdt_data():
-    if not client: return pd.DataFrame(), {}, {}, {}, {}
+    if not client: return pd.DataFrame(), {}, {}, {}, {}, []
     
     status_box = st.empty()
     try:
@@ -148,7 +148,7 @@ def load_vdt_data():
         target_sheet_name = "주차별 목표 세팅"
         if target_sheet_name not in all_worksheets: 
             st.error(f"🚨 '{target_sheet_name}' 탭을 찾을 수 없습니다.")
-            return pd.DataFrame(), {}, {}, {}, {}
+            return pd.DataFrame(), {}, {}, {}, {}, []
         
         target_ws = sh.worksheet(target_sheet_name)
         status_box.info("📊 1단계: 인별 매출목표 및 비중 계산 중...")
@@ -182,21 +182,21 @@ def load_vdt_data():
 
         status_box.info("🎯 2단계: 대리점 주차별 목표 스캔 중...")
         
-        # 🚀 10월 표기 및 열 매핑 업데이트
-        if current_month == 10:
+        # 🚀 11월 표기 업데이트
+        if current_month == 11:
             date_headers = {
-                '1주차': '10/1~10/4', '2주차': '10/5~10/11', '3주차': '10/12~10/18',
-                '4주차': '10/19~10/25', '5주차': '10/26~10/31'
+                '1주차': '11/1~11/7', '2주차': '11/8~11/14', '3주차': '11/15~11/21',
+                '4주차': '11/22~11/28', '5주차': '11/29~11/30'
             }
             week_cols = {
                 '1주차': {'amt': 1, 'est': 2, 'cnt': 3}, '2주차': {'amt': 4, 'est': 5, 'cnt': 6},   
                 '3주차': {'amt': 7, 'est': 8, 'cnt': 9}, '4주차': {'amt': 10, 'est': 11, 'cnt': 12}, 
                 '5주차': {'amt': 13, 'est': 14, 'cnt': 15}, 
             }
-        elif current_month == 9:
+        elif current_month == 10:
             date_headers = {
-                '1주차': '9/1~9/6', '2주차': '9/7~9/13', '3주차': '9/14~9/20',
-                '4주차': '9/21~9/27', '5주차': '9/28~9/30'
+                '1주차': '10/1~10/4', '2주차': '10/5~10/11', '3주차': '10/12~10/18',
+                '4주차': '10/19~10/25', '5주차': '10/26~10/31'
             }
             week_cols = {
                 '1주차': {'amt': 1, 'est': 2, 'cnt': 3}, '2주차': {'amt': 4, 'est': 5, 'cnt': 6},   
@@ -373,14 +373,12 @@ def load_vdt_data():
 
         status_box.info("🎯 4단계: 실적 데이터 기반 목표 최적화 중...")
         
-        # 🚨 목표 제외 명단 하드코딩
         EXCLUDED_HCS = ["장재형", "강지인", "신재민"]
         
         dealer_active_hcs = {}
         for dealer, hc, _ in hc_info_raw:
             if dealer not in dealer_active_hcs: dealer_active_hcs[dealer] = []
             hc_clean = clean_str(hc)
-            
             if hc_clean not in EXCLUDED_HCS:
                 dealer_active_hcs[dealer].append(hc_clean)
                 
@@ -407,7 +405,6 @@ def load_vdt_data():
             else:
                 d_sum_active = dealer_sales_sum_active.get(dealer, 0.0)
                 original_dealer_sum = dealer_sales_sum.get(dealer, 0.0)
-                
                 weight = (tgt / d_sum_active) if d_sum_active > 0 else 0.0
                 final_hc_sales_tgt[hc_clean] = original_dealer_sum * weight
                 hc_weights[hc_clean] = weight 
@@ -474,13 +471,13 @@ def load_vdt_data():
                 df[col] = np.where(df[tgt_col] > 0, (df[act_col] / df[tgt_col] * 100).round(1), 0)
         
         status_box.empty()
-        return df, date_headers, real_dealer_sales, real_dealer_monthly, real_dealer_weekly 
+        return df, date_headers, real_dealer_sales, real_dealer_monthly, real_dealer_weekly, week_keys
 
     except Exception as e:
         status_box.empty()
         st.error("🚨 데이터 구성 중 에러가 발생했습니다!")
         with st.expander("🛠️ 상세 에러 보기"): st.code(traceback.format_exc())
-        return pd.DataFrame(), {}, {}, {}, {}
+        return pd.DataFrame(), {}, {}, {}, {}, []
 
 def calculate_subtotals(df, real_dealer_sales, real_dealer_monthly, real_dealer_weekly):
     if df.empty: return df
@@ -541,7 +538,7 @@ def calculate_subtotals(df, real_dealer_sales, real_dealer_monthly, real_dealer_
     
     return pd.DataFrame(result_rows)
 
-df_raw, date_headers, real_dealer_sales, real_dealer_monthly, real_dealer_weekly = load_vdt_data()
+df_raw, date_headers, real_dealer_sales, real_dealer_monthly, real_dealer_weekly, week_keys_list = load_vdt_data()
 
 if not df_raw.empty:
     final_df = calculate_subtotals(df_raw, real_dealer_sales, real_dealer_monthly, real_dealer_weekly)
@@ -678,6 +675,82 @@ if not df_raw.empty:
         )
         st.plotly_chart(fig, use_container_width=True)
         st.markdown("---")
+
+    # 🚀 [추가된 기능] 최근 8주 실적 추이 꺾은선 그래프
+    st.markdown("### 📈 최근 실적 추이 (최대 8주간)")
+    
+    toggle_keys = ['t_amt', 't_est', 't_cnt', 't_walk', 't_move']
+    for k in toggle_keys:
+        if k not in st.session_state:
+            st.session_state[k] = False
+            
+    def toggle_state(key):
+        st.session_state[key] = not st.session_state[key]
+
+    t_cols = st.columns(6)
+    with t_cols[0]:
+        st.button("✅ 주간 계약액" if st.session_state['t_amt'] else "주간 계약액", on_click=toggle_state, args=('t_amt',), use_container_width=True)
+    with t_cols[1]:
+        st.button("✅ 견적건" if st.session_state['t_est'] else "견적건", on_click=toggle_state, args=('t_est',), use_container_width=True)
+    with t_cols[2]:
+        st.button("✅ 계약건" if st.session_state['t_cnt'] else "계약건", on_click=toggle_state, args=('t_cnt',), use_container_width=True)
+    with t_cols[3]:
+        st.button("✅ 워크인 계약액" if st.session_state['t_walk'] else "워크인 계약액", on_click=toggle_state, args=('t_walk',), use_container_width=True)
+    with t_cols[4]:
+        st.button("✅ 입주 계약액" if st.session_state['t_move'] else "입주 계약액", on_click=toggle_state, args=('t_move',), use_container_width=True)
+    with t_cols[5]:
+        def reset_toggles():
+            for tk in toggle_keys: st.session_state[tk] = False
+        st.button("🔄 전체 해제", on_click=reset_toggles, use_container_width=True)
+
+    gt_row = final_df[final_df[('기본정보', 'HC명', 'HC명')] == '🌟 총계'].iloc[0]
+    
+    x_labels = []
+    y_amt = []
+    y_est = []
+    y_cnt = []
+    
+    for wk in week_keys_list:
+        wk_label = f"{current_month}월 {wk}"
+        x_labels.append(wk_label)
+        
+        wk_col = next((c[0] for c in final_df.columns if wk in c[0]), None)
+        if wk_col:
+            y_amt.append(gt_row[(wk_col, '계약액(천)', 'ACT')])
+            y_est.append(gt_row[(wk_col, '견적건', 'ACT')])
+            y_cnt.append(gt_row[(wk_col, '계약건', 'ACT')])
+        else:
+            y_amt.append(0)
+            y_est.append(0)
+            y_cnt.append(0)
+            
+    # 워크인, 입주는 추후 데이터 연동을 위해 임시 0 세팅
+    y_walk = [0] * len(x_labels)
+    y_move = [0] * len(x_labels)
+
+    any_active = any([st.session_state[k] for k in toggle_keys])
+    
+    if any_active:
+        fig_trend = go.Figure()
+        if st.session_state['t_amt']:
+            fig_trend.add_trace(go.Scatter(x=x_labels, y=y_amt, mode='lines+markers+text', name='주간 계약액', text=[f"{v:,.0f}" for v in y_amt], textposition='top center', line=dict(color='#0f172a', width=3), marker=dict(size=10)))
+        if st.session_state['t_est']:
+            fig_trend.add_trace(go.Scatter(x=x_labels, y=y_est, mode='lines+markers+text', name='견적건', text=[f"{v:,.0f}" for v in y_est], textposition='top center', line=dict(color='#3b82f6', width=3), marker=dict(size=10)))
+        if st.session_state['t_cnt']:
+            fig_trend.add_trace(go.Scatter(x=x_labels, y=y_cnt, mode='lines+markers+text', name='계약건', text=[f"{v:,.0f}" for v in y_cnt], textposition='top center', line=dict(color='#10b981', width=3), marker=dict(size=10)))
+        if st.session_state['t_walk']:
+            fig_trend.add_trace(go.Scatter(x=x_labels, y=y_walk, mode='lines+markers+text', name='워크인 계약액 (준비중)', text=[f"{v:,.0f}" for v in y_walk], textposition='top center', line=dict(color='#f59e0b', width=3, dash='dot')))
+        if st.session_state['t_move']:
+            fig_trend.add_trace(go.Scatter(x=x_labels, y=y_move, mode='lines+markers+text', name='입주 계약액 (준비중)', text=[f"{v:,.0f}" for v in y_move], textposition='top center', line=dict(color='#8b5cf6', width=3, dash='dot')))
+            
+        fig_trend.update_layout(height=400, margin=dict(l=20, r=20, t=40, b=20), plot_bgcolor='white', legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
+        fig_trend.update_xaxes(showgrid=True, gridcolor='#f1f5f9')
+        fig_trend.update_yaxes(showgrid=True, gridcolor='#f1f5f9')
+        st.plotly_chart(fig_trend, use_container_width=True)
+    else:
+        st.info("👆 위 세부 지표 버튼을 클릭하시면 실시간 주간 추이 꺾은선 그래프가 나타납니다.")
+    
+    st.markdown("---")
     
     st.markdown(f"""
     <div style='background-color: #f8fafc; padding: 15px; border-left: 5px solid #3b82f6; border-radius: 5px; margin-bottom: 20px;'>
