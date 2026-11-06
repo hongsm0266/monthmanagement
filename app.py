@@ -18,6 +18,24 @@ st.set_page_config(page_title="충청호남팀 영업사원 주차별 VDT 목표
 
 SHEET_URL = "https://docs.google.com/spreadsheets/d/1yZdc4BL5CHLwBQ2QGp8zD5_ov7LDKsEcnrONdQvDyHI/edit?gid=1748736055#gid=1748736055"
 
+# 🚀 접속 시 초기값 (세션) 강력 강제 세팅 (과거 캐시 무시)
+if 'init_v3' not in st.session_state:
+    st.session_state['view_target'] = "충청호남팀 전체"
+    st.session_state['hc_selector'] = "✨ 인원별 상세 실적 (선택 시 우선 적용)"
+    st.session_state['t_amt'] = True  # 계약액 무조건 ON
+    st.session_state['t_avg'] = False
+    st.session_state['t_wd'] = False
+    st.session_state['t_we'] = False
+    st.session_state['t_walk'] = False
+    st.session_state['t_move'] = False
+    st.session_state['t_est'] = False
+    st.session_state['t_cnt'] = False
+    st.session_state['t_rate'] = False
+    st.session_state['t_unit'] = False
+    st.session_state['init_v3'] = True
+
+toggle_keys = ['t_amt', 't_avg', 't_wd', 't_we', 't_walk', 't_move', 't_est', 't_cnt', 't_rate', 't_unit']
+
 @st.cache_resource
 def init_connection():
     try:
@@ -83,17 +101,6 @@ st.markdown("""
     .chart-btn-group { font-size: 11px; font-weight: 800; color: #475569; background: #e2e8f0; border-radius: 4px; padding: 2px 0; text-align: center; margin-bottom: 4px; }
 </style>
 """, unsafe_allow_html=True)
-
-# 🚀 접속 시 초기값 (세션) 강제 세팅 
-if 'view_target' not in st.session_state:
-    st.session_state['view_target'] = "충청호남팀 전체"
-if 'hc_selector' not in st.session_state:
-    st.session_state['hc_selector'] = "✨ 인원별 상세 실적 (선택 시 우선 적용)"
-    
-toggle_keys = ['t_amt', 't_avg', 't_wd', 't_we', 't_walk', 't_move', 't_est', 't_cnt', 't_rate', 't_unit']
-for k in toggle_keys:
-    if k not in st.session_state:
-        st.session_state[k] = True if k == 't_amt' else False
 
 current_month = datetime.now().month
 st.markdown(f"<div class='title-box'><h1>📊 충청호남팀 영업사원 주차별 VDT 목표 관리 ({current_month}월)</h1></div>", unsafe_allow_html=True)
@@ -634,7 +641,6 @@ if not df_raw.empty:
         
     st.markdown("#### 🔎 **실적 조회 (조직 및 인원)**")
     
-    # 🚀 1. 조직별(전체/상권/대리점) 조회 버튼 바깥 추출 레이아웃 
     st.markdown("<div class='btn-group-title'>🌟 통합 조회</div>", unsafe_allow_html=True)
     b_col1, _ = st.columns([2, 8])
     with b_col1: st.button("충청호남팀 전체" if st.session_state['view_target'] != "충청호남팀 전체" else "✅ 충청호남팀 전체", type=btn_type("충청호남팀 전체"), on_click=set_view, args=("충청호남팀 전체",), use_container_width=True)
@@ -742,7 +748,7 @@ if not df_raw.empty:
         def reset_toggles():
             for tk in toggle_keys: st.session_state[tk] = False
         st.button("🔄 리셋", on_click=reset_toggles, use_container_width=True)
-
+    
     y_amt = [w['amt'] for w in source_data]
     y_amt_억 = [v / 100000 for v in y_amt]
     y_avg_val = sum(y_amt) / len(y_amt) if y_amt else 0
