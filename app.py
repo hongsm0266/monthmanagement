@@ -53,7 +53,6 @@ st.markdown("""
     .vdt-table td { padding: 6px 10px; text-align: right; border: 1px solid #e2e8f0; }
     .vdt-table td.text-center { text-align: center; }
     
-    /* 타이틀 크기 축소 */
     .title-box { background: linear-gradient(90deg, #1e3a8a 0%, #3b82f6 100%); color: white; padding: 12px; border-radius: 8px; margin-bottom: 12px; }
     h1 { font-weight: 900 !important; color: white !important; font-size: 14px !important; margin: 0; }
     h3, h4 { font-size: 14px !important; font-weight: 900 !important; color: #1e293b !important; }
@@ -63,7 +62,6 @@ st.markdown("""
     [data-testid="stMetricLabel"] * { font-size: 12px !important; font-weight: 900 !important; color: #0f172a !important; letter-spacing: -0.3px; }
     [data-testid="stMetricValue"] > div { font-size: 20px !important; font-weight: 900 !important; color: #1e3a8a !important; margin-top: 5px; }
     
-    /* 🚀 탭 버튼 1줄 사이즈 & 활성화 스타일링 */
     div.stButton > button { 
         background: #f8fafc !important; color: #475569 !important; font-size: 11.5px !important; font-weight: 800 !important; 
         border-radius: 6px !important; padding: 4px 6px !important; border: 1px solid #cbd5e1 !important; height: auto !important; min-height: 32px; 
@@ -78,7 +76,6 @@ st.markdown("""
     div.stButton > button:hover { transform: translateY(-1px) !important; }
     div.stButton > button:active { transform: translateY(1px) !important; border-bottom: 1px solid #cbd5e1 !important; margin-bottom: 1px !important; }
     
-    /* 버튼 그룹 라벨 */
     .btn-group-title {
         font-size: 12px; font-weight: 900; color: #1e293b; background: #e2e8f0; 
         border-radius: 4px; padding: 4px 10px; margin-bottom: 6px; border-left: 4px solid #3b82f6;
@@ -86,6 +83,17 @@ st.markdown("""
     .chart-btn-group { font-size: 11px; font-weight: 800; color: #475569; background: #e2e8f0; border-radius: 4px; padding: 2px 0; text-align: center; margin-bottom: 4px; }
 </style>
 """, unsafe_allow_html=True)
+
+# 🚀 접속 시 초기값 (세션) 강제 세팅 
+if 'view_target' not in st.session_state:
+    st.session_state['view_target'] = "충청호남팀 전체"
+if 'hc_selector' not in st.session_state:
+    st.session_state['hc_selector'] = "✨ 인원별 상세 실적 (선택 시 우선 적용)"
+    
+toggle_keys = ['t_amt', 't_avg', 't_wd', 't_we', 't_walk', 't_move', 't_est', 't_cnt', 't_rate', 't_unit']
+for k in toggle_keys:
+    if k not in st.session_state:
+        st.session_state[k] = True if k == 't_amt' else False
 
 current_month = datetime.now().month
 st.markdown(f"<div class='title-box'><h1>📊 충청호남팀 영업사원 주차별 VDT 목표 관리 ({current_month}월)</h1></div>", unsafe_allow_html=True)
@@ -190,7 +198,7 @@ def safe_api_call(func, *args, **kwargs):
 
 @st.cache_data(ttl=600)
 def load_vdt_data():
-    if not client: return pd.DataFrame(), {}, {}, {}, {}, [], {}, {}, {}
+    if not client: return pd.DataFrame(), {}, {}, {}, {}, [], {}, {}, {}, {}
     
     status_box = st.empty()
     try:
@@ -200,7 +208,7 @@ def load_vdt_data():
         
         target_sheet_name = "주차별 목표 세팅"
         if target_sheet_name not in all_worksheets: 
-            return pd.DataFrame(), {}, {}, {}, {}, [], {}, {}, {}
+            return pd.DataFrame(), {}, {}, {}, {}, [], {}, {}, {}, {}
         
         target_ws = sh.worksheet(target_sheet_name)
         status_box.info("📊 1단계: 인별 매출목표 계산 중...")
@@ -528,7 +536,6 @@ def load_vdt_data():
                 tgt_col, act_col = (col[0], col[1], '목표'), (col[0], col[1], 'ACT')
                 df[col] = np.where(df[tgt_col] > 0, (df[act_col] / df[tgt_col] * 100).round(1), 0)
         
-        # 🚀 8주 트렌드 상권(충청/호남) 데이터 통합 계산
         trend_region_data = {"충청상권": [{'amt':0, 'est':0, 'cnt':0, 'amt_wd':0, 'amt_we':0} for _ in range(8)],
                              "호남상권": [{'amt':0, 'est':0, 'cnt':0, 'amt_wd':0, 'amt_we':0} for _ in range(8)]}
         for region, dealers in REGION_MAP.items():
@@ -614,12 +621,6 @@ df_raw, date_headers, real_dealer_sales, real_dealer_monthly, real_dealer_weekly
 if not df_raw.empty:
     final_df = calculate_subtotals(df_raw, real_dealer_sales, real_dealer_monthly, real_dealer_weekly)
     
-    # --- 🚀 뷰 타겟팅(Session State) 설정 ---
-    if 'view_target' not in st.session_state:
-        st.session_state['view_target'] = "충청호남팀 전체"
-    if 'hc_selector' not in st.session_state:
-        st.session_state['hc_selector'] = "✨ 인원별 상세 실적 (선택 시 우선 적용)"
-        
     def set_view(target):
         st.session_state['view_target'] = target
         st.session_state['hc_selector'] = "✨ 인원별 상세 실적 (선택 시 우선 적용)"
@@ -655,7 +656,6 @@ if not df_raw.empty:
     
     st.markdown("<div style='margin-bottom:10px;'></div>", unsafe_allow_html=True)
     
-    # 인원별 드롭다운
     hc_list = ["✨ 인원별 상세 실적 (선택 시 우선 적용)"]
     for r_idx in range(len(final_df)):
         dealer = final_df.iloc[r_idx][('기본정보', '대리점', '대리점')]
@@ -664,7 +664,6 @@ if not df_raw.empty:
             
     st.selectbox("👇 인원별 개별 조회", options=hc_list, key='hc_selector', on_change=on_hc_select)
 
-    # 🚀 타겟 데이터 식별
     vt = st.session_state['view_target']
     is_dealer_total = False
     is_region_total = False
@@ -704,19 +703,12 @@ if not df_raw.empty:
         chart_title = f"{target_hc} 님"
         source_data = trend_hc_data.get(target_hc, [{'amt':0, 'est':0, 'cnt':0, 'amt_wd':0, 'amt_we':0} for _ in range(8)])
 
-    # 🚀 1. 최근 8주 실적 추이 꺾은선 그래프
     st.markdown("---")
     st.markdown(f"#### 📈 {chart_title} 실적 추이 (최근 8주간)")
-    
-    toggle_keys = ['t_amt', 't_avg', 't_wd', 't_we', 't_walk', 't_move', 't_est', 't_cnt', 't_rate', 't_unit']
-    for k in toggle_keys:
-        if k not in st.session_state:
-            st.session_state[k] = True if k == 't_amt' else False
             
     def toggle_state(key):
         st.session_state[key] = not st.session_state[key]
 
-    # 4개의 버튼 묶음 한 줄 배치
     g_col1, g_col2, g_col3, g_col4, g_col5 = st.columns([4, 2, 2, 2, 1])
     
     with g_col1:
@@ -764,7 +756,7 @@ if not df_raw.empty:
     y_est = [w['est'] for w in source_data]
     y_cnt = [w['cnt'] for w in source_data]
     y_rate = [(c / e * 100) if e > 0 else 0 for e, c in zip(y_est, y_cnt)]
-    y_unit = [(a / (c * 10)) if c > 0 else 0 for a, c in zip(y_amt, y_cnt)]
+    y_unit = [(a / (c * 10)) if c > 0 else 0 for a, c in zip(y_amt, y_cnt)] 
             
     y_walk_억 = [0] * len(trend_labels)
     y_move_억 = [0] * len(trend_labels)
@@ -824,7 +816,7 @@ if not df_raw.empty:
     
     st.markdown("---")
 
-    # 🚀 2. 선택 인원 상세 목표대비 실적 바 그래프 (전체보기가 아닐 때만 노출)
+    # 🚀 2. 선택 인원 상세 목표대비 실적 바 그래프
     if vt != "충청호남팀 전체":
         comp_df = final_df[~final_df[('기본정보', 'HC명', 'HC명')].str.contains("합계|총계|상권", na=False)]
         total_competitors = len(comp_df)
@@ -944,7 +936,6 @@ if not df_raw.empty:
         col_lefts = [0, 80, 170, 240, 310, 380, 450, 520, 590, 645, 700, 755, 810, 865]
         html = ["<div class='vdt-table-container'><table class='vdt-table'><thead>"]
         
-        # --- 1행 ---
         html.append("<tr>")
         html.append(f"<th rowspan='3' style='position: sticky; top: 0; left: 0; z-index: 20; background-color: #0f172a; min-width: {col_widths[0]}px; max-width: {col_widths[0]}px; border-right: 1px solid #cbd5e1;'>대리점</th>")
         html.append(f"<th rowspan='3' style='position: sticky; top: 0; left: {col_lefts[1]}px; z-index: 20; background-color: #0f172a; min-width: {col_widths[1]}px; max-width: {col_widths[1]}px; border-right: 2px solid #94a3b8;'>HC명</th>")
@@ -972,7 +963,6 @@ if not df_raw.empty:
                 html.append(f"<th colspan='9' style='{'; '.join(style_parts)}'>{h1}</th>")
         html.append("</tr>")
         
-        # --- 2행 ---
         html.append("<tr>")
         for h1 in headers_l1:
             is_curr, is_monthly = CURRENT_WEEK in h1, "당월" in h1
@@ -992,7 +982,6 @@ if not df_raw.empty:
                 html.append(f"<th colspan='3' {bg_style}>계약액(천)</th><th colspan='3' {bg_style}>견적건</th><th colspan='3' {bg_style}>계약건</th>")
         html.append("</tr>")
         
-        # --- 3행 ---
         html.append("<tr>")
         for c_idx, col in enumerate(df.columns[2:]):
             abs_idx = c_idx + 2
@@ -1018,7 +1007,6 @@ if not df_raw.empty:
             html.append(f"<th {bg_style}>{col[2]}</th>")
         html.append("</tr></thead><tbody>")
         
-        # --- 본문 데이터 ---
         for r_idx in range(len(df)):
             row = df.iloc[r_idx]
             dealer, hc = row[dealer_col], row[hc_col]
