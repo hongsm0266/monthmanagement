@@ -32,7 +32,7 @@ def init_connection():
 
 client = init_connection()
 
-# --- 커스텀 CSS (버튼 그룹화, 폰트 최적화, 활성화 색상 반영) ---
+# --- 커스텀 CSS ---
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&display=swap');
@@ -53,7 +53,7 @@ st.markdown("""
     .vdt-table td { padding: 6px 10px; text-align: right; border: 1px solid #e2e8f0; }
     .vdt-table td.text-center { text-align: center; }
     
-    /* 타이틀 크기 절반 축소 */
+    /* 타이틀 크기 축소 */
     .title-box { background: linear-gradient(90deg, #1e3a8a 0%, #3b82f6 100%); color: white; padding: 12px; border-radius: 8px; margin-bottom: 12px; }
     h1 { font-weight: 900 !important; color: white !important; font-size: 14px !important; margin: 0; }
     h3, h4 { font-size: 14px !important; font-weight: 900 !important; color: #1e293b !important; }
@@ -63,9 +63,9 @@ st.markdown("""
     [data-testid="stMetricLabel"] * { font-size: 12px !important; font-weight: 900 !important; color: #0f172a !important; letter-spacing: -0.3px; }
     [data-testid="stMetricValue"] > div { font-size: 20px !important; font-weight: 900 !important; color: #1e3a8a !important; margin-top: 5px; }
     
-    /* 🚀 탭 버튼 1줄 사이즈 & 활성화 시 옅은 붉은색 스타일링 */
+    /* 🚀 탭 버튼 1줄 사이즈 & 활성화 스타일링 */
     div.stButton > button { 
-        background: #f8fafc !important; color: #475569 !important; font-size: 11px !important; font-weight: 800 !important; 
+        background: #f8fafc !important; color: #475569 !important; font-size: 11.5px !important; font-weight: 800 !important; 
         border-radius: 6px !important; padding: 4px 6px !important; border: 1px solid #cbd5e1 !important; height: auto !important; min-height: 32px; 
         border-bottom: 2px solid #94a3b8 !important; transition: all 0.1s ease !important; letter-spacing: -0.5px !important;
     }
@@ -80,9 +80,10 @@ st.markdown("""
     
     /* 버튼 그룹 라벨 */
     .btn-group-title {
-        font-size: 11px; font-weight: 800; color: #475569; background: #e2e8f0; 
-        border-radius: 4px; padding: 2px 0; text-align: center; margin-bottom: 4px;
+        font-size: 12px; font-weight: 900; color: #1e293b; background: #e2e8f0; 
+        border-radius: 4px; padding: 4px 10px; margin-bottom: 6px; border-left: 4px solid #3b82f6;
     }
+    .chart-btn-group { font-size: 11px; font-weight: 800; color: #475569; background: #e2e8f0; border-radius: 4px; padding: 2px 0; text-align: center; margin-bottom: 4px; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -137,13 +138,16 @@ def get_mapped_dealer(raw_d):
     if any(k in c_d for k in ["한밭", "INT충청", "701347", "세종2"]): return "세종"
     return raw_d.strip()
 
-# 🚀 1. 최근 8주(과거~현재) 날짜 및 주차 자동 계산 로직
+REGION_MAP = {
+    "충청상권": ["둔산", "목포", "세종", "충주"], 
+    "호남상권": ["광양", "여수", "익산"]
+}
+
 now = datetime.now()
 current_monday = now - timedelta(days=now.weekday())
 
 trend_ranges = []
 trend_labels = []
-
 for i in range(7, -1, -1):
     w_start = current_monday - timedelta(weeks=i)
     w_end = w_start + timedelta(days=6)
@@ -289,7 +293,7 @@ def load_vdt_data():
         trend_map = {ws.id: idx for m_val, d_val, ws, idx in trend_sheets}
         all_sheet_ids = set(list(valid_map.keys()) + list(trend_map.keys()))
         
-        status_box.info(f"📉 3단계: 일별 실적 스캔 및 8주차 트렌드 계산 중...")
+        status_box.info(f"📉 3단계: 일별 실적 스캔 및 최근 8주 트렌드 데이터 계산 중...")
         sheet_data_cache = {}
         id_to_ws = {ws.id: ws for _,_,ws in valid_daily_sheets}
         for _,_,ws,_ in trend_sheets: id_to_ws[ws.id] = ws
@@ -524,14 +528,27 @@ def load_vdt_data():
                 tgt_col, act_col = (col[0], col[1], '목표'), (col[0], col[1], 'ACT')
                 df[col] = np.where(df[tgt_col] > 0, (df[act_col] / df[tgt_col] * 100).round(1), 0)
         
+        # 🚀 8주 트렌드 상권(충청/호남) 데이터 통합 계산
+        trend_region_data = {"충청상권": [{'amt':0, 'est':0, 'cnt':0, 'amt_wd':0, 'amt_we':0} for _ in range(8)],
+                             "호남상권": [{'amt':0, 'est':0, 'cnt':0, 'amt_wd':0, 'amt_we':0} for _ in range(8)]}
+        for region, dealers in REGION_MAP.items():
+            for d in dealers:
+                d_data = trend_dealer_data.get(d, [{'amt':0, 'est':0, 'cnt':0, 'amt_wd':0, 'amt_we':0} for _ in range(8)])
+                for i in range(8):
+                    trend_region_data[region][i]['amt'] += d_data[i]['amt']
+                    trend_region_data[region][i]['est'] += d_data[i]['est']
+                    trend_region_data[region][i]['cnt'] += d_data[i]['cnt']
+                    trend_region_data[region][i]['amt_wd'] += d_data[i]['amt_wd']
+                    trend_region_data[region][i]['amt_we'] += d_data[i]['amt_we']
+
         status_box.empty()
-        return df, date_headers, real_dealer_sales, real_dealer_monthly, real_dealer_weekly, week_keys, trend_hc_data, trend_dealer_data, trend_total_data
+        return df, date_headers, real_dealer_sales, real_dealer_monthly, real_dealer_weekly, week_keys, trend_hc_data, trend_dealer_data, trend_total_data, trend_region_data
 
     except Exception as e:
         status_box.empty()
         st.error("🚨 데이터 구성 중 에러가 발생했습니다!")
         with st.expander("🛠️ 상세 에러 보기"): st.code(traceback.format_exc())
-        return pd.DataFrame(), {}, {}, {}, {}, [], {}, {}, {}
+        return pd.DataFrame(), {}, {}, {}, {}, [], {}, {}, {}, {}
 
 def calculate_subtotals(df, real_dealer_sales, real_dealer_monthly, real_dealer_weekly):
     if df.empty: return df
@@ -592,64 +609,118 @@ def calculate_subtotals(df, real_dealer_sales, real_dealer_monthly, real_dealer_
     
     return pd.DataFrame(result_rows)
 
-df_raw, date_headers, real_dealer_sales, real_dealer_monthly, real_dealer_weekly, week_keys_list, trend_hc_data, trend_dealer_data, trend_total_data = load_vdt_data()
+df_raw, date_headers, real_dealer_sales, real_dealer_monthly, real_dealer_weekly, week_keys_list, trend_hc_data, trend_dealer_data, trend_total_data, trend_region_data = load_vdt_data()
 
 if not df_raw.empty:
     final_df = calculate_subtotals(df_raw, real_dealer_sales, real_dealer_monthly, real_dealer_weekly)
     
-    col_sel, col_btn = st.columns([7, 2]) 
-    with col_sel:
-        st.markdown("#### 🔎 **실적 조회 (전체 / 대리점 / 인원)**")
-        valid_choices = ["✨ 전체 보기 (충청호남팀 통합)"]
-        for r_idx in range(len(final_df)):
-            dealer, hc = final_df.iloc[r_idx][('기본정보', '대리점', '대리점')], final_df.iloc[r_idx][('기본정보', 'HC명', 'HC명')]
-            if hc == "🌟 총계": continue
-            if hc == "합계": valid_choices.append(f"🏢 [{dealer}] 대리점 합계")
-            else: valid_choices.append(f"👤 {dealer} - {hc}")
+    # --- 🚀 뷰 타겟팅(Session State) 설정 ---
+    if 'view_target' not in st.session_state:
+        st.session_state['view_target'] = "충청호남팀 전체"
+    if 'hc_selector' not in st.session_state:
+        st.session_state['hc_selector'] = "✨ 인원별 상세 실적 (선택 시 우선 적용)"
         
-        selected_option = st.selectbox("👇 조회하실 대리점이나 인원을 선택하세요 (아래 실적 추이 그래프와 연동됩니다).", options=valid_choices)
-        
-    with col_btn:
-        st.write("") 
-        st.write("") 
-        st.write("") 
-        if st.button("🔄 실적 데이터 새로고침", use_container_width=True):
-            st.cache_data.clear()
-            st.rerun()
+    def set_view(target):
+        st.session_state['view_target'] = target
+        st.session_state['hc_selector'] = "✨ 인원별 상세 실적 (선택 시 우선 적용)"
 
+    def on_hc_select():
+        if st.session_state['hc_selector'] != "✨ 인원별 상세 실적 (선택 시 우선 적용)":
+            st.session_state['view_target'] = st.session_state['hc_selector']
+
+    def btn_type(target):
+        return "primary" if st.session_state.get('view_target') == target else "secondary"
+        
+    st.markdown("#### 🔎 **실적 조회 (조직 및 인원)**")
+    
+    # 🚀 1. 조직별(전체/상권/대리점) 조회 버튼 바깥 추출 레이아웃 
+    st.markdown("<div class='btn-group-title'>🌟 통합 조회</div>", unsafe_allow_html=True)
+    b_col1, _ = st.columns([2, 8])
+    with b_col1: st.button("충청호남팀 전체" if st.session_state['view_target'] != "충청호남팀 전체" else "✅ 충청호남팀 전체", type=btn_type("충청호남팀 전체"), on_click=set_view, args=("충청호남팀 전체",), use_container_width=True)
+    
+    st.markdown("<div class='btn-group-title'>🌍 충청팀 (충청상권)</div>", unsafe_allow_html=True)
+    c1, c2, c3, c4, c5 = st.columns(5)
+    with c1: st.button("충청팀 통합" if st.session_state['view_target'] != "충청팀 통합" else "✅ 충청팀 통합", type=btn_type("충청팀 통합"), on_click=set_view, args=("충청팀 통합",), use_container_width=True)
+    with c2: st.button("둔산 대리점" if st.session_state['view_target'] != "둔산 대리점" else "✅ 둔산 대리점", type=btn_type("둔산 대리점"), on_click=set_view, args=("둔산 대리점",), use_container_width=True)
+    with c3: st.button("세종 대리점" if st.session_state['view_target'] != "세종 대리점" else "✅ 세종 대리점", type=btn_type("세종 대리점"), on_click=set_view, args=("세종 대리점",), use_container_width=True)
+    with c4: st.button("목포 대리점" if st.session_state['view_target'] != "목포 대리점" else "✅ 목포 대리점", type=btn_type("목포 대리점"), on_click=set_view, args=("목포 대리점",), use_container_width=True)
+    with c5: st.button("충주 대리점" if st.session_state['view_target'] != "충주 대리점" else "✅ 충주 대리점", type=btn_type("충주 대리점"), on_click=set_view, args=("충주 대리점",), use_container_width=True)
+    
+    st.markdown("<div class='btn-group-title'>🌊 호남팀 (호남상권)</div>", unsafe_allow_html=True)
+    h1, h2, h3, h4, h5 = st.columns(5)
+    with h1: st.button("호남팀 통합" if st.session_state['view_target'] != "호남팀 통합" else "✅ 호남팀 통합", type=btn_type("호남팀 통합"), on_click=set_view, args=("호남팀 통합",), use_container_width=True)
+    with h2: st.button("광양 대리점" if st.session_state['view_target'] != "광양 대리점" else "✅ 광양 대리점", type=btn_type("광양 대리점"), on_click=set_view, args=("광양 대리점",), use_container_width=True)
+    with h3: st.button("익산 대리점" if st.session_state['view_target'] != "익산 대리점" else "✅ 익산 대리점", type=btn_type("익산 대리점"), on_click=set_view, args=("익산 대리점",), use_container_width=True)
+    with h4: st.button("여수 대리점" if st.session_state['view_target'] != "여수 대리점" else "✅ 여수 대리점", type=btn_type("여수 대리점"), on_click=set_view, args=("여수 대리점",), use_container_width=True)
+    
+    st.markdown("<div style='margin-bottom:10px;'></div>", unsafe_allow_html=True)
+    
+    # 인원별 드롭다운
+    hc_list = ["✨ 인원별 상세 실적 (선택 시 우선 적용)"]
+    for r_idx in range(len(final_df)):
+        dealer = final_df.iloc[r_idx][('기본정보', '대리점', '대리점')]
+        hc = final_df.iloc[r_idx][('기본정보', 'HC명', 'HC명')]
+        if hc not in ["🌟 총계", "합계"]: hc_list.append(f"👤 {dealer} - {hc}")
+            
+    st.selectbox("👇 인원별 개별 조회", options=hc_list, key='hc_selector', on_change=on_hc_select)
+
+    # 🚀 타겟 데이터 식별
+    vt = st.session_state['view_target']
     is_dealer_total = False
-    if selected_option == valid_choices[0]:
+    is_region_total = False
+    
+    if vt == "충청호남팀 전체":
         target_row = final_df[final_df[('기본정보', 'HC명', 'HC명')] == '🌟 총계'].iloc[0]
-        chart_title = "충청호남팀 전체 실적 추이"
-    elif "대리점 합계" in selected_option:
+        chart_title = "충청호남팀 전체"
+        source_data = trend_total_data
+    elif vt in ["충청팀 통합", "호남팀 통합"]:
+        is_region_total = True
+        region_key = "충청상권" if vt == "충청팀 통합" else "호남상권"
+        dealers_in_region = REGION_MAP[region_key]
+        
+        region_rows = final_df[(final_df[('기본정보', '대리점', '대리점')].isin(dealers_in_region)) & (final_df[('기본정보', 'HC명', 'HC명')] == '합계')]
+        target_row = region_rows.select_dtypes(include=[np.number]).sum()
+        target_row[('기본정보', '대리점', '대리점')] = region_key
+        target_row[('기본정보', 'HC명', 'HC명')] = '상권합계'
+        
+        for col in final_df.columns[2:]:
+            if col[2] == '달성율(%)':
+                tgt_col = (col[0], col[1], '목표')
+                act_col = (col[0], col[1], 'ACT')
+                target_row[col] = (target_row[act_col] / target_row[tgt_col] * 100) if target_row.get(tgt_col, 0) > 0 else 0.0
+                
+        chart_title = f"{vt} 전체"
+        source_data = trend_region_data[region_key]
+    elif "대리점" in vt: 
         is_dealer_total = True
-        target_dealer = selected_option.replace("🏢 [", "").replace("] 대리점 합계", "")
+        target_dealer = vt.replace(" 대리점", "")
         target_row = final_df[(final_df[('기본정보', '대리점', '대리점')] == target_dealer) & (final_df[('기본정보', 'HC명', 'HC명')] == '합계')].iloc[0]
-        chart_title = f"{target_dealer} 대리점 실적 추이"
-    else:
-        parts = selected_option.replace("👤 ", "").split(" - ")
+        chart_title = f"{target_dealer} 대리점"
+        source_data = trend_dealer_data.get(target_dealer, [{'amt':0, 'est':0, 'cnt':0, 'amt_wd':0, 'amt_we':0} for _ in range(8)])
+    else: 
+        parts = vt.replace("👤 ", "").split(" - ")
         target_dealer, target_hc = parts[0], parts[1]
         target_row = final_df[(final_df[('기본정보', '대리점', '대리점')] == target_dealer) & (final_df[('기본정보', 'HC명', 'HC명')] == target_hc)].iloc[0]
-        chart_title = f"{target_hc} 님 실적 추이"
+        chart_title = f"{target_hc} 님"
+        source_data = trend_hc_data.get(target_hc, [{'amt':0, 'est':0, 'cnt':0, 'amt_wd':0, 'amt_we':0} for _ in range(8)])
 
-    # 🚀 1. 최근 8주 실적 추이 꺾은선 그래프 (항상 노출, 계약액 기본 ON)
+    # 🚀 1. 최근 8주 실적 추이 꺾은선 그래프
     st.markdown("---")
-    st.markdown(f"#### 📈 {chart_title} (최근 8주간)")
+    st.markdown(f"#### 📈 {chart_title} 실적 추이 (최근 8주간)")
     
     toggle_keys = ['t_amt', 't_avg', 't_wd', 't_we', 't_walk', 't_move', 't_est', 't_cnt', 't_rate', 't_unit']
     for k in toggle_keys:
         if k not in st.session_state:
-            # 계약액만 기본 True 설정
             st.session_state[k] = True if k == 't_amt' else False
             
     def toggle_state(key):
         st.session_state[key] = not st.session_state[key]
 
-    # 🚀 4개의 버튼 묶음 한 줄 배치
+    # 4개의 버튼 묶음 한 줄 배치
     g_col1, g_col2, g_col3, g_col4, g_col5 = st.columns([4, 2, 2, 2, 1])
     
     with g_col1:
-        st.markdown("<div class='btn-group-title'>💰 계약액 지표</div>", unsafe_allow_html=True)
+        st.markdown("<div class='chart-btn-group'>💰 계약액 지표</div>", unsafe_allow_html=True)
         c1, c2, c3, c4 = st.columns(4)
         with c1: st.button("계약액" if not st.session_state['t_amt'] else "✅ 계약액", on_click=toggle_state, args=('t_amt',), use_container_width=True, type="primary" if st.session_state['t_amt'] else "secondary")
         with c2: st.button("8주평균" if not st.session_state['t_avg'] else "✅ 8주평균", on_click=toggle_state, args=('t_avg',), use_container_width=True, type="primary" if st.session_state['t_avg'] else "secondary")
@@ -657,19 +728,19 @@ if not df_raw.empty:
         with c4: st.button("계약(주말)" if not st.session_state['t_we'] else "✅ 계약(주말)", on_click=toggle_state, args=('t_we',), use_container_width=True, type="primary" if st.session_state['t_we'] else "secondary")
 
     with g_col2:
-        st.markdown("<div class='btn-group-title'>🏢 분류 지표</div>", unsafe_allow_html=True)
+        st.markdown("<div class='chart-btn-group'>🏢 분류 지표</div>", unsafe_allow_html=True)
         c1, c2 = st.columns(2)
         with c1: st.button("워크인" if not st.session_state['t_walk'] else "✅ 워크인", on_click=toggle_state, args=('t_walk',), use_container_width=True, type="primary" if st.session_state['t_walk'] else "secondary")
         with c2: st.button("입주" if not st.session_state['t_move'] else "✅ 입주", on_click=toggle_state, args=('t_move',), use_container_width=True, type="primary" if st.session_state['t_move'] else "secondary")
 
     with g_col3:
-        st.markdown("<div class='btn-group-title'>📝 건수 지표</div>", unsafe_allow_html=True)
+        st.markdown("<div class='chart-btn-group'>📝 건수 지표</div>", unsafe_allow_html=True)
         c1, c2 = st.columns(2)
         with c1: st.button("견적건" if not st.session_state['t_est'] else "✅ 견적건", on_click=toggle_state, args=('t_est',), use_container_width=True, type="primary" if st.session_state['t_est'] else "secondary")
         with c2: st.button("계약건" if not st.session_state['t_cnt'] else "✅ 계약건", on_click=toggle_state, args=('t_cnt',), use_container_width=True, type="primary" if st.session_state['t_cnt'] else "secondary")
 
     with g_col4:
-        st.markdown("<div class='btn-group-title'>📊 효율 지표</div>", unsafe_allow_html=True)
+        st.markdown("<div class='chart-btn-group'>📊 효율 지표</div>", unsafe_allow_html=True)
         c1, c2 = st.columns(2)
         with c1: st.button("계약률" if not st.session_state['t_rate'] else "✅ 계약률", on_click=toggle_state, args=('t_rate',), use_container_width=True, type="primary" if st.session_state['t_rate'] else "secondary")
         with c2: st.button("객단가" if not st.session_state['t_unit'] else "✅ 객단가", on_click=toggle_state, args=('t_unit',), use_container_width=True, type="primary" if st.session_state['t_unit'] else "secondary")
@@ -680,13 +751,6 @@ if not df_raw.empty:
             for tk in toggle_keys: st.session_state[tk] = False
         st.button("🔄 리셋", on_click=reset_toggles, use_container_width=True)
 
-    if selected_option == valid_choices[0]:
-        source_data = trend_total_data
-    elif is_dealer_total:
-        source_data = trend_dealer_data.get(target_dealer, [{'amt':0, 'est':0, 'cnt':0, 'amt_wd':0, 'amt_we':0} for _ in range(8)])
-    else:
-        source_data = trend_hc_data.get(target_hc, [{'amt':0, 'est':0, 'cnt':0, 'amt_wd':0, 'amt_we':0} for _ in range(8)])
-        
     y_amt = [w['amt'] for w in source_data]
     y_amt_억 = [v / 100000 for v in y_amt]
     y_avg_val = sum(y_amt) / len(y_amt) if y_amt else 0
@@ -700,7 +764,7 @@ if not df_raw.empty:
     y_est = [w['est'] for w in source_data]
     y_cnt = [w['cnt'] for w in source_data]
     y_rate = [(c / e * 100) if e > 0 else 0 for e, c in zip(y_est, y_cnt)]
-    y_unit = [(a / (c * 10)) if c > 0 else 0 for a, c in zip(y_amt, y_cnt)] # 만원 단위
+    y_unit = [(a / (c * 10)) if c > 0 else 0 for a, c in zip(y_amt, y_cnt)]
             
     y_walk_억 = [0] * len(trend_labels)
     y_move_억 = [0] * len(trend_labels)
@@ -709,39 +773,45 @@ if not df_raw.empty:
     
     if any_active:
         fig_trend = go.Figure()
-        
-        # 🚀 가장 최근 주차(마지막 인덱스) 마커 사이즈 키워서 강조 
         marker_sizes = [10, 10, 10, 10, 10, 10, 10, 20]
         
         if st.session_state['t_amt']:
-            marker_colors = ['#0f172a'] * 7 + ['#dc2626'] # 마지막 점 빨간색 강조
+            marker_colors = ['#0f172a'] * 7 + ['#dc2626'] 
             fig_trend.add_trace(go.Scatter(x=trend_labels, y=y_amt_억, mode='lines+markers+text', name='주간 계약액', text=[f"<b>{v:.2f}억</b>" for v in y_amt_억], textposition='top center', textfont=dict(size=15, color='black'), line=dict(color='#0f172a', width=4), marker=dict(size=marker_sizes, color=marker_colors, line=dict(width=2, color='white'))))
+        
         if st.session_state['t_avg']:
-            fig_trend.add_trace(go.Scatter(x=trend_labels, y=y_avg_억, mode='lines', name='최근 8주 평균', line=dict(color='#94a3b8', width=2, dash='dash')))
+            y_avg_text = [""] * 7 + [f"<b>평균 {y_avg_억[-1]:.2f}억</b>"]
+            fig_trend.add_trace(go.Scatter(x=trend_labels, y=y_avg_억, mode='lines+text', name='최근 8주 평균', text=y_avg_text, textposition='top right', textfont=dict(size=15, color='#475569'), line=dict(color='#94a3b8', width=2, dash='dash')))
+        
         if st.session_state['t_wd']:
             fig_trend.add_trace(go.Scatter(x=trend_labels, y=y_wd_억, mode='lines+markers+text', name='계약액(주중)', text=[f"<b>{v:.2f}억</b>" for v in y_wd_억], textposition='bottom center', textfont=dict(size=15, color='#0ea5e9'), line=dict(color='#0ea5e9', width=3), marker=dict(size=marker_sizes, line=dict(width=2, color='white'))))
+        
         if st.session_state['t_we']:
             fig_trend.add_trace(go.Scatter(x=trend_labels, y=y_we_억, mode='lines+markers+text', name='계약액(주말)', text=[f"<b>{v:.2f}억</b>" for v in y_we_억], textposition='top right', textfont=dict(size=15, color='#ef4444'), line=dict(color='#ef4444', width=3), marker=dict(size=marker_sizes, line=dict(width=2, color='white'))))
+        
         if st.session_state['t_walk']:
-            fig_trend.add_trace(go.Scatter(x=trend_labels, y=y_walk_억, mode='lines+markers+text', name='워크인 계약액 (준비중)', text=[f"<b>{v:.2f}억</b>" for v in y_walk_억], textposition='top left', textfont=dict(size=15, color='#f59e0b'), line=dict(color='#f59e0b', width=3, dash='dot')))
+            fig_trend.add_trace(go.Scatter(x=trend_labels, y=y_walk_억, mode='lines+markers+text', name='워크인 계약액', text=[f"<b>{v:.2f}억</b>" for v in y_walk_억], textposition='top left', textfont=dict(size=15, color='#f97316'), line=dict(color='#f97316', width=3, dash='dot')))
+        
         if st.session_state['t_move']:
-            fig_trend.add_trace(go.Scatter(x=trend_labels, y=y_move_억, mode='lines+markers+text', name='입주 계약액 (준비중)', text=[f"<b>{v:.2f}억</b>" for v in y_move_억], textposition='bottom right', textfont=dict(size=15, color='#8b5cf6'), line=dict(color='#8b5cf6', width=3, dash='dot')))
+            fig_trend.add_trace(go.Scatter(x=trend_labels, y=y_move_억, mode='lines+markers+text', name='입주 계약액', text=[f"<b>{v:.2f}억</b>" for v in y_move_억], textposition='bottom right', textfont=dict(size=15, color='#a855f7'), line=dict(color='#a855f7', width=3, dash='dot')))
 
         if st.session_state['t_est']:
-            fig_trend.add_trace(go.Scatter(x=trend_labels, y=y_est, mode='lines+markers+text', name='견적건', text=[f"<b>{v:,.0f}건</b>" for v in y_est], textposition='top center', textfont=dict(size=15, color='#3b82f6'), line=dict(color='#3b82f6', width=3), marker=dict(size=marker_sizes, line=dict(width=2, color='white')), yaxis='y2'))
+            fig_trend.add_trace(go.Scatter(x=trend_labels, y=y_est, mode='lines+markers+text', name='견적건', text=[f"<b>{v:,.0f}건</b>" for v in y_est], textposition='top center', textfont=dict(size=15, color='#4338ca'), line=dict(color='#4338ca', width=3), marker=dict(size=marker_sizes, line=dict(width=2, color='white')), yaxis='y2'))
+        
         if st.session_state['t_cnt']:
             fig_trend.add_trace(go.Scatter(x=trend_labels, y=y_cnt, mode='lines+markers+text', name='계약건', text=[f"<b>{v:,.0f}건</b>" for v in y_cnt], textposition='bottom center', textfont=dict(size=15, color='#10b981'), line=dict(color='#10b981', width=3), marker=dict(size=marker_sizes, line=dict(width=2, color='white')), yaxis='y2'))
 
         if st.session_state['t_rate']:
-            fig_trend.add_trace(go.Scatter(x=trend_labels, y=y_rate, mode='lines+markers+text', name='계약률', text=[f"<b>{v:.1f}%</b>" for v in y_rate], textposition='top right', textfont=dict(size=15, color='#ca8a04'), line=dict(color='#eab308', width=3), marker=dict(size=marker_sizes, line=dict(width=2, color='white')), yaxis='y3'))
+            fig_trend.add_trace(go.Scatter(x=trend_labels, y=y_rate, mode='lines+markers+text', name='계약률', text=[f"<b>{v:.1f}%</b>" for v in y_rate], textposition='top right', textfont=dict(size=15, color='#ca8a04'), line=dict(color='#ca8a04', width=3), marker=dict(size=marker_sizes, line=dict(width=2, color='white')), yaxis='y3'))
+        
         if st.session_state['t_unit']:
-            fig_trend.add_trace(go.Scatter(x=trend_labels, y=y_unit, mode='lines+markers+text', name='객단가', text=[f"<b>{int(v):,}만</b>" for v in y_unit], textposition='bottom left', textfont=dict(size=15, color='#be185d'), line=dict(color='#ec4899', width=3), marker=dict(size=marker_sizes, line=dict(width=2, color='white')), yaxis='y4'))
+            fig_trend.add_trace(go.Scatter(x=trend_labels, y=y_unit, mode='lines+markers+text', name='객단가', text=[f"<b>{int(v):,}만</b>" for v in y_unit], textposition='bottom left', textfont=dict(size=15, color='#ec4899'), line=dict(color='#ec4899', width=3), marker=dict(size=marker_sizes, line=dict(width=2, color='white')), yaxis='y4'))
             
         fig_trend.update_layout(
-            height=450, margin=dict(l=20, r=20, t=60, b=20), plot_bgcolor='white', 
+            title=dict(text=f"<b>🎯 {chart_title} 실적 추이</b>", x=0.5, xanchor='center', font=dict(size=18, color='#0f172a')),
+            height=520, margin=dict(l=20, r=20, t=100, b=20), plot_bgcolor='white', 
             legend=dict(orientation="h", yanchor="bottom", y=1.05, xanchor="right", x=1),
-            # 🚀 Y축 타이틀 가로 상단 배치
-            annotations=[dict(xref='paper', yref='paper', x=0, y=1.1, xanchor='left', yanchor='bottom', text='<b>계약액 (억)</b>', font=dict(size=14, color='#1e3a8a'), showarrow=False)],
+            annotations=[dict(xref='paper', yref='paper', x=0, y=1.08, xanchor='left', yanchor='bottom', text='<b>계약액 (억)</b>', font=dict(size=13, color='#1e3a8a'), showarrow=False)],
             yaxis=dict(title="", tickformat=".1f", ticksuffix="억", dtick=0.5, gridcolor='#f1f5f9'),
             yaxis2=dict(title=dict(text="<b>건수 (건)</b>", font=dict(size=13, color='#ea580c')), overlaying='y', side='right', showgrid=False),
             yaxis3=dict(overlaying='y', visible=False),
@@ -755,15 +825,15 @@ if not df_raw.empty:
     st.markdown("---")
 
     # 🚀 2. 선택 인원 상세 목표대비 실적 바 그래프 (전체보기가 아닐 때만 노출)
-    if selected_option != valid_choices[0]:
-        comp_df = final_df[~final_df[('기본정보', 'HC명', 'HC명')].str.contains("합계|총계", na=False)]
+    if vt != "충청호남팀 전체":
+        comp_df = final_df[~final_df[('기본정보', 'HC명', 'HC명')].str.contains("합계|총계|상권", na=False)]
         total_competitors = len(comp_df)
-        unit_str = "팀" if is_dealer_total else "명"
+        unit_str = "팀" if (is_dealer_total or is_region_total) else "명"
         
         def get_rank_str(col_tuple, val):
-            if val == 0: return f"순위 제외"
+            if val == 0 or is_region_total: return ""
             ranks = comp_df[col_tuple].rank(method='min', ascending=False)
-            t_idx = comp_df[(comp_df[('기본정보', '대리점', '대리점')] == target_row[('기본정보', '대리점', '대리점')]) & (comp_df[('기본정보', 'HC명', 'HC명')] == target_row[('기본정보', 'HC명', 'HC명')])].index
+            t_idx = comp_df[(comp_df[('기본정보', '대리점', '대리점')] == target_row.get(('기본정보', '대리점', '대리점'))) & (comp_df[('기본정보', 'HC명', 'HC명')] == target_row.get(('기본정보', 'HC명', 'HC명')))].index
             if not t_idx.empty:
                 return f"🏆 {int(ranks.loc[t_idx[0]])}등 / {total_competitors}{unit_str}"
             return ""
@@ -775,31 +845,31 @@ if not df_raw.empty:
         
         st.markdown(f"#### ✨ **상세 목표 대비 실적 요약 (당월 / 전주 / 당주)**")
         
-        act1, pct1 = target_row[('🎯 당월매출', '인별매출(천)', 'ACT')], target_row[('🎯 당월매출', '인별매출(천)', '달성율(%)')]
+        act1, pct1 = target_row.get(('🎯 당월매출', '인별매출(천)', 'ACT'), 0), target_row.get(('🎯 당월매출', '인별매출(천)', '달성율(%)'), 0)
         rk1 = get_rank_str(('🎯 당월매출', '인별매출(천)', '달성율(%)'), pct1) if not is_dealer_total else ""
         
-        act2, pct2 = target_row[('🌟 당월 합계', '계약액(천)', 'ACT')], target_row[('🌟 당월 합계', '계약액(천)', '달성율(%)')]
+        act2, pct2 = target_row.get(('🌟 당월 합계', '계약액(천)', 'ACT'), 0), target_row.get(('🌟 당월 합계', '계약액(천)', '달성율(%)'), 0)
         rk2 = get_rank_str(('🌟 당월 합계', '계약액(천)', '달성율(%)'), pct2) if not is_dealer_total else ""
         
-        act_m_est, pct_m_est = target_row[('🌟 당월 합계', '견적건', 'ACT')], target_row[('🌟 당월 합계', '견적건', '달성율(%)')]
+        act_m_est, pct_m_est = target_row.get(('🌟 당월 합계', '견적건', 'ACT'), 0), target_row.get(('🌟 당월 합계', '견적건', '달성율(%)'), 0)
         rk_m_est = get_rank_str(('🌟 당월 합계', '견적건', '달성율(%)'), pct_m_est) if not is_dealer_total else ""
         
-        act_pw_amt, pct_pw_amt = (target_row[(pw_col, '계약액(천)', 'ACT')], target_row[(pw_col, '계약액(천)', '달성율(%)')]) if pw_col else (0, 0)
+        act_pw_amt, pct_pw_amt = (target_row.get((pw_col, '계약액(천)', 'ACT'), 0), target_row.get((pw_col, '계약액(천)', '달성율(%)'), 0)) if pw_col else (0, 0)
         rk_pw_amt = get_rank_str((pw_col, '계약액(천)', '달성율(%)'), pct_pw_amt) if pw_col and not is_dealer_total else ""
         
-        act_pw_cnt, pct_pw_cnt = (target_row[(pw_col, '계약건', 'ACT')], target_row[(pw_col, '계약건', '달성율(%)')]) if pw_col else (0, 0)
+        act_pw_cnt, pct_pw_cnt = (target_row.get((pw_col, '계약건', 'ACT'), 0), target_row.get((pw_col, '계약건', '달성율(%)'), 0)) if pw_col else (0, 0)
         rk_pw_cnt = get_rank_str((pw_col, '계약건', '달성율(%)'), pct_pw_cnt) if pw_col and not is_dealer_total else ""
         
-        act_pw_est, pct_pw_est = (target_row[(pw_col, '견적건', 'ACT')], target_row[(pw_col, '견적건', '달성율(%)')]) if pw_col else (0, 0)
+        act_pw_est, pct_pw_est = (target_row.get((pw_col, '견적건', 'ACT'), 0), target_row.get((pw_col, '견적건', '달성율(%)'), 0)) if pw_col else (0, 0)
         rk_pw_est = get_rank_str((pw_col, '견적건', '달성율(%)'), pct_pw_est) if pw_col and not is_dealer_total else ""
         
-        act3, pct3 = (target_row[(cw_col, '계약액(천)', 'ACT')], target_row[(cw_col, '계약액(천)', '달성율(%)')]) if cw_col else (0, 0)
+        act3, pct3 = (target_row.get((cw_col, '계약액(천)', 'ACT'), 0), target_row.get((cw_col, '계약액(천)', '달성율(%)'), 0)) if cw_col else (0, 0)
         rk3 = get_rank_str((cw_col, '계약액(천)', '달성율(%)'), pct3) if cw_col and not is_dealer_total else ""
         
-        act4, pct4 = (target_row[(cw_col, '계약건', 'ACT')], target_row[(cw_col, '계약건', '달성율(%)')]) if cw_col else (0, 0)
+        act4, pct4 = (target_row.get((cw_col, '계약건', 'ACT'), 0), target_row.get((cw_col, '계약건', '달성율(%)'), 0)) if cw_col else (0, 0)
         rk4 = get_rank_str((cw_col, '계약건', '달성율(%)'), pct4) if cw_col and not is_dealer_total else ""
         
-        act_cw_est, pct_cw_est = (target_row[(cw_col, '견적건', 'ACT')], target_row[(cw_col, '견적건', '달성율(%)')]) if cw_col else (0, 0)
+        act_cw_est, pct_cw_est = (target_row.get((cw_col, '견적건', 'ACT'), 0), target_row.get((cw_col, '견적건', '달성율(%)'), 0)) if cw_col else (0, 0)
         rk_cw_est = get_rank_str((cw_col, '견적건', '달성율(%)'), pct_cw_est) if cw_col and not is_dealer_total else ""
 
         mc1, mc2, mc3 = st.columns(3)
@@ -825,14 +895,14 @@ if not df_raw.empty:
             
         categories = ["당월매출", "당월 합계 계약액", f"{CURRENT_WEEK} 계약액", f"{CURRENT_WEEK} 견적건", f"{CURRENT_WEEK} 계약건"]
         targets = [
-            target_row[('🎯 당월매출', '인별매출(천)', '목표')], target_row[('🌟 당월 합계', '계약액(천)', '목표')],
-            target_row[(cw_col, '계약액(천)', '목표')] if cw_col else 0, target_row[(cw_col, '견적건', '목표')] if cw_col else 0, target_row[(cw_col, '계약건', '목표')] if cw_col else 0
+            target_row.get(('🎯 당월매출', '인별매출(천)', '목표'), 0), target_row.get(('🌟 당월 합계', '계약액(천)', '목표'), 0),
+            target_row.get((cw_col, '계약액(천)', '목표'), 0) if cw_col else 0, target_row.get((cw_col, '견적건', '목표'), 0) if cw_col else 0, target_row.get((cw_col, '계약건', '목표'), 0) if cw_col else 0
         ]
         acts = [
-            target_row[('🎯 당월매출', '인별매출(천)', 'ACT')], target_row[('🌟 당월 합계', '계약액(천)', 'ACT')],
-            target_row[(cw_col, '계약액(천)', 'ACT')] if cw_col else 0, target_row[(cw_col, '견적건', 'ACT')] if cw_col else 0, target_row[(cw_col, '계약건', 'ACT')] if cw_col else 0
+            target_row.get(('🎯 당월매출', '인별매출(천)', 'ACT'), 0), target_row.get(('🌟 당월 합계', '계약액(천)', 'ACT'), 0),
+            target_row.get((cw_col, '계약액(천)', 'ACT'), 0) if cw_col else 0, target_row.get((cw_col, '견적건', 'ACT'), 0) if cw_col else 0, target_row.get((cw_col, '계약건', 'ACT'), 0) if cw_col else 0
         ]
-        pcts = [pct1, pct2, pct3, target_row[(cw_col, '견적건', '달성율(%)')] if cw_col else 0, pct4]
+        pcts = [pct1, pct2, pct3, target_row.get((cw_col, '견적건', '달성율(%)'), 0) if cw_col else 0, pct4]
 
         text_targets = [f"{v:,.0f}건" if "건" in c else f"{v:,.0f}" for v, c in zip(targets, categories)]
         text_acts = [f"<b>{v:,.0f}</b>건<br>({p:.1f}%)" if "건" in c else f"<b>{v:,.0f}</b><br>({p:.1f}%)" for v, p, c in zip(acts, pcts, categories)]
