@@ -8,7 +8,7 @@ import json
 import gspread
 from google.oauth2.service_account import Credentials
 import traceback
-from datetime import datetime
+from datetime import datetime, timedelta
 import plotly.graph_objects as go 
 import re 
 import time
@@ -32,7 +32,7 @@ def init_connection():
 
 client = init_connection()
 
-# --- 커스텀 CSS (제목 크기 반으로 축소 및 선택된 탭 옅은 붉은색 처리) ---
+# --- 커스텀 CSS (버튼 그룹화, 폰트 최적화, 활성화 색상 반영) ---
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&display=swap');
@@ -53,7 +53,7 @@ st.markdown("""
     .vdt-table td { padding: 6px 10px; text-align: right; border: 1px solid #e2e8f0; }
     .vdt-table td.text-center { text-align: center; }
     
-    /* 🚀 타이틀 크기 절반 수준으로 대폭 축소 */
+    /* 타이틀 크기 절반 축소 */
     .title-box { background: linear-gradient(90deg, #1e3a8a 0%, #3b82f6 100%); color: white; padding: 12px; border-radius: 8px; margin-bottom: 12px; }
     h1 { font-weight: 900 !important; color: white !important; font-size: 14px !important; margin: 0; }
     h3, h4 { font-size: 14px !important; font-weight: 900 !important; color: #1e293b !important; }
@@ -63,22 +63,26 @@ st.markdown("""
     [data-testid="stMetricLabel"] * { font-size: 12px !important; font-weight: 900 !important; color: #0f172a !important; letter-spacing: -0.3px; }
     [data-testid="stMetricValue"] > div { font-size: 20px !important; font-weight: 900 !important; color: #1e3a8a !important; margin-top: 5px; }
     
-    /* 🚀 일반 탭 버튼 디자인 */
+    /* 🚀 탭 버튼 1줄 사이즈 & 활성화 시 옅은 붉은색 스타일링 */
     div.stButton > button { 
-        background: #f8fafc !important; color: #475569 !important; font-size: 13px !important; font-weight: 800 !important; 
-        border-radius: 8px !important; padding: 8px 10px !important; border: 1px solid #cbd5e1 !important; height: auto !important; min-height: 40px; 
-        border-bottom: 3px solid #94a3b8 !important; transition: all 0.1s ease !important; 
+        background: #f8fafc !important; color: #475569 !important; font-size: 11px !important; font-weight: 800 !important; 
+        border-radius: 6px !important; padding: 4px 6px !important; border: 1px solid #cbd5e1 !important; height: auto !important; min-height: 32px; 
+        border-bottom: 2px solid #94a3b8 !important; transition: all 0.1s ease !important; letter-spacing: -0.5px !important;
     }
-    
-    /* 🚀 선택된(Active) 탭 버튼 디자인 - 옅은 붉은색 처리 */
     div.stButton > button[kind="primary"] { 
         background: linear-gradient(180deg, #fef2f2 0%, #fee2e2 100%) !important; 
         color: #b91c1c !important; 
         border: 1px solid #fca5a5 !important; 
-        border-bottom: 3px solid #f87171 !important; 
+        border-bottom: 2px solid #f87171 !important; 
     }
-    div.stButton > button:hover { transform: translateY(-2px) !important; }
-    div.stButton > button:active { transform: translateY(2px) !important; border-bottom: 1px solid #cbd5e1 !important; margin-bottom: 2px !important; }
+    div.stButton > button:hover { transform: translateY(-1px) !important; }
+    div.stButton > button:active { transform: translateY(1px) !important; border-bottom: 1px solid #cbd5e1 !important; margin-bottom: 1px !important; }
+    
+    /* 버튼 그룹 라벨 */
+    .btn-group-title {
+        font-size: 11px; font-weight: 800; color: #475569; background: #e2e8f0; 
+        border-radius: 4px; padding: 2px 0; text-align: center; margin-bottom: 4px;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -133,25 +137,29 @@ def get_mapped_dealer(raw_d):
     if any(k in c_d for k in ["한밭", "INT충청", "701347", "세종2"]): return "세종"
     return raw_d.strip()
 
-# 🚀 최근 8주(38주~45주) 날짜 트렌드 함수 
+# 🚀 1. 최근 8주(과거~현재) 날짜 및 주차 자동 계산 로직
+now = datetime.now()
+current_monday = now - timedelta(days=now.weekday())
+
+trend_ranges = []
+trend_labels = []
+
+for i in range(7, -1, -1):
+    w_start = current_monday - timedelta(weeks=i)
+    w_end = w_start + timedelta(days=6)
+    iso_year, iso_week, iso_day = w_start.isocalendar()
+    trend_ranges.append((w_start, w_end))
+    label = f"{iso_week}주 ({w_start.strftime('%m.%d')}~{w_end.strftime('%m.%d')})"
+    trend_labels.append(label)
+
 def get_trend_week_idx(m, d):
-    try: target_date = datetime(2026, m, d)
-    except: return -1
-    ranges = [
-        (datetime(2026, 9, 14), datetime(2026, 9, 20)),   # 0: 9월 2주차 (38주)
-        (datetime(2026, 9, 21), datetime(2026, 9, 27)),   # 1: 9월 3주차 (39주)
-        (datetime(2026, 9, 28), datetime(2026, 10, 4)),   # 2: 9월 4주차 (40주)
-        (datetime(2026, 10, 5), datetime(2026, 10, 11)),  # 3: 10월 1주차 (41주)
-        (datetime(2026, 10, 12), datetime(2026, 10, 18)), # 4: 10월 2주차 (42주)
-        (datetime(2026, 10, 19), datetime(2026, 10, 25)), # 5: 10월 3주차 (43주)
-        (datetime(2026, 10, 26), datetime(2026, 11, 1)),  # 6: 10월 4주차 (44주)
-        (datetime(2026, 11, 2), datetime(2026, 11, 8)),   # 7: 11월 1주차 (45주)
-    ]
-    for i, (start, end) in enumerate(ranges):
-        if start <= target_date <= end: return i
+    try: 
+        target_date = datetime(now.year, m, d)
+        for i, (start, end) in enumerate(trend_ranges):
+            if start.date() <= target_date.date() <= end.date(): return i
+    except: pass
     return -1
 
-now = datetime.now()
 CURRENT_WEEK = get_week_name(f"{now.month}/{now.day}") 
 if not CURRENT_WEEK: CURRENT_WEEK = '1주차'
 
@@ -281,7 +289,7 @@ def load_vdt_data():
         trend_map = {ws.id: idx for m_val, d_val, ws, idx in trend_sheets}
         all_sheet_ids = set(list(valid_map.keys()) + list(trend_map.keys()))
         
-        status_box.info(f"📉 3단계: 일별 실적 스캔 및 최근 8주 트렌드 데이터 계산 중...")
+        status_box.info(f"📉 3단계: 일별 실적 스캔 및 8주차 트렌드 계산 중...")
         sheet_data_cache = {}
         id_to_ws = {ws.id: ws for _,_,ws in valid_daily_sheets}
         for _,_,ws,_ in trend_sheets: id_to_ws[ws.id] = ws
@@ -300,7 +308,6 @@ def load_vdt_data():
         real_dealer_monthly = {d: {'amt': 0, 'est': 0, 'cnt': 0} for d in valid_dealers}
         real_dealer_weekly = {d: {wk: {'amt': 0, 'est': 0, 'cnt': 0} for wk in week_keys} for d in valid_dealers}
         
-        # 🚀 주중/주말 데이터 추가 처리
         trend_hc_data = {clean_str(hc): [{'amt': 0, 'est': 0, 'cnt': 0, 'amt_wd': 0, 'amt_we': 0} for _ in range(8)] for _, hc, _ in hc_info_raw}
         trend_dealer_data = {d: [{'amt': 0, 'est': 0, 'cnt': 0, 'amt_wd': 0, 'amt_we': 0} for _ in range(8)] for d in valid_dealers}
         trend_total_data = [{'amt': 0, 'est': 0, 'cnt': 0, 'amt_wd': 0, 'amt_we': 0} for _ in range(8)]
@@ -310,15 +317,13 @@ def load_vdt_data():
             wk_info = valid_map.get(ws_id) 
             tr_idx = trend_map.get(ws_id, -1)
             
-            # 주중/주말 판별 로직 추가
             is_weekend = False
             if tr_idx != -1:
-                # 트렌드 시트에서 날짜 정보 가져오기
                 for m_val, d_val, ws, idx in trend_sheets:
                     if ws.id == ws_id:
                         try:
-                            sheet_date = datetime(2026, m_val, d_val)
-                            is_weekend = sheet_date.weekday() >= 5 # 5=Sat, 6=Sun
+                            sheet_date = datetime(now.year, m_val, d_val)
+                            is_weekend = sheet_date.weekday() >= 5 
                         except: pass
                         break
 
@@ -634,38 +639,47 @@ if not df_raw.empty:
     toggle_keys = ['t_amt', 't_avg', 't_wd', 't_we', 't_walk', 't_move', 't_est', 't_cnt', 't_rate', 't_unit']
     for k in toggle_keys:
         if k not in st.session_state:
+            # 계약액만 기본 True 설정
             st.session_state[k] = True if k == 't_amt' else False
             
     def toggle_state(key):
         st.session_state[key] = not st.session_state[key]
 
-    # 첫 번째 줄 버튼 (6개)
-    t_cols1 = st.columns(6)
-    with t_cols1[0]: st.button("✅ 주간 계약액" if st.session_state['t_amt'] else "주간 계약액", type="primary" if st.session_state['t_amt'] else "secondary", on_click=toggle_state, args=('t_amt',), use_container_width=True)
-    with t_cols1[1]: st.button("✅ 최근 8주 평균" if st.session_state['t_avg'] else "최근 8주 평균", type="primary" if st.session_state['t_avg'] else "secondary", on_click=toggle_state, args=('t_avg',), use_container_width=True)
-    with t_cols1[2]: st.button("✅ 계약액(주중)" if st.session_state['t_wd'] else "계약액(주중)", type="primary" if st.session_state['t_wd'] else "secondary", on_click=toggle_state, args=('t_wd',), use_container_width=True)
-    with t_cols1[3]: st.button("✅ 계약액(주말)" if st.session_state['t_we'] else "계약액(주말)", type="primary" if st.session_state['t_we'] else "secondary", on_click=toggle_state, args=('t_we',), use_container_width=True)
-    with t_cols1[4]: st.button("✅ 워크인 계약액" if st.session_state['t_walk'] else "워크인 계약액", type="primary" if st.session_state['t_walk'] else "secondary", on_click=toggle_state, args=('t_walk',), use_container_width=True)
-    with t_cols1[5]: st.button("✅ 입주 계약액" if st.session_state['t_move'] else "입주 계약액", type="primary" if st.session_state['t_move'] else "secondary", on_click=toggle_state, args=('t_move',), use_container_width=True)
+    # 🚀 4개의 버튼 묶음 한 줄 배치
+    g_col1, g_col2, g_col3, g_col4, g_col5 = st.columns([4, 2, 2, 2, 1])
     
-    # 두 번째 줄 버튼 (5개)
-    t_cols2 = st.columns(6)
-    with t_cols2[0]: st.button("✅ 견적건" if st.session_state['t_est'] else "견적건", type="primary" if st.session_state['t_est'] else "secondary", on_click=toggle_state, args=('t_est',), use_container_width=True)
-    with t_cols2[1]: st.button("✅ 계약건" if st.session_state['t_cnt'] else "계약건", type="primary" if st.session_state['t_cnt'] else "secondary", on_click=toggle_state, args=('t_cnt',), use_container_width=True)
-    with t_cols2[2]: st.button("✅ 계약률" if st.session_state['t_rate'] else "계약률", type="primary" if st.session_state['t_rate'] else "secondary", on_click=toggle_state, args=('t_rate',), use_container_width=True)
-    with t_cols2[3]: st.button("✅ 객단가" if st.session_state['t_unit'] else "객단가", type="primary" if st.session_state['t_unit'] else "secondary", on_click=toggle_state, args=('t_unit',), use_container_width=True)
-    with t_cols2[4]: st.empty()
-    with t_cols2[5]:
+    with g_col1:
+        st.markdown("<div class='btn-group-title'>💰 계약액 지표</div>", unsafe_allow_html=True)
+        c1, c2, c3, c4 = st.columns(4)
+        with c1: st.button("계약액" if not st.session_state['t_amt'] else "✅ 계약액", on_click=toggle_state, args=('t_amt',), use_container_width=True, type="primary" if st.session_state['t_amt'] else "secondary")
+        with c2: st.button("8주평균" if not st.session_state['t_avg'] else "✅ 8주평균", on_click=toggle_state, args=('t_avg',), use_container_width=True, type="primary" if st.session_state['t_avg'] else "secondary")
+        with c3: st.button("계약(주중)" if not st.session_state['t_wd'] else "✅ 계약(주중)", on_click=toggle_state, args=('t_wd',), use_container_width=True, type="primary" if st.session_state['t_wd'] else "secondary")
+        with c4: st.button("계약(주말)" if not st.session_state['t_we'] else "✅ 계약(주말)", on_click=toggle_state, args=('t_we',), use_container_width=True, type="primary" if st.session_state['t_we'] else "secondary")
+
+    with g_col2:
+        st.markdown("<div class='btn-group-title'>🏢 분류 지표</div>", unsafe_allow_html=True)
+        c1, c2 = st.columns(2)
+        with c1: st.button("워크인" if not st.session_state['t_walk'] else "✅ 워크인", on_click=toggle_state, args=('t_walk',), use_container_width=True, type="primary" if st.session_state['t_walk'] else "secondary")
+        with c2: st.button("입주" if not st.session_state['t_move'] else "✅ 입주", on_click=toggle_state, args=('t_move',), use_container_width=True, type="primary" if st.session_state['t_move'] else "secondary")
+
+    with g_col3:
+        st.markdown("<div class='btn-group-title'>📝 건수 지표</div>", unsafe_allow_html=True)
+        c1, c2 = st.columns(2)
+        with c1: st.button("견적건" if not st.session_state['t_est'] else "✅ 견적건", on_click=toggle_state, args=('t_est',), use_container_width=True, type="primary" if st.session_state['t_est'] else "secondary")
+        with c2: st.button("계약건" if not st.session_state['t_cnt'] else "✅ 계약건", on_click=toggle_state, args=('t_cnt',), use_container_width=True, type="primary" if st.session_state['t_cnt'] else "secondary")
+
+    with g_col4:
+        st.markdown("<div class='btn-group-title'>📊 효율 지표</div>", unsafe_allow_html=True)
+        c1, c2 = st.columns(2)
+        with c1: st.button("계약률" if not st.session_state['t_rate'] else "✅ 계약률", on_click=toggle_state, args=('t_rate',), use_container_width=True, type="primary" if st.session_state['t_rate'] else "secondary")
+        with c2: st.button("객단가" if not st.session_state['t_unit'] else "✅ 객단가", on_click=toggle_state, args=('t_unit',), use_container_width=True, type="primary" if st.session_state['t_unit'] else "secondary")
+
+    with g_col5:
+        st.markdown("<div style='margin-bottom:4px;'>&nbsp;</div>", unsafe_allow_html=True)
         def reset_toggles():
             for tk in toggle_keys: st.session_state[tk] = False
-        st.button("🔄 전체 해제", on_click=reset_toggles, use_container_width=True)
+        st.button("🔄 리셋", on_click=reset_toggles, use_container_width=True)
 
-    trend_labels = [
-        "9월 2주차 (09.14~09.20)", "9월 3주차 (09.21~09.27)", "9월 4주차 (09.28~10.04)", 
-        "10월 1주차 (10.05~10.11)", "10월 2주차 (10.12~10.18)", "10월 3주차 (10.19~10.25)", 
-        "10월 4주차 (10.26~11.01)", "11월 1주차 (11.02~11.08)"
-    ]
-    
     if selected_option == valid_choices[0]:
         source_data = trend_total_data
     elif is_dealer_total:
@@ -686,9 +700,8 @@ if not df_raw.empty:
     y_est = [w['est'] for w in source_data]
     y_cnt = [w['cnt'] for w in source_data]
     y_rate = [(c / e * 100) if e > 0 else 0 for e, c in zip(y_est, y_cnt)]
-    y_unit = [(a / (c * 10)) if c > 0 else 0 for a, c in zip(y_amt, y_cnt)]
+    y_unit = [(a / (c * 10)) if c > 0 else 0 for a, c in zip(y_amt, y_cnt)] # 만원 단위
             
-    # 워크인, 입주 준비 중 (추후 로직 연동 시 배열 값 변경)
     y_walk_억 = [0] * len(trend_labels)
     y_move_억 = [0] * len(trend_labels)
 
@@ -697,36 +710,39 @@ if not df_raw.empty:
     if any_active:
         fig_trend = go.Figure()
         
-        # 억 단위 표시 계열 (y1)
+        # 🚀 가장 최근 주차(마지막 인덱스) 마커 사이즈 키워서 강조 
+        marker_sizes = [10, 10, 10, 10, 10, 10, 10, 20]
+        
         if st.session_state['t_amt']:
-            fig_trend.add_trace(go.Scatter(x=trend_labels, y=y_amt_억, mode='lines+markers+text', name='주간 계약액', text=[f"<b>{v:.2f}억</b>" for v in y_amt_억], textposition='top center', line=dict(color='#0f172a', width=4), marker=dict(size=12)))
+            marker_colors = ['#0f172a'] * 7 + ['#dc2626'] # 마지막 점 빨간색 강조
+            fig_trend.add_trace(go.Scatter(x=trend_labels, y=y_amt_억, mode='lines+markers+text', name='주간 계약액', text=[f"<b>{v:.2f}억</b>" for v in y_amt_억], textposition='top center', textfont=dict(size=15, color='black'), line=dict(color='#0f172a', width=4), marker=dict(size=marker_sizes, color=marker_colors, line=dict(width=2, color='white'))))
         if st.session_state['t_avg']:
             fig_trend.add_trace(go.Scatter(x=trend_labels, y=y_avg_억, mode='lines', name='최근 8주 평균', line=dict(color='#94a3b8', width=2, dash='dash')))
         if st.session_state['t_wd']:
-            fig_trend.add_trace(go.Scatter(x=trend_labels, y=y_wd_억, mode='lines+markers+text', name='계약액(주중)', text=[f"<b>{v:.2f}억</b>" for v in y_wd_억], textposition='bottom center', line=dict(color='#0ea5e9', width=3), marker=dict(size=9)))
+            fig_trend.add_trace(go.Scatter(x=trend_labels, y=y_wd_억, mode='lines+markers+text', name='계약액(주중)', text=[f"<b>{v:.2f}억</b>" for v in y_wd_억], textposition='bottom center', textfont=dict(size=15, color='#0ea5e9'), line=dict(color='#0ea5e9', width=3), marker=dict(size=marker_sizes, line=dict(width=2, color='white'))))
         if st.session_state['t_we']:
-            fig_trend.add_trace(go.Scatter(x=trend_labels, y=y_we_억, mode='lines+markers+text', name='계약액(주말)', text=[f"<b>{v:.2f}억</b>" for v in y_we_억], textposition='top right', line=dict(color='#ef4444', width=3), marker=dict(size=9)))
+            fig_trend.add_trace(go.Scatter(x=trend_labels, y=y_we_억, mode='lines+markers+text', name='계약액(주말)', text=[f"<b>{v:.2f}억</b>" for v in y_we_억], textposition='top right', textfont=dict(size=15, color='#ef4444'), line=dict(color='#ef4444', width=3), marker=dict(size=marker_sizes, line=dict(width=2, color='white'))))
         if st.session_state['t_walk']:
-            fig_trend.add_trace(go.Scatter(x=trend_labels, y=y_walk_억, mode='lines+markers+text', name='워크인 계약액 (준비중)', text=[f"<b>{v:.2f}억</b>" for v in y_walk_억], textposition='top left', line=dict(color='#f59e0b', width=3, dash='dot')))
+            fig_trend.add_trace(go.Scatter(x=trend_labels, y=y_walk_억, mode='lines+markers+text', name='워크인 계약액 (준비중)', text=[f"<b>{v:.2f}억</b>" for v in y_walk_억], textposition='top left', textfont=dict(size=15, color='#f59e0b'), line=dict(color='#f59e0b', width=3, dash='dot')))
         if st.session_state['t_move']:
-            fig_trend.add_trace(go.Scatter(x=trend_labels, y=y_move_억, mode='lines+markers+text', name='입주 계약액 (준비중)', text=[f"<b>{v:.2f}억</b>" for v in y_move_억], textposition='bottom right', line=dict(color='#8b5cf6', width=3, dash='dot')))
+            fig_trend.add_trace(go.Scatter(x=trend_labels, y=y_move_억, mode='lines+markers+text', name='입주 계약액 (준비중)', text=[f"<b>{v:.2f}억</b>" for v in y_move_억], textposition='bottom right', textfont=dict(size=15, color='#8b5cf6'), line=dict(color='#8b5cf6', width=3, dash='dot')))
 
-        # 건수 표시 계열 (y2)
         if st.session_state['t_est']:
-            fig_trend.add_trace(go.Scatter(x=trend_labels, y=y_est, mode='lines+markers+text', name='견적건', text=[f"<b>{v:,.0f}건</b>" for v in y_est], textposition='top center', line=dict(color='#3b82f6', width=3), marker=dict(size=10), yaxis='y2'))
+            fig_trend.add_trace(go.Scatter(x=trend_labels, y=y_est, mode='lines+markers+text', name='견적건', text=[f"<b>{v:,.0f}건</b>" for v in y_est], textposition='top center', textfont=dict(size=15, color='#3b82f6'), line=dict(color='#3b82f6', width=3), marker=dict(size=marker_sizes, line=dict(width=2, color='white')), yaxis='y2'))
         if st.session_state['t_cnt']:
-            fig_trend.add_trace(go.Scatter(x=trend_labels, y=y_cnt, mode='lines+markers+text', name='계약건', text=[f"<b>{v:,.0f}건</b>" for v in y_cnt], textposition='bottom center', line=dict(color='#10b981', width=3), marker=dict(size=10), yaxis='y2'))
+            fig_trend.add_trace(go.Scatter(x=trend_labels, y=y_cnt, mode='lines+markers+text', name='계약건', text=[f"<b>{v:,.0f}건</b>" for v in y_cnt], textposition='bottom center', textfont=dict(size=15, color='#10b981'), line=dict(color='#10b981', width=3), marker=dict(size=marker_sizes, line=dict(width=2, color='white')), yaxis='y2'))
 
-        # 비율 및 단가 계열 (보이지 않는 자동 축 매핑)
         if st.session_state['t_rate']:
-            fig_trend.add_trace(go.Scatter(x=trend_labels, y=y_rate, mode='lines+markers+text', name='계약률', text=[f"<b>{v:.1f}%</b>" for v in y_rate], textposition='top center', line=dict(color='#eab308', width=3), marker=dict(size=9), yaxis='y3'))
+            fig_trend.add_trace(go.Scatter(x=trend_labels, y=y_rate, mode='lines+markers+text', name='계약률', text=[f"<b>{v:.1f}%</b>" for v in y_rate], textposition='top right', textfont=dict(size=15, color='#ca8a04'), line=dict(color='#eab308', width=3), marker=dict(size=marker_sizes, line=dict(width=2, color='white')), yaxis='y3'))
         if st.session_state['t_unit']:
-            fig_trend.add_trace(go.Scatter(x=trend_labels, y=y_unit, mode='lines+markers+text', name='객단가', text=[f"<b>{int(v):,}만</b>" for v in y_unit], textposition='bottom center', line=dict(color='#ec4899', width=3), marker=dict(size=9), yaxis='y4'))
+            fig_trend.add_trace(go.Scatter(x=trend_labels, y=y_unit, mode='lines+markers+text', name='객단가', text=[f"<b>{int(v):,}만</b>" for v in y_unit], textposition='bottom left', textfont=dict(size=15, color='#be185d'), line=dict(color='#ec4899', width=3), marker=dict(size=marker_sizes, line=dict(width=2, color='white')), yaxis='y4'))
             
         fig_trend.update_layout(
-            height=500, margin=dict(l=20, r=20, t=60, b=20), plot_bgcolor='white', 
+            height=450, margin=dict(l=20, r=20, t=60, b=20), plot_bgcolor='white', 
             legend=dict(orientation="h", yanchor="bottom", y=1.05, xanchor="right", x=1),
-            yaxis=dict(title=dict(text="<b>계약액 (억)</b>", font=dict(size=13, color='#1e3a8a')), tickformat=".1f", ticksuffix="억", dtick=0.5, gridcolor='#f1f5f9'),
+            # 🚀 Y축 타이틀 가로 상단 배치
+            annotations=[dict(xref='paper', yref='paper', x=0, y=1.1, xanchor='left', yanchor='bottom', text='<b>계약액 (억)</b>', font=dict(size=14, color='#1e3a8a'), showarrow=False)],
+            yaxis=dict(title="", tickformat=".1f", ticksuffix="억", dtick=0.5, gridcolor='#f1f5f9'),
             yaxis2=dict(title=dict(text="<b>건수 (건)</b>", font=dict(size=13, color='#ea580c')), overlaying='y', side='right', showgrid=False),
             yaxis3=dict(overlaying='y', visible=False),
             yaxis4=dict(overlaying='y', visible=False),
