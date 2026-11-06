@@ -670,74 +670,74 @@ if not df_raw.empty:
         st.plotly_chart(fig, use_container_width=True)
         st.markdown("---")
 
-    # 🚀 최근 실적 추이 꺾은선 그래프 연동
-    st.markdown("### 📈 최근 실적 추이")
-    
-    toggle_keys = ['t_amt', 't_est', 't_cnt', 't_walk', 't_move']
-    for k in toggle_keys:
-        if k not in st.session_state:
-            st.session_state[k] = False
-            
-    def toggle_state(key):
-        st.session_state[key] = not st.session_state[key]
-
-    t_cols = st.columns(6)
-    with t_cols[0]: st.button("✅ 계약액" if st.session_state['t_amt'] else "계약액", on_click=toggle_state, args=('t_amt',), use_container_width=True)
-    with t_cols[1]: st.button("✅ 견적건" if st.session_state['t_est'] else "견적건", on_click=toggle_state, args=('t_est',), use_container_width=True)
-    with t_cols[2]: st.button("✅ 계약건" if st.session_state['t_cnt'] else "계약건", on_click=toggle_state, args=('t_cnt',), use_container_width=True)
-    with t_cols[3]: st.button("✅ 워크인 계약액" if st.session_state['t_walk'] else "워크인 계약액", on_click=toggle_state, args=('t_walk',), use_container_width=True)
-    with t_cols[4]: st.button("✅ 입주 계약액" if st.session_state['t_move'] else "입주 계약액", on_click=toggle_state, args=('t_move',), use_container_width=True)
-    with t_cols[5]:
-        def reset_toggles():
-            for tk in toggle_keys: st.session_state[tk] = False
-        st.button("🔄 전체 해제", on_click=reset_toggles, use_container_width=True)
-
-    x_labels = []
-    y_amt = []
-    y_est = []
-    y_cnt = []
-    
-    for wk in week_keys_list:
-        wk_label = f"{current_month}월 {wk}"
-        x_labels.append(wk_label)
+        # 🚀 최근 실적 추이 꺾은선 그래프 연동
+        st.markdown("### 📈 최근 실적 추이")
         
-        wk_col = next((c[0] for c in final_df.columns if wk in c[0]), None)
-        if wk_col:
-            y_amt.append(t_row[(wk_col, '계약액(천)', 'ACT')])
-            y_est.append(t_row[(wk_col, '견적건', 'ACT')])
-            y_cnt.append(t_row[(wk_col, '계약건', 'ACT')])
-        else:
-            y_amt.append(0)
-            y_est.append(0)
-            y_cnt.append(0)
-            
-    # 워크인, 입주 준비 중 (추후 로직 연동 시 배열 값 변경)
-    y_walk = [0] * len(x_labels)
-    y_move = [0] * len(x_labels)
+        toggle_keys = ['t_amt', 't_est', 't_cnt', 't_walk', 't_move']
+        for k in toggle_keys:
+            if k not in st.session_state:
+                st.session_state[k] = False
+                
+        def toggle_state(key):
+            st.session_state[key] = not st.session_state[key]
 
-    any_active = any([st.session_state[k] for k in toggle_keys])
-    
-    if any_active:
-        fig_trend = go.Figure()
-        if st.session_state['t_amt']:
-            fig_trend.add_trace(go.Scatter(x=x_labels, y=y_amt, mode='lines+markers+text', name='주간 계약액', text=[f"{v:,.0f}" for v in y_amt], textposition='top center', line=dict(color='#0f172a', width=3), marker=dict(size=10)))
-        if st.session_state['t_est']:
-            fig_trend.add_trace(go.Scatter(x=x_labels, y=y_est, mode='lines+markers+text', name='견적건', text=[f"{v:,.0f}" for v in y_est], textposition='top center', line=dict(color='#3b82f6', width=3), marker=dict(size=10)))
-        if st.session_state['t_cnt']:
-            fig_trend.add_trace(go.Scatter(x=x_labels, y=y_cnt, mode='lines+markers+text', name='계약건', text=[f"{v:,.0f}" for v in y_cnt], textposition='top center', line=dict(color='#10b981', width=3), marker=dict(size=10)))
-        if st.session_state['t_walk']:
-            fig_trend.add_trace(go.Scatter(x=x_labels, y=y_walk, mode='lines+markers+text', name='워크인 계약액 (준비중)', text=[f"{v:,.0f}" for v in y_walk], textposition='top center', line=dict(color='#f59e0b', width=3, dash='dot')))
-        if st.session_state['t_move']:
-            fig_trend.add_trace(go.Scatter(x=x_labels, y=y_move, mode='lines+markers+text', name='입주 계약액 (준비중)', text=[f"{v:,.0f}" for v in y_move], textposition='top center', line=dict(color='#8b5cf6', width=3, dash='dot')))
+        t_cols = st.columns(6)
+        with t_cols[0]: st.button("✅ 계약액" if st.session_state['t_amt'] else "계약액", on_click=toggle_state, args=('t_amt',), use_container_width=True)
+        with t_cols[1]: st.button("✅ 견적건" if st.session_state['t_est'] else "견적건", on_click=toggle_state, args=('t_est',), use_container_width=True)
+        with t_cols[2]: st.button("✅ 계약건" if st.session_state['t_cnt'] else "계약건", on_click=toggle_state, args=('t_cnt',), use_container_width=True)
+        with t_cols[3]: st.button("✅ 워크인 계약액" if st.session_state['t_walk'] else "워크인 계약액", on_click=toggle_state, args=('t_walk',), use_container_width=True)
+        with t_cols[4]: st.button("✅ 입주 계약액" if st.session_state['t_move'] else "입주 계약액", on_click=toggle_state, args=('t_move',), use_container_width=True)
+        with t_cols[5]:
+            def reset_toggles():
+                for tk in toggle_keys: st.session_state[tk] = False
+            st.button("🔄 전체 해제", on_click=reset_toggles, use_container_width=True)
+
+        x_labels = []
+        y_amt = []
+        y_est = []
+        y_cnt = []
+        
+        for wk in week_keys_list:
+            wk_label = f"{current_month}월 {wk}"
+            x_labels.append(wk_label)
             
-        fig_trend.update_layout(height=400, margin=dict(l=20, r=20, t=40, b=20), plot_bgcolor='white', legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
-        fig_trend.update_xaxes(showgrid=True, gridcolor='#f1f5f9')
-        fig_trend.update_yaxes(showgrid=True, gridcolor='#f1f5f9')
-        st.plotly_chart(fig_trend, use_container_width=True)
-    else:
-        st.info("👆 위 세부 지표 버튼을 클릭하시면 실시간 주간 추이 꺾은선 그래프가 나타납니다.")
-    
-    st.markdown("---")
+            wk_col = next((c[0] for c in final_df.columns if wk in c[0]), None)
+            if wk_col:
+                y_amt.append(t_row[(wk_col, '계약액(천)', 'ACT')])
+                y_est.append(t_row[(wk_col, '견적건', 'ACT')])
+                y_cnt.append(t_row[(wk_col, '계약건', 'ACT')])
+            else:
+                y_amt.append(0)
+                y_est.append(0)
+                y_cnt.append(0)
+                
+        # 워크인, 입주 준비 중 (추후 로직 연동 시 배열 값 변경)
+        y_walk = [0] * len(x_labels)
+        y_move = [0] * len(x_labels)
+
+        any_active = any([st.session_state[k] for k in toggle_keys])
+        
+        if any_active:
+            fig_trend = go.Figure()
+            if st.session_state['t_amt']:
+                fig_trend.add_trace(go.Scatter(x=x_labels, y=y_amt, mode='lines+markers+text', name='주간 계약액', text=[f"{v:,.0f}" for v in y_amt], textposition='top center', line=dict(color='#0f172a', width=3), marker=dict(size=10)))
+            if st.session_state['t_est']:
+                fig_trend.add_trace(go.Scatter(x=x_labels, y=y_est, mode='lines+markers+text', name='견적건', text=[f"{v:,.0f}" for v in y_est], textposition='top center', line=dict(color='#3b82f6', width=3), marker=dict(size=10)))
+            if st.session_state['t_cnt']:
+                fig_trend.add_trace(go.Scatter(x=x_labels, y=y_cnt, mode='lines+markers+text', name='계약건', text=[f"{v:,.0f}" for v in y_cnt], textposition='top center', line=dict(color='#10b981', width=3), marker=dict(size=10)))
+            if st.session_state['t_walk']:
+                fig_trend.add_trace(go.Scatter(x=x_labels, y=y_walk, mode='lines+markers+text', name='워크인 계약액 (준비중)', text=[f"{v:,.0f}" for v in y_walk], textposition='top center', line=dict(color='#f59e0b', width=3, dash='dot')))
+            if st.session_state['t_move']:
+                fig_trend.add_trace(go.Scatter(x=x_labels, y=y_move, mode='lines+markers+text', name='입주 계약액 (준비중)', text=[f"{v:,.0f}" for v in y_move], textposition='top center', line=dict(color='#8b5cf6', width=3, dash='dot')))
+                
+            fig_trend.update_layout(height=400, margin=dict(l=20, r=20, t=40, b=20), plot_bgcolor='white', legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
+            fig_trend.update_xaxes(showgrid=True, gridcolor='#f1f5f9')
+            fig_trend.update_yaxes(showgrid=True, gridcolor='#f1f5f9')
+            st.plotly_chart(fig_trend, use_container_width=True)
+        else:
+            st.info("👆 위 세부 지표 버튼을 클릭하시면 실시간 주간 추이 꺾은선 그래프가 나타납니다.")
+        
+        st.markdown("---")
     
     st.markdown(f"""
     <div style='background-color: #f8fafc; padding: 15px; border-left: 5px solid #3b82f6; border-radius: 5px; margin-bottom: 20px;'>
