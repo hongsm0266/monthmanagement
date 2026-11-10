@@ -95,21 +95,24 @@ st.markdown("""
     div.stButton > button:hover { transform: translateY(-1px) !important; }
     div.stButton > button:active { transform: translateY(1px) !important; border-bottom: 1px solid #cbd5e1 !important; margin-bottom: 1px !important; }
     
-    /* 🚀 1열 탭 특정 버튼 컬러 커스텀 */
+    /* 🚀 1열 탭 (조직 및 인원) 특정 버튼 컬러 커스텀 (전체통합, 충청통합, 호남통합 전용) */
     #org-buttons + div[data-testid="stHorizontalBlock"] > div:nth-child(1) button { background-color: #faf5ff !important; border-color: #e9d5ff !important; color: #9333ea !important; border-bottom: 2px solid #d8b4fe !important; }
     #org-buttons + div[data-testid="stHorizontalBlock"] > div:nth-child(1) button[kind="primary"] { background: linear-gradient(180deg, #f3e8ff 0%, #e9d5ff 100%) !important; color: #7e22ce !important; border-bottom: 2px solid #a855f7 !important; }
+
     #org-buttons + div[data-testid="stHorizontalBlock"] > div:nth-child(3) button { background-color: #f0f9ff !important; border-color: #bae6fd !important; color: #0284c7 !important; border-bottom: 2px solid #7dd3fc !important; }
     #org-buttons + div[data-testid="stHorizontalBlock"] > div:nth-child(3) button[kind="primary"] { background: linear-gradient(180deg, #e0f2fe 0%, #bae6fd 100%) !important; color: #0369a1 !important; border-bottom: 2px solid #0ea5e9 !important; }
+
     #org-buttons + div[data-testid="stHorizontalBlock"] > div:nth-child(9) button { background-color: #f0fdf4 !important; border-color: #bbf7d0 !important; color: #16a34a !important; border-bottom: 2px solid #86efac !important; }
     #org-buttons + div[data-testid="stHorizontalBlock"] > div:nth-child(9) button[kind="primary"] { background: linear-gradient(180deg, #dcfce7 0%, #bbf7d0 100%) !important; color: #15803d !important; border-bottom: 2px solid #22c55e !important; }
-    
+
     .btn-group-title { font-size: 12px; font-weight: 900; color: #1e293b; background: #e2e8f0; border-radius: 4px; padding: 4px 10px; margin-bottom: 6px; border-left: 4px solid #3b82f6; }
     .chart-btn-group { font-size: 11px; font-weight: 800; color: #475569; background: #e2e8f0; border-radius: 4px; padding: 2px 0; text-align: center; margin-bottom: 4px; border: 1px solid #cbd5e1;}
 </style>
 """, unsafe_allow_html=True)
 
-current_month = datetime.now().month
-st.markdown(f"<div class='title-box'><h1>📊 충청호남팀 영업사원 주차별 VDT 목표 관리 ({current_month}월)</h1></div>", unsafe_allow_html=True)
+# 🚀 날짜 설정 공통화
+current_date = datetime.now()
+current_month = current_date.month
 
 def clean_str(val): return re.sub(r'\s+', '', str(val))
 def safe_get(row, idx): return str(row[idx]).strip() if len(row) > idx else ""
@@ -145,6 +148,12 @@ def get_week_name(sheet_title):
                 elif d_val <= 18: return '3주차'
                 elif d_val <= 25: return '4주차'
                 else: return '5주차'
+            elif m_val == 9:
+                if d_val <= 6: return '1주차'
+                elif d_val <= 13: return '2주차'
+                elif d_val <= 20: return '3주차'
+                elif d_val <= 27: return '4주차'
+                else: return '5주차'
     except: pass
     return None
 
@@ -158,12 +167,13 @@ REGION_MAP = {
     "호남상권": ["광양", "여수", "익산"]
 }
 
-# 🚀 45주 차(11/2~11/8)를 기준으로 완벽 고정 & 역순 8주 맵핑
-target_recent_date = datetime(2026, 11, 2)
+# 🚀 최근 8주 날짜 트렌드 함수 (current_date 기반)
+current_monday = current_date - timedelta(days=current_date.weekday())
 trend_ranges = []
 trend_labels = []
+
 for i in range(7, -1, -1):
-    w_start = target_recent_date - timedelta(weeks=i)
+    w_start = current_monday - timedelta(weeks=i)
     w_end = w_start + timedelta(days=6)
     iso_year, iso_week, iso_day = w_start.isocalendar()
     trend_ranges.append((w_start, w_end))
@@ -172,13 +182,13 @@ for i in range(7, -1, -1):
 
 def get_trend_week_idx(m, d):
     try: 
-        target_date = datetime(now.year, m, d)
+        target_date = datetime(current_date.year, m, d)
         for i, (start, end) in enumerate(trend_ranges):
             if start.date() <= target_date.date() <= end.date(): return i
     except: pass
     return -1
 
-CURRENT_WEEK = get_week_name(f"{now.month}/{now.day}") 
+CURRENT_WEEK = get_week_name(f"{current_date.month}/{current_date.day}") 
 if not CURRENT_WEEK: CURRENT_WEEK = '1주차'
 
 PREV_WEEK = None
@@ -229,7 +239,6 @@ def load_vdt_data():
         target_data = all_targets[:split_idx]
         hc_target_data = all_targets[split_idx:]
         
-        # 🚀 김경율, 한유진, 강희성 등 중복 HC 합산 처리 로직 도입
         hc_info_dict = {}         
         dealer_sales_sum = {} 
         
@@ -242,15 +251,10 @@ def load_vdt_data():
                 dealer = get_mapped_dealer(raw_dealer)
                 sales_target = clean_val(row[3]) / 1000.0
                 
-                # 동일 인원이면 목표(Target) 합산
-                if hc_name in hc_info_dict:
-                    hc_info_dict[hc_name]['tgt'] += sales_target
-                else:
-                    hc_info_dict[hc_name] = {'dealer': dealer, 'tgt': sales_target}
-                    
+                if hc_name in hc_info_dict: hc_info_dict[hc_name]['tgt'] += sales_target
+                else: hc_info_dict[hc_name] = {'dealer': dealer, 'tgt': sales_target}
                 dealer_sales_sum[dealer] = dealer_sales_sum.get(dealer, 0.0) + sales_target
 
-        # 딕셔너리에서 리스트로 변환 (중복 제거된 고유 HC 리스트)
         hc_info_raw = [(info['dealer'], name, info['tgt']) for name, info in hc_info_dict.items()]
 
         status_box.info("🎯 2단계: 주차별 목표 스캔 중...")
@@ -350,7 +354,7 @@ def load_vdt_data():
                 for m_val, d_val, ws, idx in trend_sheets:
                     if ws.id == ws_id:
                         try:
-                            sheet_date = datetime(now.year, m_val, d_val)
+                            sheet_date = datetime(current_date.year, m_val, d_val)
                             is_weekend = sheet_date.weekday() >= 5 
                         except: pass
                         break
@@ -371,7 +375,6 @@ def load_vdt_data():
                     if any(x in hc_name for x in ['합계', '소계', '총계', '목표', '대리점', '사번', '비고']): continue
                     if not hc_name: continue 
                         
-                    # 🚀 여기서도 이미 existing_hcs에 있다면 새로 만들지 않고 실적만 합산
                     if hc_name and hc_name not in existing_hcs:
                         new_dealer = current_rem_dealer if current_rem_dealer else "기타"
                         hc_info_raw.append((new_dealer, hc_name, 0.0))
