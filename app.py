@@ -19,7 +19,7 @@ st.set_page_config(page_title="충청호남팀 영업사원 주차별 VDT 목표
 SHEET_URL = "https://docs.google.com/spreadsheets/d/1yZdc4BL5CHLwBQ2QGp8zD5_ov7LDKsEcnrONdQvDyHI/edit?gid=1748736055#gid=1748736055"
 
 # 🚀 접속 시 초기값 강제 세팅 
-if 'init_v13' not in st.session_state:
+if 'init_v14' not in st.session_state:
     st.session_state['view_target'] = "충청호남팀 전체"
     st.session_state['hc_selector'] = "✨ 인원별 상세 실적 (선택 시 우선 적용)"
     st.session_state['view_mode'] = "주간 추이 (최근 8주)"
@@ -36,7 +36,7 @@ if 'init_v13' not in st.session_state:
     st.session_state['t_rate'] = False
     st.session_state['t_unit'] = False
     st.session_state['wow_week'] = None 
-    st.session_state['init_v13'] = True
+    st.session_state['init_v14'] = True
 
 toggle_keys = ['t_amt', 't_sales', 't_next', 't_avg', 't_wd', 't_we', 't_walk', 't_move', 't_est', 't_cnt', 't_rate', 't_unit']
 EXCLUDED_HCS = ["장재형", "강지인", "신재민"]
@@ -80,10 +80,11 @@ st.markdown("""
     h1 { font-weight: 900 !important; color: white !important; font-size: 14px !important; margin: 0; }
     h3, h4 { font-size: 14px !important; font-weight: 900 !important; color: #1e293b !important; }
     
-    /* 🚀 WoW Table Styles (가로형 재설계) */
+    /* WoW Table Styles */
     .wow-table { width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
-    .wow-table th { background-color: #1e293b; color: white; padding: 6px; text-align: center; border: 1px solid #334155; font-weight: 900; font-size: 12px;}
-    .wow-table td { padding: 6px; text-align: right; border: 1px solid #cbd5e1; background-color: white; font-size: 13px;}
+    .wow-table th { background-color: #1e293b; color: white; padding: 8px; text-align: center; border: 1px solid #334155; font-weight: 900; }
+    .wow-table th.sub { background-color: #475569; font-size: 12px; }
+    .wow-table td { padding: 8px; text-align: right; border: 1px solid #cbd5e1; background-color: white; }
     .wow-table td.name-col { text-align: center; font-weight: 900; background-color: #f8fafc; color: #0f172a; }
     .wow-up { color: #dc2626; font-weight: 900; }
     .wow-down { color: #2563eb; font-weight: 900; }
@@ -125,6 +126,8 @@ st.markdown(f"<div class='title-box'><h1>📊 충청호남팀 영업사원 주�
 
 def clean_str(val): return re.sub(r'\s+', '', str(val))
 def safe_get(row, idx): return str(row[idx]).strip() if len(row) > idx else ""
+
+# 🚀 금액 포맷 변환 시 음수(-) 완벽 인식 보강
 def clean_val(v):
     if not v or pd.isna(v): return 0.0
     v_str = str(v).replace('%', '').replace(',', '').replace('원', '').replace('건', '').strip()
@@ -320,7 +323,7 @@ def load_vdt_data():
                 if wk_name:
                     valid_daily_sheets.append((m_val, wk_name, ws))
 
-        status_box.info(f"📉 3단계: 일보 실적(입주/워크인) 통합 스캔 중... (시간이 조금 소요됩니다.)")
+        status_box.info(f"📉 3단계: 일보 실적(계약액 K+N / 매출 S 누적) 스캔 중...")
         sheet_data_cache = {}
         for ws_id, info in all_sheet_ids.items():
             time.sleep(1.2) 
@@ -360,7 +363,13 @@ def load_vdt_data():
                 if len(row) > 3: 
                     temp_est = clean_val(safe_get(row, 4))
                     temp_cnt = clean_val(safe_get(row, 5))
-                    temp_amt = clean_val(safe_get(row, 15)) / 1000.0       
+                    
+                    # 🚀 계약액 = K열(10) + N열(13) 반영! (마이너스도 clean_val에서 인식)
+                    amt_k = clean_val(safe_get(row, 10))
+                    amt_n = clean_val(safe_get(row, 13))
+                    temp_amt = (amt_k + amt_n) / 1000.0       
+                    
+                    # 🚀 매출은 누적이므로 S열(18), Y열(24)에서 덮어쓰기 방식으로 저장할 준비
                     temp_sales = clean_val(safe_get(row, 18)) / 1000.0     
                     temp_next_sales = clean_val(safe_get(row, 24)) / 1000.0
                     
@@ -390,6 +399,7 @@ def load_vdt_data():
                             trend_dealer_w[matched_dealer] = [{'amt':0, 'est':0, 'cnt':0, 'amt_wd':0, 'amt_we':0, 'sales':0, 'next_sales':0, 'amt_move':0} for _ in range(8)]
                             trend_dealer_m[matched_dealer] = [{'amt':0, 'est':0, 'cnt':0, 'amt_wd':0, 'amt_we':0, 'sales':0, 'next_sales':0, 'amt_move':0} for _ in range(4)]
 
+                    # 🚀 누적(Delta) 합산: 계약액, 견적건, 계약건 (VDT 테이블용)
                     if wk_info:
                         acts[hc_name][wk_info]['est'] += temp_est
                         acts[hc_name][wk_info]['cnt'] += temp_cnt
@@ -409,57 +419,29 @@ def load_vdt_data():
                                 real_dealer_monthly[matched_dealer]['cnt'] += temp_cnt
                                 real_dealer_monthly[matched_dealer]['amt'] += temp_amt
 
+                    # 🚀 주간 8주 트렌드 데이터 적재
                     if tr_idx != -1:
                         trend_hc_w[hc_name][tr_idx]['est'] += temp_est
                         trend_hc_w[hc_name][tr_idx]['cnt'] += temp_cnt
                         trend_hc_w[hc_name][tr_idx]['amt'] += temp_amt
-                        trend_hc_w[hc_name][tr_idx]['sales'] = max(trend_hc_w[hc_name][tr_idx]['sales'], temp_sales)
-                        trend_hc_w[hc_name][tr_idx]['next_sales'] = max(trend_hc_w[hc_name][tr_idx]['next_sales'], temp_next_sales)
+                        # 매출, 이월매출은 해당 주간의 가장 마지막 날(Sheet) 값으로 덮어쓰기 (누적이므로)
+                        trend_hc_w[hc_name][tr_idx]['sales'] = temp_sales
+                        trend_hc_w[hc_name][tr_idx]['next_sales'] = temp_next_sales
+                        
                         if is_weekend: trend_hc_w[hc_name][tr_idx]['amt_we'] += temp_amt
                         else: trend_hc_w[hc_name][tr_idx]['amt_wd'] += temp_amt
-                        
-                        if matched_dealer in valid_dealers:
-                            trend_dealer_w[matched_dealer][tr_idx]['est'] += temp_est
-                            trend_dealer_w[matched_dealer][tr_idx]['cnt'] += temp_cnt
-                            trend_dealer_w[matched_dealer][tr_idx]['amt'] += temp_amt
-                            trend_dealer_w[matched_dealer][tr_idx]['sales'] = max(trend_dealer_w[matched_dealer][tr_idx]['sales'], temp_sales)
-                            trend_dealer_w[matched_dealer][tr_idx]['next_sales'] = max(trend_dealer_w[matched_dealer][tr_idx]['next_sales'], temp_next_sales)
-                            if is_weekend: trend_dealer_w[matched_dealer][tr_idx]['amt_we'] += temp_amt
-                            else: trend_dealer_w[matched_dealer][tr_idx]['amt_wd'] += temp_amt
                             
-                            trend_total_w[tr_idx]['est'] += temp_est
-                            trend_total_w[tr_idx]['cnt'] += temp_cnt
-                            trend_total_w[tr_idx]['amt'] += temp_amt
-                            trend_total_w[tr_idx]['sales'] = max(trend_total_w[tr_idx]['sales'], temp_sales)
-                            trend_total_w[tr_idx]['next_sales'] = max(trend_total_w[tr_idx]['next_sales'], temp_next_sales)
-                            if is_weekend: trend_total_w[tr_idx]['amt_we'] += temp_amt
-                            else: trend_total_w[tr_idx]['amt_wd'] += temp_amt
-                            
+                    # 🚀 월간 누적 트렌드 데이터 적재
                     if mo_idx != -1:
                         trend_hc_m[hc_name][mo_idx]['est'] += temp_est
                         trend_hc_m[hc_name][mo_idx]['cnt'] += temp_cnt
                         trend_hc_m[hc_name][mo_idx]['amt'] += temp_amt
-                        trend_hc_m[hc_name][mo_idx]['sales'] = max(trend_hc_m[hc_name][mo_idx]['sales'], temp_sales)
-                        trend_hc_m[hc_name][mo_idx]['next_sales'] = max(trend_hc_m[hc_name][mo_idx]['next_sales'], temp_next_sales)
+                        # 매출, 이월매출 덮어쓰기 (월간 누적)
+                        trend_hc_m[hc_name][mo_idx]['sales'] = temp_sales
+                        trend_hc_m[hc_name][mo_idx]['next_sales'] = temp_next_sales
+                        
                         if is_weekend: trend_hc_m[hc_name][mo_idx]['amt_we'] += temp_amt
                         else: trend_hc_m[hc_name][mo_idx]['amt_wd'] += temp_amt
-                        
-                        if matched_dealer in valid_dealers:
-                            trend_dealer_m[matched_dealer][mo_idx]['est'] += temp_est
-                            trend_dealer_m[matched_dealer][mo_idx]['cnt'] += temp_cnt
-                            trend_dealer_m[matched_dealer][mo_idx]['amt'] += temp_amt
-                            trend_dealer_m[matched_dealer][mo_idx]['sales'] = max(trend_dealer_m[matched_dealer][mo_idx]['sales'], temp_sales)
-                            trend_dealer_m[matched_dealer][mo_idx]['next_sales'] = max(trend_dealer_m[matched_dealer][mo_idx]['next_sales'], temp_next_sales)
-                            if is_weekend: trend_dealer_m[matched_dealer][mo_idx]['amt_we'] += temp_amt
-                            else: trend_dealer_m[matched_dealer][mo_idx]['amt_wd'] += temp_amt
-                            
-                            trend_total_m[mo_idx]['est'] += temp_est
-                            trend_total_m[mo_idx]['cnt'] += temp_cnt
-                            trend_total_m[mo_idx]['amt'] += temp_amt
-                            trend_total_m[mo_idx]['sales'] = max(trend_total_m[mo_idx]['sales'], temp_sales)
-                            trend_total_m[mo_idx]['next_sales'] = max(trend_total_m[mo_idx]['next_sales'], temp_next_sales)
-                            if is_weekend: trend_total_m[mo_idx]['amt_we'] += temp_amt
-                            else: trend_total_m[mo_idx]['amt_wd'] += temp_amt
                             
             # 🚀 2. 입주 일보 스캔 (행 35 ~ 60) -> M열 + R열 합산 (음수 자동 감산)
             if len(d_data) > 34:
@@ -478,13 +460,55 @@ def load_vdt_data():
                         
                         if tr_idx != -1:
                             trend_hc_w[hc_name][tr_idx]['amt_move'] += daily_move_amt
-                            trend_dealer_w[matched_dealer][tr_idx]['amt_move'] += daily_move_amt
-                            trend_total_w[tr_idx]['amt_move'] += daily_move_amt
-                            
                         if mo_idx != -1:
                             trend_hc_m[hc_name][mo_idx]['amt_move'] += daily_move_amt
-                            trend_dealer_m[matched_dealer][mo_idx]['amt_move'] += daily_move_amt
-                            trend_total_m[mo_idx]['amt_move'] += daily_move_amt
+
+        # 🚀 후처리: 개인(HC) 단위로 덮어쓰기 된 매출 데이터를 대리점/전체(Total)로 합산해주는 로직
+        for hc_name in existing_hcs:
+            matched_dealer = hc_to_dealer_master.get(hc_name, "기타")
+            if matched_dealer in valid_dealers:
+                for i in range(8):
+                    # 주간 상위 롤업
+                    trend_dealer_w[matched_dealer][i]['sales'] += trend_hc_w[hc_name][i]['sales']
+                    trend_dealer_w[matched_dealer][i]['next_sales'] += trend_hc_w[hc_name][i]['next_sales']
+                    trend_total_w[i]['sales'] += trend_hc_w[hc_name][i]['sales']
+                    trend_total_w[i]['next_sales'] += trend_hc_w[hc_name][i]['next_sales']
+                    
+                    # 주중/주말 및 입주/계약건 등 누적 지표들도 여기서 안전하게 합산
+                    trend_dealer_w[matched_dealer][i]['est'] += trend_hc_w[hc_name][i]['est']
+                    trend_dealer_w[matched_dealer][i]['cnt'] += trend_hc_w[hc_name][i]['cnt']
+                    trend_dealer_w[matched_dealer][i]['amt'] += trend_hc_w[hc_name][i]['amt']
+                    trend_dealer_w[matched_dealer][i]['amt_we'] += trend_hc_w[hc_name][i]['amt_we']
+                    trend_dealer_w[matched_dealer][i]['amt_wd'] += trend_hc_w[hc_name][i]['amt_wd']
+                    trend_dealer_w[matched_dealer][i]['amt_move'] += trend_hc_w[hc_name][i]['amt_move']
+                    
+                    trend_total_w[i]['est'] += trend_hc_w[hc_name][i]['est']
+                    trend_total_w[i]['cnt'] += trend_hc_w[hc_name][i]['cnt']
+                    trend_total_w[i]['amt'] += trend_hc_w[hc_name][i]['amt']
+                    trend_total_w[i]['amt_we'] += trend_hc_w[hc_name][i]['amt_we']
+                    trend_total_w[i]['amt_wd'] += trend_hc_w[hc_name][i]['amt_wd']
+                    trend_total_w[i]['amt_move'] += trend_hc_w[hc_name][i]['amt_move']
+                    
+                for i in range(4):
+                    # 월간 상위 롤업
+                    trend_dealer_m[matched_dealer][i]['sales'] += trend_hc_m[hc_name][i]['sales']
+                    trend_dealer_m[matched_dealer][i]['next_sales'] += trend_hc_m[hc_name][i]['next_sales']
+                    trend_total_m[i]['sales'] += trend_hc_m[hc_name][i]['sales']
+                    trend_total_m[i]['next_sales'] += trend_hc_m[hc_name][i]['next_sales']
+                    
+                    trend_dealer_m[matched_dealer][i]['est'] += trend_hc_m[hc_name][i]['est']
+                    trend_dealer_m[matched_dealer][i]['cnt'] += trend_hc_m[hc_name][i]['cnt']
+                    trend_dealer_m[matched_dealer][i]['amt'] += trend_hc_m[hc_name][i]['amt']
+                    trend_dealer_m[matched_dealer][i]['amt_we'] += trend_hc_m[hc_name][i]['amt_we']
+                    trend_dealer_m[matched_dealer][i]['amt_wd'] += trend_hc_m[hc_name][i]['amt_wd']
+                    trend_dealer_m[matched_dealer][i]['amt_move'] += trend_hc_m[hc_name][i]['amt_move']
+                    
+                    trend_total_m[i]['est'] += trend_hc_m[hc_name][i]['est']
+                    trend_total_m[i]['cnt'] += trend_hc_m[hc_name][i]['cnt']
+                    trend_total_m[i]['amt'] += trend_hc_m[hc_name][i]['amt']
+                    trend_total_m[i]['amt_we'] += trend_hc_m[hc_name][i]['amt_we']
+                    trend_total_m[i]['amt_wd'] += trend_hc_m[hc_name][i]['amt_wd']
+                    trend_total_m[i]['amt_move'] += trend_hc_m[hc_name][i]['amt_move']
 
         status_box.info("🎯 4단계: 실적 데이터 기반 목표 배분 중...")
         
@@ -533,14 +557,17 @@ def load_vdt_data():
                     'cnt': d_t.get(wk, {}).get('cnt', 0) * weight,
                 }
 
+        # 🚀 당월 매출액 최신 누적치 추출 (VDT 테이블용)
         latest_sales_dict = {}
         if valid_daily_sheets:
             latest_m, latest_wk, latest_sheet = valid_daily_sheets[-1]
             l_data = sheet_data_cache[latest_sheet.id]
             for row in l_data[:34]:
                 if len(row) > 3:
-                    hc_name_s, temp_s = clean_str(safe_get(row, 3)), (clean_val(safe_get(row, 18)) / 1000.0)
-                    if hc_name_s and temp_s > 0:
+                    hc_name_s = clean_str(safe_get(row, 3)) 
+                    if not hc_name_s and len(row) > 1: hc_name_s = clean_str(safe_get(row, 1))
+                    temp_s = (clean_val(safe_get(row, 18)) / 1000.0) # S열(18) 천원 단위 처리
+                    if hc_name_s:
                         latest_sales_dict[hc_name_s] = temp_s
 
         status_box.info("✅ 데이터 구성 완료! UI 출력 중...")
@@ -593,6 +620,7 @@ def load_vdt_data():
                 tgt_col, act_col = (col[0], col[1], '목표'), (col[0], col[1], 'ACT')
                 df[col] = np.where(df[tgt_col] > 0, (df[act_col] / df[tgt_col] * 100).round(0), 0)
         
+        # 상권 통합 (주간/월간 트렌드)
         trend_region_w = {"충청상권": [{'amt':0, 'est':0, 'cnt':0, 'amt_wd':0, 'amt_we':0, 'sales':0, 'next_sales':0, 'amt_move':0} for _ in range(8)],
                              "호남상권": [{'amt':0, 'est':0, 'cnt':0, 'amt_wd':0, 'amt_we':0, 'sales':0, 'next_sales':0, 'amt_move':0} for _ in range(8)]}
         trend_region_m = {"충청상권": [{'amt':0, 'est':0, 'cnt':0, 'amt_wd':0, 'amt_we':0, 'sales':0, 'next_sales':0, 'amt_move':0} for _ in range(4)],
@@ -778,60 +806,61 @@ if not df_raw.empty:
         p_unit = (p_amt / (p_cnt * 10)) if p_cnt > 0 else 0
         t_unit = (t_amt / (t_cnt * 10)) if t_cnt > 0 else 0
 
-        # 🚀 X축 지표, Y축 주차로 컴팩트하게 재배치된 HTML 브리핑 표
-        html_wow = f"""
-        <table class="wow-table" style="width: 100%; border: 2px solid #94a3b8; border-radius: 8px; overflow: hidden;">
-            <thead>
-                <tr style="background-color: #1e293b; color: white;">
-                    <th style="padding: 10px; font-size: 13px; border-right: 2px solid #94a3b8;">주차 구분<br><span style="font-size:11px; color:#cbd5e1;">({chart_title})</span></th>
-                    <th style="padding: 10px;">💰 총 계약액<br>(천원)</th>
-                    <th style="padding: 10px;">💰 총 매출액<br>(천원)</th>
-                    <th style="padding: 10px;">📝 견적건<br>(건)</th>
-                    <th style="padding: 10px;">🤝 계약건<br>(건)</th>
-                    <th style="padding: 10px; background-color:#334155;">🚶 워크인 계약액<br>(천원)</th>
-                    <th style="padding: 10px; background-color:#334155;">🏠 입주 계약액<br>(천원)</th>
-                    <th style="padding: 10px;">📊 계약률<br>(%)</th>
-                    <th style="padding: 10px;">💸 객단가<br>(만원)</th>
-                </tr>
-            </thead>
-            <tbody>
-                <tr style="background-color: #f8fafc;">
-                    <td style="text-align: center; font-weight: 900; border-right: 2px solid #94a3b8;">{trend_labels[prev_idx]} (전주)</td>
-                    <td style="text-align: center; font-weight: 600;">{p_amt:,.0f}</td>
-                    <td style="text-align: center; font-weight: 600;">{p_sales:,.0f}</td>
-                    <td style="text-align: center; font-weight: 600;">{p_est:,.0f}</td>
-                    <td style="text-align: center; font-weight: 600;">{p_cnt:,.0f}</td>
-                    <td style="text-align: center; font-weight: 600; background-color:#f1f5f9;">{p_walk:,.0f}</td>
-                    <td style="text-align: center; font-weight: 600; background-color:#f1f5f9;">{p_move:,.0f}</td>
-                    <td style="text-align: center; font-weight: 600;">{p_rate:.1f}%</td>
-                    <td style="text-align: center; font-weight: 600;">{int(p_unit):,}</td>
-                </tr>
-                <tr style="background-color: white;">
-                    <td style="text-align: center; font-weight: 900; color: #1e3a8a; border-right: 2px solid #94a3b8;">{trend_labels[tgt_idx]} (당주)</td>
-                    <td style="text-align: center; font-weight: 900; color: #1e3a8a;">{t_amt:,.0f}</td>
-                    <td style="text-align: center; font-weight: 900; color: #1e3a8a;">{t_sales:,.0f}</td>
-                    <td style="text-align: center; font-weight: 900; color: #1e3a8a;">{t_est:,.0f}</td>
-                    <td style="text-align: center; font-weight: 900; color: #1e3a8a;">{t_cnt:,.0f}</td>
-                    <td style="text-align: center; font-weight: 900; color: #1e3a8a; background-color:#f1f5f9;">{t_walk:,.0f}</td>
-                    <td style="text-align: center; font-weight: 900; color: #1e3a8a; background-color:#f1f5f9;">{t_move:,.0f}</td>
-                    <td style="text-align: center; font-weight: 900; color: #1e3a8a;">{t_rate:.1f}%</td>
-                    <td style="text-align: center; font-weight: 900; color: #1e3a8a;">{int(t_unit):,}</td>
-                </tr>
-                <tr style="background-color: #fef2f2;">
-                    <td style="text-align: center; font-weight: 900; color: #b91c1c; border-right: 2px solid #94a3b8;">전주 대비 증감</td>
-                    <td style="text-align: center;">{render_wow_cell(p_amt, t_amt)}</td>
-                    <td style="text-align: center;">{render_wow_cell(p_sales, t_sales)}</td>
-                    <td style="text-align: center;">{render_wow_cell(p_est, t_est)}</td>
-                    <td style="text-align: center;">{render_wow_cell(p_cnt, t_cnt)}</td>
-                    <td style="text-align: center; background-color:#fee2e2;">{render_wow_cell(p_walk, t_walk)}</td>
-                    <td style="text-align: center; background-color:#fee2e2;">{render_wow_cell(p_move, t_move)}</td>
-                    <td style="text-align: center;">{render_wow_cell(p_rate, t_rate, is_pct=True)}</td>
-                    <td style="text-align: center;">{render_wow_cell(p_unit, t_unit, is_unit=True)}</td>
-                </tr>
-            </tbody>
-        </table>
-        """
-        st.markdown(html_wow, unsafe_allow_html=True)
+        # 🚀 X축 지표, Y축 주차로 컴팩트하게 재배치된 HTML 브리핑 표 (오류 원천 차단)
+        html_wow_list = [
+            '<table class="wow-table" style="width: 100%; border: 2px solid #94a3b8; border-radius: 8px; overflow: hidden;">',
+            '<thead>',
+            '<tr style="background-color: #1e293b; color: white;">',
+            f'<th style="padding: 10px; font-size: 13px; border-right: 2px solid #94a3b8;">주차 구분<br><span style="font-size:11px; color:#cbd5e1;">({chart_title})</span></th>',
+            '<th style="padding: 10px;">💰 총 계약액<br>(천원)</th>',
+            '<th style="padding: 10px;">💰 총 매출액<br>(천원)</th>',
+            '<th style="padding: 10px;">📝 견적건<br>(건)</th>',
+            '<th style="padding: 10px;">🤝 계약건<br>(건)</th>',
+            '<th style="padding: 10px; background-color:#334155;">🚶 워크인 계약액<br>(천원)</th>',
+            '<th style="padding: 10px; background-color:#334155;">🏠 입주 계약액<br>(천원)</th>',
+            '<th style="padding: 10px;">📊 계약률<br>(%)</th>',
+            '<th style="padding: 10px;">💸 객단가<br>(만원)</th>',
+            '</tr>',
+            '</thead>',
+            '<tbody>',
+            '<tr style="background-color: #f8fafc;">',
+            f'<td style="text-align: center; font-weight: 900; border-right: 2px solid #94a3b8;">{trend_labels[prev_idx]} (전주)</td>',
+            f'<td style="text-align: center; font-weight: 600;">{p_amt:,.0f}</td>',
+            f'<td style="text-align: center; font-weight: 600;">{p_sales:,.0f}</td>',
+            f'<td style="text-align: center; font-weight: 600;">{p_est:,.0f}</td>',
+            f'<td style="text-align: center; font-weight: 600;">{p_cnt:,.0f}</td>',
+            f'<td style="text-align: center; font-weight: 600; background-color:#f1f5f9;">{p_walk:,.0f}</td>',
+            f'<td style="text-align: center; font-weight: 600; background-color:#f1f5f9;">{p_move:,.0f}</td>',
+            f'<td style="text-align: center; font-weight: 600;">{p_rate:.1f}%</td>',
+            f'<td style="text-align: center; font-weight: 600;">{int(p_unit):,}</td>',
+            '</tr>',
+            '<tr style="background-color: white;">',
+            f'<td style="text-align: center; font-weight: 900; color: #1e3a8a; border-right: 2px solid #94a3b8;">{trend_labels[tgt_idx]} (당주)</td>',
+            f'<td style="text-align: center; font-weight: 900; color: #1e3a8a;">{t_amt:,.0f}</td>',
+            f'<td style="text-align: center; font-weight: 900; color: #1e3a8a;">{t_sales:,.0f}</td>',
+            f'<td style="text-align: center; font-weight: 900; color: #1e3a8a;">{t_est:,.0f}</td>',
+            f'<td style="text-align: center; font-weight: 900; color: #1e3a8a;">{t_cnt:,.0f}</td>',
+            f'<td style="text-align: center; font-weight: 900; color: #1e3a8a; background-color:#f1f5f9;">{t_walk:,.0f}</td>',
+            f'<td style="text-align: center; font-weight: 900; color: #1e3a8a; background-color:#f1f5f9;">{t_move:,.0f}</td>',
+            f'<td style="text-align: center; font-weight: 900; color: #1e3a8a;">{t_rate:.1f}%</td>',
+            f'<td style="text-align: center; font-weight: 900; color: #1e3a8a;">{int(t_unit):,}</td>',
+            '</tr>',
+            '<tr style="background-color: #fef2f2;">',
+            '<td style="text-align: center; font-weight: 900; color: #b91c1c; border-right: 2px solid #94a3b8;">전주 대비 증감</td>',
+            f'<td style="text-align: center;">{render_wow_cell(p_amt, t_amt)}</td>',
+            f'<td style="text-align: center;">{render_wow_cell(p_sales, t_sales)}</td>',
+            f'<td style="text-align: center;">{render_wow_cell(p_est, t_est)}</td>',
+            f'<td style="text-align: center;">{render_wow_cell(p_cnt, t_cnt)}</td>',
+            f'<td style="text-align: center; background-color:#fee2e2;">{render_wow_cell(p_walk, t_walk)}</td>',
+            f'<td style="text-align: center; background-color:#fee2e2;">{render_wow_cell(p_move, t_move)}</td>',
+            f'<td style="text-align: center;">{render_wow_cell(p_rate, t_rate, is_pct=True)}</td>',
+            f'<td style="text-align: center;">{render_wow_cell(p_unit, t_unit, is_unit=True)}</td>',
+            '</tr>',
+            '</tbody>',
+            '</table>'
+        ]
+        
+        st.markdown("".join(html_wow_list), unsafe_allow_html=True)
         
     st.markdown("---")
 
@@ -1022,7 +1051,7 @@ if not df_raw.empty:
     
     st.markdown("---")
 
-    # 🚀 4. 하단 전체 상세 표 출력
+    # 🚀 5. 하단 전체 상세 표 출력
     table_date_range = date_headers.get(CURRENT_TABLE_WEEK, "")
     st.markdown(f"""
     <div style='background-color: #f8fafc; padding: 15px; border-left: 5px solid #3b82f6; border-radius: 5px; margin-bottom: 20px;'>
