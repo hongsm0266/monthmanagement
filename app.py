@@ -19,7 +19,7 @@ st.set_page_config(page_title="충청호남팀 영업사원 주차별 VDT 목표
 SHEET_URL = "https://docs.google.com/spreadsheets/d/1yZdc4BL5CHLwBQ2QGp8zD5_ov7LDKsEcnrONdQvDyHI/edit?gid=1748736055#gid=1748736055"
 
 # 🚀 접속 시 초기값 강제 세팅 (과거 캐시 무시)
-if 'init_v5' not in st.session_state:
+if 'init_v6' not in st.session_state:
     st.session_state['view_target'] = "충청호남팀 전체"
     st.session_state['hc_selector'] = "✨ 인원별 상세 실적 (선택 시 우선 적용)"
     st.session_state['t_amt'] = True  
@@ -35,9 +35,10 @@ if 'init_v5' not in st.session_state:
     st.session_state['t_rate'] = False
     st.session_state['t_unit'] = False
     st.session_state['wow_week'] = None 
-    st.session_state['init_v5'] = True
+    st.session_state['init_v6'] = True
 
 toggle_keys = ['t_amt', 't_sales', 't_next', 't_avg', 't_wd', 't_we', 't_walk', 't_move', 't_est', 't_cnt', 't_rate', 't_unit']
+EXCLUDED_HCS = ["장재형", "강지인", "신재민"]
 
 @st.cache_resource
 def init_connection():
@@ -89,8 +90,13 @@ st.markdown("""
     .wow-same { color: #64748b; font-weight: 600; }
     .wow-highlight { background-color: #fef2f2 !important; font-weight: 900; }
 
+    div[data-testid="metric-container"] { background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
+    [data-testid="stMetricLabel"] { background-color: #e2e8f0 !important; padding: 4px 10px !important; border-radius: 6px !important; border-left: 5px solid #3b82f6 !important; display: inline-block !important; margin-bottom: 6px !important; }
+    [data-testid="stMetricLabel"] * { font-size: 12px !important; font-weight: 900 !important; color: #0f172a !important; letter-spacing: -0.3px; }
+    [data-testid="stMetricValue"] > div { font-size: 20px !important; font-weight: 900 !important; color: #1e3a8a !important; margin-top: 5px; }
+    
     div.stButton > button { 
-        background: #f8fafc !important; color: #020617 !important; font-size: 11.5px !important; font-weight: 900 !important; 
+        background: #f8fafc !important; color: #020617 !important; font-size: 12px !important; font-weight: 900 !important; 
         border-radius: 6px !important; padding: 4px 6px !important; border: 1px solid #94a3b8 !important; height: auto !important; min-height: 32px; 
         border-bottom: 2px solid #64748b !important; transition: all 0.1s ease !important; letter-spacing: -0.5px !important;
     }
@@ -98,16 +104,18 @@ st.markdown("""
         background: linear-gradient(180deg, #fee2e2 0%, #fecaca 100%) !important; color: #991b1b !important; 
         border: 1px solid #f87171 !important; border-bottom: 2px solid #ef4444 !important; 
     }
+    div.stButton > button:hover { transform: translateY(-1px) !important; }
+    div.stButton > button:active { transform: translateY(1px) !important; border-bottom: 1px solid #cbd5e1 !important; margin-bottom: 1px !important; }
     
-    #org-buttons + div[data-testid="stHorizontalBlock"] > div:nth-child(1) button { background-color: #faf5ff !important; border-color: #e9d5ff !important; color: #9333ea !important; border-bottom: 2px solid #d8b4fe !important; }
-    #org-buttons + div[data-testid="stHorizontalBlock"] > div:nth-child(1) button[kind="primary"] { background: linear-gradient(180deg, #f3e8ff 0%, #e9d5ff 100%) !important; color: #3b0764 !important; border-bottom: 2px solid #7e22ce !important; }
-    #org-buttons + div[data-testid="stHorizontalBlock"] > div:nth-child(3) button { background-color: #f0f9ff !important; border-color: #bae6fd !important; color: #0284c7 !important; border-bottom: 2px solid #7dd3fc !important; }
-    #org-buttons + div[data-testid="stHorizontalBlock"] > div:nth-child(3) button[kind="primary"] { background: linear-gradient(180deg, #e0f2fe 0%, #bae6fd 100%) !important; color: #082f49 !important; border-bottom: 2px solid #0284c7 !important; }
-    #org-buttons + div[data-testid="stHorizontalBlock"] > div:nth-child(9) button { background-color: #f0fdf4 !important; border-color: #bbf7d0 !important; color: #16a34a !important; border-bottom: 2px solid #86efac !important; }
-    #org-buttons + div[data-testid="stHorizontalBlock"] > div:nth-child(9) button[kind="primary"] { background: linear-gradient(180deg, #dcfce7 0%, #bbf7d0 100%) !important; color: #052e16 !important; border-bottom: 2px solid #16a34a !important; }
+    /* 1열 탭 전용 색상 */
+    div.element-container:has(#org-buttons) + div.element-container div[data-testid="column"]:nth-child(1) button { background-color: #f3e8ff !important; border-color: #c084fc !important; color: #4c1d95 !important; border-bottom: 2px solid #a855f7 !important; }
+    div.element-container:has(#org-buttons) + div.element-container div[data-testid="column"]:nth-child(1) button[kind="primary"] { background: linear-gradient(180deg, #e9d5ff 0%, #d8b4fe 100%) !important; color: #3b0764 !important; border-bottom: 2px solid #7e22ce !important; }
+    div.element-container:has(#org-buttons) + div.element-container div[data-testid="column"]:nth-child(3) button { background-color: #e0f2fe !important; border-color: #7dd3fc !important; color: #075985 !important; border-bottom: 2px solid #38bdf8 !important; }
+    div.element-container:has(#org-buttons) + div.element-container div[data-testid="column"]:nth-child(3) button[kind="primary"] { background: linear-gradient(180deg, #e0f2fe 0%, #bae6fd 100%) !important; color: #082f49 !important; border-bottom: 2px solid #0284c7 !important; }
+    div.element-container:has(#org-buttons) + div.element-container div[data-testid="column"]:nth-child(9) button { background-color: #dcfce7 !important; border-color: #86efac !important; color: #166534 !important; border-bottom: 2px solid #4ade80 !important; }
+    div.element-container:has(#org-buttons) + div.element-container div[data-testid="column"]:nth-child(9) button[kind="primary"] { background: linear-gradient(180deg, #bbf7d0 0%, #86efac 100%) !important; color: #052e16 !important; border-bottom: 2px solid #16a34a !important; }
 
-    .btn-group-title { font-size: 12px; font-weight: 900; color: #1e293b; background: #e2e8f0; border-radius: 4px; padding: 4px 10px; margin-bottom: 6px; border-left: 4px solid #3b82f6; }
-    .chart-btn-group { font-size: 11px; font-weight: 900; color: #0f172a; background: #e2e8f0; border-radius: 4px; padding: 2px 0; text-align: center; margin-bottom: 4px; border: 1px solid #cbd5e1;}
+    .chart-btn-group { font-size: 11px; font-weight: 800; color: #475569; background: #e2e8f0; border-radius: 4px; padding: 2px 0; text-align: center; margin-bottom: 4px; border: 1px solid #cbd5e1;}
 </style>
 """, unsafe_allow_html=True)
 
@@ -133,14 +141,24 @@ def clean_val(v):
     try: return float(v_str) * multiplier
     except: return 0.0
 
-def get_week_name(sheet_title):
+# 🚀 VDT 표 매핑을 위한 주차 추출 함수 (오직 당월 1~5주차 포맷으로 매핑)
+def get_week_name_for_table(sheet_title):
     try:
         nums = re.findall(r'\d+', sheet_title)
         if len(nums) >= 2:
             m_val, d_val = int(nums[0]), int(nums[1])
-            test_date = datetime(current_date.year, m_val, d_val)
-            _, iso_week, _ = test_date.isocalendar()
-            return f"{iso_week}주차"
+            if m_val == 11:
+                if d_val <= 7: return '1주차'
+                elif d_val <= 14: return '2주차'
+                elif d_val <= 21: return '3주차'
+                elif d_val <= 28: return '4주차'
+                else: return '5주차'
+            elif m_val == 10:
+                if d_val <= 4: return '1주차'
+                elif d_val <= 11: return '2주차'
+                elif d_val <= 18: return '3주차'
+                elif d_val <= 25: return '4주차'
+                else: return '5주차'
     except: pass
     return None
 
@@ -154,7 +172,7 @@ REGION_MAP = {
     "호남상권": ["광양", "여수", "익산"]
 }
 
-# 🚀 최근 8주(과거~현재) 날짜 및 주차 자동 계산 로직
+# 🚀 8주 트렌드 매핑 (ISO 주차 기준 44주, 45주 등)
 current_monday = current_date - timedelta(days=current_date.weekday())
 trend_ranges = []
 trend_labels = []
@@ -174,8 +192,11 @@ def get_trend_week_idx(m, d):
     except: pass
     return -1
 
-CURRENT_WEEK = f"{current_date.isocalendar()[1]}주차"
-PREV_WEEK = f"{current_date.isocalendar()[1]-1}주차"
+# 현재 테이블 기준 주차 (1~5주차 포맷) 및 날짜 범위 텍스트 추출
+CURRENT_TABLE_WEEK = get_week_name_for_table(f"{current_date.month}/{current_date.day}")
+if not CURRENT_TABLE_WEEK: CURRENT_TABLE_WEEK = '1주차'
+CURRENT_ISO_WEEK_LABEL = trend_labels[-1] 
+PREV_ISO_WEEK_LABEL = trend_labels[-2] if len(trend_labels) >= 2 else None
 
 def safe_api_call(func, *args, **kwargs):
     max_retries = 4
@@ -193,7 +214,7 @@ def safe_api_call(func, *args, **kwargs):
 
 @st.cache_data(ttl=600)
 def load_vdt_data():
-    if not client: return pd.DataFrame(), {}, {}, {}, {}, [], {}, {}, {}, {}
+    if not client: return pd.DataFrame(), {}, {}, {}, {}, [], {}, {}, {}, {}, {}
     
     status_box = st.empty()
     try:
@@ -203,18 +224,18 @@ def load_vdt_data():
         
         target_sheet_name = "주차별 목표 세팅"
         if target_sheet_name not in all_worksheets: 
-            return pd.DataFrame(), {}, {}, {}, {}, [], {}, {}, {}, {}
+            return pd.DataFrame(), {}, {}, {}, {}, [], {}, {}, {}, {}, {}
         
         target_ws = sh.worksheet(target_sheet_name)
         status_box.info("📊 1단계: O~R열 기준 인별 매출목표 및 세종 합산 계산 중...")
         all_targets = safe_api_call(target_ws.get_all_values)
         
-        # 🚀 O열(14), P열(15), R열(17)을 정확하게 스캔하여 '기타' 대리점 문제 및 세종 분리 문제 해결
         hc_to_dealer_master = {}
         hc_info_dict = {}         
         dealer_sales_sum = {} 
         
-        for row in all_targets[15:]: # 데이터가 있는 행부터 스캔
+        # 🚀 O~R열 정확히 스캔하여 목표 추출 (세종/세종2 병합)
+        for row in all_targets[15:]:
             if len(row) > 17:
                 raw_dealer = str(row[14]).strip()
                 hc_name = clean_str(row[15])
@@ -237,18 +258,31 @@ def load_vdt_data():
         hc_info_raw = [(info['dealer'], name, info['tgt']) for name, info in hc_info_dict.items()]
 
         status_box.info("🎯 2단계: 주차별 목표 스캔 중...")
+        
+        if current_month == 11:
+            date_headers = {
+                '1주차': '11/1~11/7', '2주차': '11/8~11/14', '3주차': '11/15~11/21',
+                '4주차': '11/22~11/28', '5주차': '11/29~11/30'
+            }
+        elif current_month == 10:
+            date_headers = {
+                '1주차': '10/1~10/4', '2주차': '10/5~10/11', '3주차': '10/12~10/18',
+                '4주차': '10/19~10/25', '5주차': '10/26~10/31'
+            }
+        else:
+            date_headers = {
+                '1주차': '1주차', '2주차': '2주차', '3주차': '3주차', '4주차': '4주차', '5주차': '5주차'
+            }
+            
         week_cols = {
-            f"{current_date.isocalendar()[1]-4}주차": {'amt': 1, 'est': 2, 'cnt': 3}, 
-            f"{current_date.isocalendar()[1]-3}주차": {'amt': 4, 'est': 5, 'cnt': 6},   
-            f"{current_date.isocalendar()[1]-2}주차": {'amt': 7, 'est': 8, 'cnt': 9}, 
-            f"{current_date.isocalendar()[1]-1}주차": {'amt': 10, 'est': 11, 'cnt': 12}, 
-            f"{current_date.isocalendar()[1]}주차": {'amt': 13, 'est': 14, 'cnt': 15}, 
+            '1주차': {'amt': 1, 'est': 2, 'cnt': 3}, '2주차': {'amt': 4, 'est': 5, 'cnt': 6},   
+            '3주차': {'amt': 7, 'est': 8, 'cnt': 9}, '4주차': {'amt': 10, 'est': 11, 'cnt': 12}, 
+            '5주차': {'amt': 13, 'est': 14, 'cnt': 15}, 
         }
         week_keys = list(week_cols.keys())
-        date_headers = {wk: wk for wk in week_keys}
         
         dealer_targets = {}
-        for row in all_targets:
+        for row in all_targets[:15]: 
             if len(row) > 0 and str(row[0]).strip():
                 raw_d_name = str(row[0]).strip()
                 if raw_d_name in ['대리점명', '구분', '대리점']: continue
@@ -272,7 +306,7 @@ def load_vdt_data():
         valid_daily_sheets = []
         trend_sheets = []
         for ws in daily_sheets:
-            wk = get_week_name(ws.title)
+            wk = get_week_name_for_table(ws.title)
             nums = re.findall(r'\d+', ws.title)
             if len(nums) >= 2: 
                 m_val, d_val = int(nums[0]), int(nums[1])
@@ -305,7 +339,6 @@ def load_vdt_data():
         real_dealer_monthly = {d: {'amt': 0, 'est': 0, 'cnt': 0} for d in valid_dealers}
         real_dealer_weekly = {d: {wk: {'amt': 0, 'est': 0, 'cnt': 0} for wk in week_keys} for d in valid_dealers}
         
-        # 🚀 매출, 이월매출을 포함한 트렌드 딕셔너리 구성
         trend_hc_data = {clean_str(hc): [{'amt':0, 'est':0, 'cnt':0, 'amt_wd':0, 'amt_we':0, 'sales':0, 'next_sales':0} for _ in range(8)] for _, hc, _ in hc_info_raw}
         trend_dealer_data = {d: [{'amt':0, 'est':0, 'cnt':0, 'amt_wd':0, 'amt_we':0, 'sales':0, 'next_sales':0} for _ in range(8)] for d in valid_dealers}
         trend_total_data = [{'amt':0, 'est':0, 'cnt':0, 'amt_wd':0, 'amt_we':0, 'sales':0, 'next_sales':0} for _ in range(8)]
@@ -330,14 +363,19 @@ def load_vdt_data():
                     temp_est = clean_val(safe_get(row, 4))
                     temp_cnt = clean_val(safe_get(row, 5))
                     temp_amt = clean_val(safe_get(row, 15))
-                    temp_sales = clean_val(safe_get(row, 18))       # 🚀 S열 매출
-                    temp_next_sales = clean_val(safe_get(row, 24))  # 🚀 Y열 이월매출
+                    temp_sales = clean_val(safe_get(row, 18))       # S열 매출
+                    temp_next_sales = clean_val(safe_get(row, 24))  # Y열 이월매출
                     
                     hc_name = clean_str(safe_get(row, 3))
                     if any(x in hc_name for x in ['합계', '소계', '총계', '목표', '대리점', '사번', '비고']): continue
                     if not hc_name: continue 
                         
-                    matched_dealer = hc_to_dealer_master.get(hc_name, "기타")
+                    # 🚀 마스터 딕셔너리에 있으면 강제 매핑 (기타 방지)
+                    matched_dealer = hc_to_dealer_master.get(hc_name)
+                    if not matched_dealer:
+                        row_header_str = clean_str("".join([safe_get(row, i) for i in range(4)]))
+                        matched_dealer = get_mapped_dealer(row_header_str)
+                        if not matched_dealer or matched_dealer not in valid_dealers: matched_dealer = "기타"
                         
                     if hc_name not in existing_hcs:
                         hc_info_raw.append((matched_dealer, hc_name, 0.0))
@@ -376,8 +414,8 @@ def load_vdt_data():
                         trend_hc_data[hc_name][tr_idx]['est'] += temp_est
                         trend_hc_data[hc_name][tr_idx]['cnt'] += temp_cnt
                         trend_hc_data[hc_name][tr_idx]['amt'] += temp_amt
-                        trend_hc_data[hc_name][tr_idx]['sales'] += temp_sales
-                        trend_hc_data[hc_name][tr_idx]['next_sales'] += temp_next_sales
+                        trend_hc_data[hc_name][tr_idx]['sales'] = max(trend_hc_data[hc_name][tr_idx]['sales'], temp_sales)
+                        trend_hc_data[hc_name][tr_idx]['next_sales'] = max(trend_hc_data[hc_name][tr_idx]['next_sales'], temp_next_sales)
                         
                         if is_weekend: trend_hc_data[hc_name][tr_idx]['amt_we'] += temp_amt
                         else: trend_hc_data[hc_name][tr_idx]['amt_wd'] += temp_amt
@@ -401,7 +439,6 @@ def load_vdt_data():
 
         status_box.info("🎯 4단계: 실적 데이터 기반 목표 최적화 중...")
         
-        EXCLUDED_HCS = ["장재형", "강지인", "신재민"]
         dealer_active_hcs = {}
         for dealer, hc, _ in hc_info_raw:
             if dealer not in dealer_active_hcs: dealer_active_hcs[dealer] = []
@@ -413,10 +450,9 @@ def load_vdt_data():
         for dealer, hc, tgt in hc_info_raw:
             hc_clean = clean_str(hc)
             active_list = dealer_active_hcs.get(dealer, [])
-            if active_list: 
-                if hc_clean in active_list:
-                    dealer_sales_sum_active[dealer] = dealer_sales_sum_active.get(dealer, 0.0) + tgt
-            else: 
+            if active_list and hc_clean in active_list:
+                dealer_sales_sum_active[dealer] = dealer_sales_sum_active.get(dealer, 0.0) + tgt
+            elif not active_list:
                 dealer_sales_sum_active[dealer] = dealer_sales_sum_active.get(dealer, 0.0) + tgt
 
         final_hc_sales_tgt = {}
@@ -448,6 +484,17 @@ def load_vdt_data():
                     'cnt': d_t.get(wk, {}).get('cnt', 0) * weight,
                 }
 
+        # 당월매출 누적 추출 (마지막 시트 기준)
+        latest_sales_dict = {}
+        if valid_daily_sheets:
+            latest_m, latest_wk, latest_sheet = valid_daily_sheets[-1]
+            l_data = sheet_data_cache[latest_sheet.id]
+            for row in l_data:
+                if len(row) > 3:
+                    hc_name_s, temp_s = clean_str(safe_get(row, 3)), clean_val(safe_get(row, 18))
+                    if hc_name_s and temp_s > 0:
+                        latest_sales_dict[hc_name_s] = temp_s
+
         status_box.info("✅ 데이터 구성 완료! 표 출력 중...")
         
         col_tuples = [
@@ -468,13 +515,12 @@ def load_vdt_data():
         rows = []
         for dealer, hc, raw_sales_tgt in hc_info_raw:
             hc_clean = clean_str(hc)
+            # 🚀 제외 인원 행 생성 방지
+            if hc_clean in EXCLUDED_HCS: continue
+            
             sales_tgt = final_hc_sales_tgt.get(hc_clean, 0.0) 
             m_act = month_acts.get(hc_clean, {'amt': 0, 'est': 0, 'cnt': 0})
-            
-            # 매출을 acts_sales 대신 trend에서 합산한 것으로 가져오도록 통일
-            # 당월 매출액 합산은 현재 주차들이 속한 trend 인덱스만 합쳐야 정확하나, 
-            # 기존 m_act가 당월시트 기반이므로 일단 0.0 처리하고 추후 고도화 가능
-            s_act = sum([trend_hc_data[hc_clean][i]['sales'] for i in range(8)]) 
+            s_act = latest_sales_dict.get(hc_clean, 0.0)
 
             if sales_tgt == 0.0 and m_act['amt'] == 0 and m_act['est'] == 0 and m_act['cnt'] == 0 and s_act == 0: continue
 
@@ -521,7 +567,7 @@ def load_vdt_data():
         status_box.empty()
         st.error("🚨 데이터 구성 중 에러가 발생했습니다!")
         with st.expander("🛠️ 상세 에러 보기"): st.code(traceback.format_exc())
-        return pd.DataFrame(), {}, {}, {}, {}, [], {}, {}, {}, {}
+        return pd.DataFrame(), {}, {}, {}, {}, [], {}, {}, {}, {}, {}
 
 def calculate_subtotals(df, hc_to_dealer_master, real_dealer_monthly, real_dealer_weekly):
     if df.empty: return df
@@ -535,6 +581,7 @@ def calculate_subtotals(df, hc_to_dealer_master, real_dealer_monthly, real_deale
         subtotal = group.select_dtypes(include=[np.number]).sum()
         subtotal[dealer_col], subtotal[hc_col] = dealer, "합계"
         
+        # 합계 행 강제 재계산 방어 (실제 딜러 실적으로 재덮어쓰기)
         if dealer in real_dealer_monthly:
             subtotal[('🌟 당월 합계', '계약액(천)', 'ACT')] = real_dealer_monthly[dealer]['amt']
             subtotal[('🌟 당월 합계', '견적건', 'ACT')] = real_dealer_monthly[dealer]['est']
@@ -619,7 +666,7 @@ if not df_raw.empty:
         for r_idx in range(len(final_df)):
             dealer = final_df.iloc[r_idx][('기본정보', '대리점', '대리점')]
             hc = final_df.iloc[r_idx][('기본정보', 'HC명', 'HC명')]
-            if hc not in ["🌟 총계", "합계", "상권합계"]: hc_list.append(f"👤 {dealer} - {hc}")
+            if hc not in ["🌟 총계", "합계", "상권합계"] and hc not in EXCLUDED_HCS: hc_list.append(f"👤 {dealer} - {hc}")
             
         st.selectbox("인원선택", options=hc_list, key='hc_selector', on_change=on_hc_select, label_visibility="collapsed")
 
@@ -657,7 +704,7 @@ if not df_raw.empty:
         target_row = final_df[(final_df[('기본정보', '대리점', '대리점')] == target_dealer) & (final_df[('기본정보', 'HC명', 'HC명')] == '합계')].iloc[0]
         chart_title = f"{target_dealer} 대리점"
         source_data = trend_dealer_data.get(target_dealer, [{'amt':0, 'est':0, 'cnt':0, 'sales':0, 'amt_wd':0, 'amt_we':0} for _ in range(8)])
-        hcs = [hc for hc, d in hc_to_dealer_master.items() if d == target_dealer]
+        hcs = [hc for hc, d in hc_to_dealer_master.items() if d == target_dealer and hc not in EXCLUDED_HCS]
         sub_units = [(hc, trend_hc_data.get(hc, [{'amt':0, 'est':0, 'cnt':0, 'sales':0} for _ in range(8)])) for hc in hcs]
     else: 
         parts = vt.replace("👤 ", "").split(" - ")
@@ -744,7 +791,7 @@ if not df_raw.empty:
     def toggle_state(key):
         st.session_state[key] = not st.session_state[key]
 
-    # 🚀 5. 8주 트렌드 그래프 (재무 지표로 변경 및 매출 추가)
+    # 🚀 5. 8주 트렌드 그래프
     st.markdown(f"#### 📈 {chart_title} 8주 실적 추이")
     
     g_col1, g_col2, g_col3, g_col4 = st.columns([5, 3, 2, 2])
@@ -861,9 +908,17 @@ if not df_raw.empty:
     st.markdown("---")
 
     # 🚀 6. 하단 전체 상세 표 출력
+    
+    # 📌 동적 날짜 표기 로직 추가
+    table_date_range = ""
+    for w_s, w_e in trend_ranges:
+        if CURRENT_TABLE_WEEK in f"{w_s.isocalendar()[1]}주차":
+            table_date_range = f"({w_s.strftime('%m.%d')}~{w_e.strftime('%m.%d')})"
+            break
+            
     st.markdown(f"""
     <div style='background-color: #f8fafc; padding: 15px; border-left: 5px solid #3b82f6; border-radius: 5px; margin-bottom: 20px;'>
-        <h4 style='margin:0; color: #1e3a8a;'>📌 {current_month}월 당월 전체 VDT 현황 표</h4>
+        <h4 style='margin:0; color: #1e3a8a;'>📌 {current_month}월 {CURRENT_TABLE_WEEK} {table_date_range} 전체 VDT 현황 표</h4>
     </div>
     """, unsafe_allow_html=True)
     
@@ -887,7 +942,7 @@ if not df_raw.empty:
             if col[0] not in headers_l1: headers_l1.append(col[0])
                 
         for h1 in headers_l1:
-            is_curr, is_monthly = CURRENT_WEEK in h1, "당월" in h1
+            is_curr, is_monthly = CURRENT_TABLE_WEEK in h1, "당월" in h1
             style_parts = ["position: sticky; top: 0;"]
             
             if is_curr: style_parts.extend(["background-color: #1e3a8a;", "border: 3px solid #60a5fa;"])
@@ -907,7 +962,7 @@ if not df_raw.empty:
         
         html.append("<tr>")
         for h1 in headers_l1:
-            is_curr, is_monthly = CURRENT_WEEK in h1, "당월" in h1
+            is_curr, is_monthly = CURRENT_TABLE_WEEK in h1, "당월" in h1
             base_styles = ["position: sticky; top: 33px;"]
             if is_curr: base_styles.extend(["background-color: #1e40af;", "border-left: 3px solid #60a5fa;", "border-right: 3px solid #60a5fa;"])
             elif is_monthly: base_styles.extend(["background-color: #065f46;", "color: #a7f3d0;"])
@@ -927,7 +982,7 @@ if not df_raw.empty:
         html.append("<tr>")
         for c_idx, col in enumerate(df.columns[2:]):
             abs_idx = c_idx + 2
-            is_curr, is_monthly = CURRENT_WEEK in col[0], "당월" in col[0]
+            is_curr, is_monthly = CURRENT_TABLE_WEEK in col[0], "당월" in col[0]
             is_first_of_week, is_last_of_week = (is_curr and col[1] == '계약액(천)' and col[2] == '목표'), (is_curr and col[1] == '계약건' and col[2] == '달성율(%)')
             is_last_of_sales, is_last_monthly = (col[0] == '🎯 당월매출' and col[2] == '달성율(%)'), ("🌟 당월 합계" in col[0] and col[1] == '계약건' and col[2] == '달성율(%)')
             
@@ -964,7 +1019,7 @@ if not df_raw.empty:
             for c_idx, val in enumerate(row[2:]):
                 abs_idx = c_idx + 2
                 col_obj = df.columns[c_idx + 2]
-                is_curr, is_monthly = CURRENT_WEEK in col_obj[0], "당월" in col_obj[0]
+                is_curr, is_monthly = CURRENT_TABLE_WEEK in col_obj[0], "당월" in col_obj[0]
                 is_first_of_week, is_last_of_week = (is_curr and col[1] == '계약액(천)' and col[2] == '목표'), (is_curr and col[1] == '계약건' and col[2] == '달성율(%)')
                 is_last_of_sales, is_last_monthly = (col[0] == '🎯 당월매출' and col[2] == '달성율(%)'), ("🌟 당월 합계" in col[0] and col[1] == '계약건' and col[2] == '달성율(%)')
                 
