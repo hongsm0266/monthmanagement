@@ -80,49 +80,60 @@ st.markdown("""
     [data-testid="stMetricLabel"] * { font-size: 12px !important; font-weight: 900 !important; color: #0f172a !important; letter-spacing: -0.3px; }
     [data-testid="stMetricValue"] > div { font-size: 20px !important; font-weight: 900 !important; color: #1e3a8a !important; margin-top: 5px; }
     
-    /* 일반 탭 버튼 기본 스타일 */
+    /* 🚀 일반 탭 버튼 기본 스타일 (글자색 진하게, 굵기 최대로 상향) */
     div.stButton > button { 
-        background: #f8fafc !important; color: #475569 !important; font-size: 11.5px !important; font-weight: 800 !important; 
-        border-radius: 6px !important; padding: 4px 6px !important; border: 1px solid #cbd5e1 !important; height: auto !important; min-height: 32px; 
-        border-bottom: 2px solid #94a3b8 !important; transition: all 0.1s ease !important; letter-spacing: -0.5px !important;
+        background: #f8fafc !important; 
+        color: #020617 !important; 
+        font-size: 12px !important; 
+        font-weight: 900 !important; 
+        border-radius: 6px !important; 
+        padding: 4px 6px !important; 
+        border: 1px solid #94a3b8 !important; 
+        height: auto !important; 
+        min-height: 32px; 
+        border-bottom: 2px solid #64748b !important; 
+        transition: all 0.1s ease !important; 
+        letter-spacing: -0.5px !important;
     }
+    
+    /* 활성화된 탭 (일반적으로 옅은 붉은색) */
     div.stButton > button[kind="primary"] { 
-        background: linear-gradient(180deg, #fef2f2 0%, #fee2e2 100%) !important; 
-        color: #b91c1c !important; 
-        border: 1px solid #fca5a5 !important; 
-        border-bottom: 2px solid #f87171 !important; 
+        background: linear-gradient(180deg, #fee2e2 0%, #fecaca 100%) !important; 
+        color: #991b1b !important; 
+        border: 1px solid #f87171 !important; 
+        border-bottom: 2px solid #ef4444 !important; 
     }
     div.stButton > button:hover { transform: translateY(-1px) !important; }
     div.stButton > button:active { transform: translateY(1px) !important; border-bottom: 1px solid #cbd5e1 !important; margin-bottom: 1px !important; }
     
     /* 🚀 1열 탭 (조직 및 인원) 특정 버튼 컬러 커스텀 (전체통합, 충청통합, 호남통합 전용) */
     
-    /* 전체통합 (1번째 자식) - 보라색 */
-    #org-buttons + div[data-testid="stHorizontalBlock"] > div:nth-child(1) button {
-        background-color: #faf5ff !important; border-color: #e9d5ff !important; color: #9333ea !important; border-bottom: 2px solid #d8b4fe !important;
+    /* 1. 전체통합 (보라색) */
+    div.element-container:has(#org-buttons) + div.element-container div[data-testid="column"]:nth-child(1) button {
+        background-color: #f3e8ff !important; border-color: #c084fc !important; color: #4c1d95 !important; border-bottom: 2px solid #a855f7 !important;
     }
-    #org-buttons + div[data-testid="stHorizontalBlock"] > div:nth-child(1) button[kind="primary"] {
-        background: linear-gradient(180deg, #f3e8ff 0%, #e9d5ff 100%) !important; color: #7e22ce !important; border-bottom: 2px solid #a855f7 !important;
-    }
-
-    /* 충청통합 (3번째 자식) - 파란색 */
-    #org-buttons + div[data-testid="stHorizontalBlock"] > div:nth-child(3) button {
-        background-color: #f0f9ff !important; border-color: #bae6fd !important; color: #0284c7 !important; border-bottom: 2px solid #7dd3fc !important;
-    }
-    #org-buttons + div[data-testid="stHorizontalBlock"] > div:nth-child(3) button[kind="primary"] {
-        background: linear-gradient(180deg, #e0f2fe 0%, #bae6fd 100%) !important; color: #0369a1 !important; border-bottom: 2px solid #0ea5e9 !important;
+    div.element-container:has(#org-buttons) + div.element-container div[data-testid="column"]:nth-child(1) button[kind="primary"] {
+        background: linear-gradient(180deg, #e9d5ff 0%, #d8b4fe 100%) !important; color: #3b0764 !important; border-bottom: 2px solid #7e22ce !important;
     }
 
-    /* 호남통합 (9번째 자식) - 초록색 */
-    #org-buttons + div[data-testid="stHorizontalBlock"] > div:nth-child(9) button {
-        background-color: #f0fdf4 !important; border-color: #bbf7d0 !important; color: #16a34a !important; border-bottom: 2px solid #86efac !important;
+    /* 2. 충청통합 (파란색) */
+    div.element-container:has(#org-buttons) + div.element-container div[data-testid="column"]:nth-child(3) button {
+        background-color: #e0f2fe !important; border-color: #7dd3fc !important; color: #075985 !important; border-bottom: 2px solid #38bdf8 !important;
     }
-    #org-buttons + div[data-testid="stHorizontalBlock"] > div:nth-child(9) button[kind="primary"] {
-        background: linear-gradient(180deg, #dcfce7 0%, #bbf7d0 100%) !important; color: #15803d !important; border-bottom: 2px solid #22c55e !important;
+    div.element-container:has(#org-buttons) + div.element-container div[data-testid="column"]:nth-child(3) button[kind="primary"] {
+        background: linear-gradient(180deg, #bae6fd 0%, #7dd3fc 100%) !important; color: #082f49 !important; border-bottom: 2px solid #0284c7 !important;
+    }
+
+    /* 3. 호남통합 (초록색) */
+    div.element-container:has(#org-buttons) + div.element-container div[data-testid="column"]:nth-child(9) button {
+        background-color: #dcfce7 !important; border-color: #86efac !important; color: #166534 !important; border-bottom: 2px solid #4ade80 !important;
+    }
+    div.element-container:has(#org-buttons) + div.element-container div[data-testid="column"]:nth-child(9) button[kind="primary"] {
+        background: linear-gradient(180deg, #bbf7d0 0%, #86efac 100%) !important; color: #052e16 !important; border-bottom: 2px solid #16a34a !important;
     }
 
     .btn-group-title { font-size: 12px; font-weight: 900; color: #1e293b; background: #e2e8f0; border-radius: 4px; padding: 4px 10px; margin-bottom: 6px; border-left: 4px solid #3b82f6; }
-    .chart-btn-group { font-size: 11px; font-weight: 800; color: #475569; background: #e2e8f0; border-radius: 4px; padding: 2px 0; text-align: center; margin-bottom: 4px; }
+    .chart-btn-group { font-size: 11px; font-weight: 800; color: #1e293b; background: #e2e8f0; border-radius: 4px; padding: 2px 0; text-align: center; margin-bottom: 4px; border: 1px solid #cbd5e1;}
 </style>
 """, unsafe_allow_html=True)
 
@@ -668,15 +679,15 @@ if not df_raw.empty:
     st.markdown('<div id="org-buttons"></div>', unsafe_allow_html=True)
     c_org = st.columns([12, 2, 12, 9, 9, 9, 9, 2, 12, 9, 9, 9, 30])
     
-    with c_org[0]: st.button("전체통합" if st.session_state['view_target'] != "충청호남팀 전체" else "✅ 전체통합", type=btn_type("충청호남팀 전체"), on_click=set_view, args=("충청호남팀 전체",), use_container_width=True)
+    with c_org[0]: st.button("전체통합" if st.session_state['view_target'] != "충청호남팀 전체" else "✅ 전체", type=btn_type("충청호남팀 전체"), on_click=set_view, args=("충청호남팀 전체",), use_container_width=True)
     with c_org[1]: st.markdown("<div style='text-align:center; padding-top:5px; color:#cbd5e1; font-weight:bold; font-size:16px;'>|</div>", unsafe_allow_html=True)
-    with c_org[2]: st.button("충청통합" if st.session_state['view_target'] != "충청팀 통합" else "✅ 충청통합", type=btn_type("충청팀 통합"), on_click=set_view, args=("충청팀 통합",), use_container_width=True)
+    with c_org[2]: st.button("충청통합" if st.session_state['view_target'] != "충청팀 통합" else "✅ 충청", type=btn_type("충청팀 통합"), on_click=set_view, args=("충청팀 통합",), use_container_width=True)
     with c_org[3]: st.button("둔산" if st.session_state['view_target'] != "둔산 대리점" else "✅ 둔산", type=btn_type("둔산 대리점"), on_click=set_view, args=("둔산 대리점",), use_container_width=True)
     with c_org[4]: st.button("세종" if st.session_state['view_target'] != "세종 대리점" else "✅ 세종", type=btn_type("세종 대리점"), on_click=set_view, args=("세종 대리점",), use_container_width=True)
     with c_org[5]: st.button("목포" if st.session_state['view_target'] != "목포 대리점" else "✅ 목포", type=btn_type("목포 대리점"), on_click=set_view, args=("목포 대리점",), use_container_width=True)
     with c_org[6]: st.button("충주" if st.session_state['view_target'] != "충주 대리점" else "✅ 충주", type=btn_type("충주 대리점"), on_click=set_view, args=("충주 대리점",), use_container_width=True)
     with c_org[7]: st.markdown("<div style='text-align:center; padding-top:5px; color:#cbd5e1; font-weight:bold; font-size:16px;'>|</div>", unsafe_allow_html=True)
-    with c_org[8]: st.button("호남통합" if st.session_state['view_target'] != "호남팀 통합" else "✅ 호남통합", type=btn_type("호남팀 통합"), on_click=set_view, args=("호남팀 통합",), use_container_width=True)
+    with c_org[8]: st.button("호남통합" if st.session_state['view_target'] != "호남팀 통합" else "✅ 호남", type=btn_type("호남팀 통합"), on_click=set_view, args=("호남팀 통합",), use_container_width=True)
     with c_org[9]: st.button("광양" if st.session_state['view_target'] != "광양 대리점" else "✅ 광양", type=btn_type("광양 대리점"), on_click=set_view, args=("광양 대리점",), use_container_width=True)
     with c_org[10]: st.button("익산" if st.session_state['view_target'] != "익산 대리점" else "✅ 익산", type=btn_type("익산 대리점"), on_click=set_view, args=("익산 대리점",), use_container_width=True)
     with c_org[11]: st.button("여수" if st.session_state['view_target'] != "여수 대리점" else "✅ 여수", type=btn_type("여수 대리점"), on_click=set_view, args=("여수 대리점",), use_container_width=True)
