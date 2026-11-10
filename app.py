@@ -19,7 +19,7 @@ st.set_page_config(page_title="충청호남팀 영업사원 주차별 VDT 목표
 SHEET_URL = "https://docs.google.com/spreadsheets/d/1yZdc4BL5CHLwBQ2QGp8zD5_ov7LDKsEcnrONdQvDyHI/edit?gid=1748736055#gid=1748736055"
 
 # 🚀 접속 시 초기값 강제 세팅 
-if 'init_v12' not in st.session_state:
+if 'init_v13' not in st.session_state:
     st.session_state['view_target'] = "충청호남팀 전체"
     st.session_state['hc_selector'] = "✨ 인원별 상세 실적 (선택 시 우선 적용)"
     st.session_state['view_mode'] = "주간 추이 (최근 8주)"
@@ -36,7 +36,7 @@ if 'init_v12' not in st.session_state:
     st.session_state['t_rate'] = False
     st.session_state['t_unit'] = False
     st.session_state['wow_week'] = None 
-    st.session_state['init_v12'] = True
+    st.session_state['init_v13'] = True
 
 toggle_keys = ['t_amt', 't_sales', 't_next', 't_avg', 't_wd', 't_we', 't_walk', 't_move', 't_est', 't_cnt', 't_rate', 't_unit']
 EXCLUDED_HCS = ["장재형", "강지인", "신재민"]
@@ -80,11 +80,10 @@ st.markdown("""
     h1 { font-weight: 900 !important; color: white !important; font-size: 14px !important; margin: 0; }
     h3, h4 { font-size: 14px !important; font-weight: 900 !important; color: #1e293b !important; }
     
-    /* WoW Table Styles */
+    /* 🚀 WoW Table Styles (가로형 재설계) */
     .wow-table { width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
-    .wow-table th { background-color: #1e293b; color: white; padding: 8px; text-align: center; border: 1px solid #334155; font-weight: 900; }
-    .wow-table th.sub { background-color: #475569; font-size: 12px; }
-    .wow-table td { padding: 8px; text-align: right; border: 1px solid #cbd5e1; background-color: white; }
+    .wow-table th { background-color: #1e293b; color: white; padding: 6px; text-align: center; border: 1px solid #334155; font-weight: 900; font-size: 12px;}
+    .wow-table td { padding: 6px; text-align: right; border: 1px solid #cbd5e1; background-color: white; font-size: 13px;}
     .wow-table td.name-col { text-align: center; font-weight: 900; background-color: #f8fafc; color: #0f172a; }
     .wow-up { color: #dc2626; font-weight: 900; }
     .wow-down { color: #2563eb; font-weight: 900; }
@@ -115,6 +114,7 @@ st.markdown("""
 
     .btn-group-title { font-size: 12px; font-weight: 900; color: #1e293b; background: #e2e8f0; border-radius: 4px; padding: 4px 10px; margin-bottom: 6px; border-left: 4px solid #3b82f6; }
     .chart-btn-group { font-size: 11px; font-weight: 800; color: #475569; background: #e2e8f0; border-radius: 4px; padding: 2px 0; text-align: center; margin-bottom: 4px; border: 1px solid #cbd5e1;}
+    .mode-toggle { font-size: 14px; font-weight: 900; color: #0f172a; display:flex; align-items:center; gap:10px;}
 </style>
 """, unsafe_allow_html=True)
 
@@ -150,7 +150,7 @@ REGION_MAP = {
     "호남상권": ["광양", "여수", "익산"]
 }
 
-# 🚀 8주 트렌드 맵핑 (ISO 주차)
+# 🚀 8주 트렌드 기준 맵핑
 current_monday = current_date - timedelta(days=current_date.weekday())
 trend_ranges = []
 trend_labels = []
@@ -233,7 +233,6 @@ def load_vdt_data():
 
         status_box.info("🎯 2단계: 주차별 표 자동 스캔 및 배분 중...")
         
-        # 🚀 시트 내 3~4행에서 동적으로 주차 및 날짜 파싱 (오류 원천 차단)
         week_row_idx, date_row_idx = -1, -1
         for i, row in enumerate(all_targets[:10]):
             row_str = "".join(str(c) for c in row)
@@ -713,33 +712,6 @@ if not df_raw.empty:
     def btn_type(target):
         return "primary" if st.session_state.get('view_target') == target else "secondary"
         
-    st.markdown("#### 🔎 **조직 및 인원 (전체 데이터 연동)**")
-    
-    st.markdown('<div id="org-buttons"></div>', unsafe_allow_html=True)
-    c_org = st.columns([12, 2, 12, 9, 9, 9, 9, 2, 12, 9, 9, 9, 30])
-    
-    with c_org[0]: st.button("I 전체통합" if st.session_state['view_target'] != "충청호남팀 전체" else "✅ 전체통합", type=btn_type("충청호남팀 전체"), on_click=set_view, args=("충청호남팀 전체",), use_container_width=True)
-    with c_org[1]: st.markdown("<div style='text-align:center; padding-top:5px; color:#cbd5e1; font-weight:bold; font-size:16px;'>|</div>", unsafe_allow_html=True)
-    with c_org[2]: st.button("I 충청통합" if st.session_state['view_target'] != "충청팀 통합" else "✅ 충청통합", type=btn_type("충청팀 통합"), on_click=set_view, args=("충청팀 통합",), use_container_width=True)
-    with c_org[3]: st.button("둔산" if st.session_state['view_target'] != "둔산 대리점" else "✅ 둔산", type=btn_type("둔산 대리점"), on_click=set_view, args=("둔산 대리점",), use_container_width=True)
-    with c_org[4]: st.button("세종" if st.session_state['view_target'] != "세종 대리점" else "✅ 세종", type=btn_type("세종 대리점"), on_click=set_view, args=("세종 대리점",), use_container_width=True)
-    with c_org[5]: st.button("목포" if st.session_state['view_target'] != "목포 대리점" else "✅ 목포", type=btn_type("목포 대리점"), on_click=set_view, args=("목포 대리점",), use_container_width=True)
-    with c_org[6]: st.button("충주" if st.session_state['view_target'] != "충주 대리점" else "✅ 충주", type=btn_type("충주 대리점"), on_click=set_view, args=("충주 대리점",), use_container_width=True)
-    with c_org[7]: st.markdown("<div style='text-align:center; padding-top:5px; color:#cbd5e1; font-weight:bold; font-size:16px;'>|</div>", unsafe_allow_html=True)
-    with c_org[8]: st.button("I 호남통합" if st.session_state['view_target'] != "호남팀 통합" else "✅ 호남통합", type=btn_type("호남팀 통합"), on_click=set_view, args=("호남팀 통합",), use_container_width=True)
-    with c_org[9]: st.button("광양" if st.session_state['view_target'] != "광양 대리점" else "✅ 광양", type=btn_type("광양 대리점"), on_click=set_view, args=("광양 대리점",), use_container_width=True)
-    with c_org[10]: st.button("익산" if st.session_state['view_target'] != "익산 대리점" else "✅ 익산", type=btn_type("익산 대리점"), on_click=set_view, args=("익산 대리점",), use_container_width=True)
-    with c_org[11]: st.button("여수" if st.session_state['view_target'] != "여수 대리점" else "✅ 여수", type=btn_type("여수 대리점"), on_click=set_view, args=("여수 대리점",), use_container_width=True)
-    
-    with c_org[12]:
-        hc_list = ["✨ 인원별 상세 실적 (선택 시 우선 적용)"]
-        for r_idx in range(len(final_df)):
-            dealer = final_df.iloc[r_idx][('기본정보', '대리점', '대리점')]
-            hc = final_df.iloc[r_idx][('기본정보', 'HC명', 'HC명')]
-            if hc not in ["🌟 총계", "합계", "상권합계"] and hc not in EXCLUDED_HCS: hc_list.append(f"👤 {dealer} - {hc}")
-            
-        st.selectbox("인원선택", options=hc_list, key='hc_selector', on_change=on_hc_select, label_visibility="collapsed")
-
     vt = st.session_state['view_target']
     
     if vt == "충청호남팀 전체":
@@ -747,7 +719,7 @@ if not df_raw.empty:
         sub_units = [("충청호남팀 통합", trend_pack['W']['tot'])]
     elif vt in ["충청팀 통합", "호남팀 통합"]:
         region_key = "충청상권" if vt == "충청팀 통합" else "호남상권"
-        chart_title = f"{vt} 전체"
+        chart_title = f"{vt}"
         sub_units = [(f"{vt}", trend_pack['W']['reg'][region_key])]
     elif "대리점" in vt: 
         target_dealer = vt.replace(" 대리점", "")
@@ -759,9 +731,7 @@ if not df_raw.empty:
         chart_title = f"{target_hc} 님"
         sub_units = [(target_hc, trend_pack['W']['hc'].get(target_hc, [{'amt':0, 'est':0, 'cnt':0, 'sales':0, 'amt_move':0} for _ in range(8)]))]
 
-    st.markdown("---")
-    
-    # 🚀 4. 주간 회의 전용 브리핑 보드 (WoW 증감 분석기 - 주간 고정)
+    # 🚀 1. 주간 회의 전용 브리핑 보드 (최상단 배치)
     st.markdown("#### 💡 주간 회의 전용 브리핑 보드 (전주 대비 증감 분석)")
     
     wow_week_list = list(reversed(trend_labels))
@@ -790,7 +760,6 @@ if not df_raw.empty:
             else:
                 return "<span class='wow-same'>-</span>"
 
-        # 데이터 추출 (선택된 조직 기준 단일 데이터)
         unit_name, unit_data = sub_units[0]
         p_data = unit_data[prev_idx]
         t_data = unit_data[tgt_idx]
@@ -809,35 +778,96 @@ if not df_raw.empty:
         p_unit = (p_amt / (p_cnt * 10)) if p_cnt > 0 else 0
         t_unit = (t_amt / (t_cnt * 10)) if t_cnt > 0 else 0
 
-        # 🚀 들여쓰기 꼬임 방지를 위해 완벽한 리스트 조합 형태의 HTML 렌더링
-        html_wow_list = [
-            '<table class="wow-table">',
-            '<thead>',
-            '<tr>',
-            f'<th rowspan="2" style="background-color:#0f172a; width:15%;">지표 (Metrics)<br><span style="font-size:11px; color:#cbd5e1;">{chart_title}</span></th>',
-            f'<th class="sub">{trend_labels[prev_idx]} (전주)</th><th class="sub">{trend_labels[tgt_idx]} (당주)</th><th class="sub" style="background-color:#334155;">증감</th>',
-            '</tr>',
-            '</thead>',
-            '<tbody>',
-            f"<tr><td class='name-col'>💰 총 계약액 (천원)</td><td>{p_amt:,.0f}</td><td class='wow-highlight'>{t_amt:,.0f}</td><td style='background-color:#f8fafc; text-align:center;'>{render_wow_cell(p_amt, t_amt)}</td></tr>",
-            f"<tr><td class='name-col'>💰 총 매출액 (천원)</td><td>{p_sales:,.0f}</td><td class='wow-highlight'>{t_sales:,.0f}</td><td style='background-color:#f8fafc; text-align:center;'>{render_wow_cell(p_sales, t_sales)}</td></tr>",
-            f"<tr><td class='name-col'>📝 견적건 (건)</td><td>{p_est:,.0f}</td><td class='wow-highlight'>{t_est:,.0f}</td><td style='background-color:#f8fafc; text-align:center;'>{render_wow_cell(p_est, t_est)}</td></tr>",
-            f"<tr><td class='name-col'>🤝 계약건 (건)</td><td>{p_cnt:,.0f}</td><td class='wow-highlight'>{t_cnt:,.0f}</td><td style='background-color:#f8fafc; text-align:center;'>{render_wow_cell(p_cnt, t_cnt)}</td></tr>",
-            f"<tr><td class='name-col'>🚶 워크인 계약액 (천원)</td><td>{p_walk:,.0f}</td><td class='wow-highlight'>{t_walk:,.0f}</td><td style='background-color:#f8fafc; text-align:center;'>{render_wow_cell(p_walk, t_walk)}</td></tr>",
-            f"<tr><td class='name-col'>🏠 입주 계약액 (천원)</td><td>{p_move:,.0f}</td><td class='wow-highlight'>{t_move:,.0f}</td><td style='background-color:#f8fafc; text-align:center;'>{render_wow_cell(p_move, t_move)}</td></tr>",
-            f"<tr><td class='name-col'>📊 계약률 (%)</td><td>{p_rate:.1f}%</td><td class='wow-highlight'>{t_rate:.1f}%</td><td style='background-color:#f8fafc; text-align:center;'>{render_wow_cell(p_rate, t_rate, is_pct=True)}</td></tr>",
-            f"<tr><td class='name-col'>💸 객단가 (만원)</td><td>{int(p_unit):,}</td><td class='wow-highlight'>{int(t_unit):,}</td><td style='background-color:#f8fafc; text-align:center;'>{render_wow_cell(p_unit, t_unit, is_unit=True)}</td></tr>",
-            '</tbody></table>'
-        ]
+        # 🚀 X축 지표, Y축 주차로 컴팩트하게 재배치된 HTML 브리핑 표
+        html_wow = f"""
+        <table class="wow-table" style="width: 100%; border: 2px solid #94a3b8; border-radius: 8px; overflow: hidden;">
+            <thead>
+                <tr style="background-color: #1e293b; color: white;">
+                    <th style="padding: 10px; font-size: 13px; border-right: 2px solid #94a3b8;">주차 구분<br><span style="font-size:11px; color:#cbd5e1;">({chart_title})</span></th>
+                    <th style="padding: 10px;">💰 총 계약액<br>(천원)</th>
+                    <th style="padding: 10px;">💰 총 매출액<br>(천원)</th>
+                    <th style="padding: 10px;">📝 견적건<br>(건)</th>
+                    <th style="padding: 10px;">🤝 계약건<br>(건)</th>
+                    <th style="padding: 10px; background-color:#334155;">🚶 워크인 계약액<br>(천원)</th>
+                    <th style="padding: 10px; background-color:#334155;">🏠 입주 계약액<br>(천원)</th>
+                    <th style="padding: 10px;">📊 계약률<br>(%)</th>
+                    <th style="padding: 10px;">💸 객단가<br>(만원)</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr style="background-color: #f8fafc;">
+                    <td style="text-align: center; font-weight: 900; border-right: 2px solid #94a3b8;">{trend_labels[prev_idx]} (전주)</td>
+                    <td style="text-align: center; font-weight: 600;">{p_amt:,.0f}</td>
+                    <td style="text-align: center; font-weight: 600;">{p_sales:,.0f}</td>
+                    <td style="text-align: center; font-weight: 600;">{p_est:,.0f}</td>
+                    <td style="text-align: center; font-weight: 600;">{p_cnt:,.0f}</td>
+                    <td style="text-align: center; font-weight: 600; background-color:#f1f5f9;">{p_walk:,.0f}</td>
+                    <td style="text-align: center; font-weight: 600; background-color:#f1f5f9;">{p_move:,.0f}</td>
+                    <td style="text-align: center; font-weight: 600;">{p_rate:.1f}%</td>
+                    <td style="text-align: center; font-weight: 600;">{int(p_unit):,}</td>
+                </tr>
+                <tr style="background-color: white;">
+                    <td style="text-align: center; font-weight: 900; color: #1e3a8a; border-right: 2px solid #94a3b8;">{trend_labels[tgt_idx]} (당주)</td>
+                    <td style="text-align: center; font-weight: 900; color: #1e3a8a;">{t_amt:,.0f}</td>
+                    <td style="text-align: center; font-weight: 900; color: #1e3a8a;">{t_sales:,.0f}</td>
+                    <td style="text-align: center; font-weight: 900; color: #1e3a8a;">{t_est:,.0f}</td>
+                    <td style="text-align: center; font-weight: 900; color: #1e3a8a;">{t_cnt:,.0f}</td>
+                    <td style="text-align: center; font-weight: 900; color: #1e3a8a; background-color:#f1f5f9;">{t_walk:,.0f}</td>
+                    <td style="text-align: center; font-weight: 900; color: #1e3a8a; background-color:#f1f5f9;">{t_move:,.0f}</td>
+                    <td style="text-align: center; font-weight: 900; color: #1e3a8a;">{t_rate:.1f}%</td>
+                    <td style="text-align: center; font-weight: 900; color: #1e3a8a;">{int(t_unit):,}</td>
+                </tr>
+                <tr style="background-color: #fef2f2;">
+                    <td style="text-align: center; font-weight: 900; color: #b91c1c; border-right: 2px solid #94a3b8;">전주 대비 증감</td>
+                    <td style="text-align: center;">{render_wow_cell(p_amt, t_amt)}</td>
+                    <td style="text-align: center;">{render_wow_cell(p_sales, t_sales)}</td>
+                    <td style="text-align: center;">{render_wow_cell(p_est, t_est)}</td>
+                    <td style="text-align: center;">{render_wow_cell(p_cnt, t_cnt)}</td>
+                    <td style="text-align: center; background-color:#fee2e2;">{render_wow_cell(p_walk, t_walk)}</td>
+                    <td style="text-align: center; background-color:#fee2e2;">{render_wow_cell(p_move, t_move)}</td>
+                    <td style="text-align: center;">{render_wow_cell(p_rate, t_rate, is_pct=True)}</td>
+                    <td style="text-align: center;">{render_wow_cell(p_unit, t_unit, is_unit=True)}</td>
+                </tr>
+            </tbody>
+        </table>
+        """
+        st.markdown(html_wow, unsafe_allow_html=True)
         
-        st.markdown("".join(html_wow_list), unsafe_allow_html=True)
-        
+    st.markdown("---")
+
+    # 🚀 2. 조직 및 인원 선택 버튼 (2번째 위치로 이동)
+    st.markdown("#### 🔎 **실적 조회 (조직 및 인원 선택)**")
+    st.markdown('<div id="org-buttons"></div>', unsafe_allow_html=True)
+    c_org = st.columns([12, 2, 12, 9, 9, 9, 9, 2, 12, 9, 9, 9, 30])
+    
+    with c_org[0]: st.button("I 전체통합" if st.session_state['view_target'] != "충청호남팀 전체" else "✅ 전체통합", type=btn_type("충청호남팀 전체"), on_click=set_view, args=("충청호남팀 전체",), use_container_width=True)
+    with c_org[1]: st.markdown("<div style='text-align:center; padding-top:5px; color:#cbd5e1; font-weight:bold; font-size:16px;'>|</div>", unsafe_allow_html=True)
+    with c_org[2]: st.button("I 충청통합" if st.session_state['view_target'] != "충청팀 통합" else "✅ 충청통합", type=btn_type("충청팀 통합"), on_click=set_view, args=("충청팀 통합",), use_container_width=True)
+    with c_org[3]: st.button("둔산" if st.session_state['view_target'] != "둔산 대리점" else "✅ 둔산", type=btn_type("둔산 대리점"), on_click=set_view, args=("둔산 대리점",), use_container_width=True)
+    with c_org[4]: st.button("세종" if st.session_state['view_target'] != "세종 대리점" else "✅ 세종", type=btn_type("세종 대리점"), on_click=set_view, args=("세종 대리점",), use_container_width=True)
+    with c_org[5]: st.button("목포" if st.session_state['view_target'] != "목포 대리점" else "✅ 목포", type=btn_type("목포 대리점"), on_click=set_view, args=("목포 대리점",), use_container_width=True)
+    with c_org[6]: st.button("충주" if st.session_state['view_target'] != "충주 대리점" else "✅ 충주", type=btn_type("충주 대리점"), on_click=set_view, args=("충주 대리점",), use_container_width=True)
+    with c_org[7]: st.markdown("<div style='text-align:center; padding-top:5px; color:#cbd5e1; font-weight:bold; font-size:16px;'>|</div>", unsafe_allow_html=True)
+    with c_org[8]: st.button("I 호남통합" if st.session_state['view_target'] != "호남팀 통합" else "✅ 호남통합", type=btn_type("호남팀 통합"), on_click=set_view, args=("호남팀 통합",), use_container_width=True)
+    with c_org[9]: st.button("광양" if st.session_state['view_target'] != "광양 대리점" else "✅ 광양", type=btn_type("광양 대리점"), on_click=set_view, args=("광양 대리점",), use_container_width=True)
+    with c_org[10]: st.button("익산" if st.session_state['view_target'] != "익산 대리점" else "✅ 익산", type=btn_type("익산 대리점"), on_click=set_view, args=("익산 대리점",), use_container_width=True)
+    with c_org[11]: st.button("여수" if st.session_state['view_target'] != "여수 대리점" else "✅ 여수", type=btn_type("여수 대리점"), on_click=set_view, args=("여수 대리점",), use_container_width=True)
+    
+    with c_org[12]:
+        hc_list = ["✨ 인원별 상세 실적 (선택 시 우선 적용)"]
+        for r_idx in range(len(final_df)):
+            dealer = final_df.iloc[r_idx][('기본정보', '대리점', '대리점')]
+            hc = final_df.iloc[r_idx][('기본정보', 'HC명', 'HC명')]
+            if hc not in ["🌟 총계", "합계", "상권합계"] and hc not in EXCLUDED_HCS: hc_list.append(f"👤 {dealer} - {hc}")
+            
+        st.selectbox("인원선택", options=hc_list, key='hc_selector', on_change=on_hc_select, label_visibility="collapsed")
+
     st.markdown("---")
             
     def toggle_state(key):
         st.session_state[key] = not st.session_state[key]
 
-    # 🚀 5. 8주 추이 및 월간 누적 트렌드 그래프
+    # 🚀 3. 8주 추이 및 월간 누적 트렌드 그래프
     
     t_c1, t_c2 = st.columns([7, 3])
     with t_c1: st.markdown(f"#### 📈 {chart_title} 실적 추이 그래프")
@@ -979,7 +1009,7 @@ if not df_raw.empty:
         fig_trend.update_layout(
             height=450, margin=dict(l=20, r=20, t=60, b=20), plot_bgcolor='white', 
             legend=dict(orientation="h", yanchor="bottom", y=1.05, xanchor="right", x=1),
-            annotations=[dict(xref='paper', yref='paper', x=0, y=1.08, xanchor='left', yanchor='bottom', text='<b>금액 (억)</b>', font=dict(size=13, color='#1e3a8a'), showarrow=False)],
+            annotations=[dict(xref='paper', yref='paper', x=0, y=1.1, xanchor='left', yanchor='bottom', text='<b>금액 (억)</b>', font=dict(size=13, color='#1e3a8a'), showarrow=False)],
             yaxis=dict(title="", tickformat=".1f", ticksuffix="억", dtick=0.5, gridcolor='#f1f5f9'),
             yaxis2=dict(title=dict(text="<b>건수 (건)</b>", font=dict(size=13, color='#ea580c')), overlaying='y', side='right', showgrid=False),
             yaxis3=dict(overlaying='y', visible=False),
@@ -992,7 +1022,7 @@ if not df_raw.empty:
     
     st.markdown("---")
 
-    # 🚀 6. 하단 전체 상세 표 출력
+    # 🚀 4. 하단 전체 상세 표 출력
     table_date_range = date_headers.get(CURRENT_TABLE_WEEK, "")
     st.markdown(f"""
     <div style='background-color: #f8fafc; padding: 15px; border-left: 5px solid #3b82f6; border-radius: 5px; margin-bottom: 20px;'>
