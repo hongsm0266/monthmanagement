@@ -18,10 +18,11 @@ st.set_page_config(page_title="충청호남팀 영업사원 주차별 VDT 목표
 
 SHEET_URL = "https://docs.google.com/spreadsheets/d/1yZdc4BL5CHLwBQ2QGp8zD5_ov7LDKsEcnrONdQvDyHI/edit?gid=1748736055#gid=1748736055"
 
-# 🚀 접속 시 초기값 강제 세팅 (과거 캐시 무시)
-if 'init_v8' not in st.session_state:
+# 🚀 접속 시 초기값 강제 세팅 
+if 'init_v9' not in st.session_state:
     st.session_state['view_target'] = "충청호남팀 전체"
     st.session_state['hc_selector'] = "✨ 인원별 상세 실적 (선택 시 우선 적용)"
+    st.session_state['view_mode'] = "주간"
     st.session_state['t_amt'] = True  
     st.session_state['t_sales'] = False
     st.session_state['t_next'] = False
@@ -35,7 +36,7 @@ if 'init_v8' not in st.session_state:
     st.session_state['t_rate'] = False
     st.session_state['t_unit'] = False
     st.session_state['wow_week'] = None 
-    st.session_state['init_v8'] = True
+    st.session_state['init_v9'] = True
 
 toggle_keys = ['t_amt', 't_sales', 't_next', 't_avg', 't_wd', 't_we', 't_walk', 't_move', 't_est', 't_cnt', 't_rate', 't_unit']
 EXCLUDED_HCS = ["장재형", "강지인", "신재민"]
@@ -111,7 +112,9 @@ st.markdown("""
     #org-buttons + div[data-testid="stHorizontalBlock"] > div:nth-child(9) button { background-color: #f0fdf4 !important; border-color: #bbf7d0 !important; color: #16a34a !important; border-bottom: 2px solid #86efac !important; }
     #org-buttons + div[data-testid="stHorizontalBlock"] > div:nth-child(9) button[kind="primary"] { background: linear-gradient(180deg, #dcfce7 0%, #bbf7d0 100%) !important; color: #052e16 !important; border-bottom: 2px solid #16a34a !important; }
 
+    .btn-group-title { font-size: 12px; font-weight: 900; color: #1e293b; background: #e2e8f0; border-radius: 4px; padding: 4px 10px; margin-bottom: 6px; border-left: 4px solid #3b82f6; }
     .chart-btn-group { font-size: 11px; font-weight: 800; color: #475569; background: #e2e8f0; border-radius: 4px; padding: 2px 0; text-align: center; margin-bottom: 4px; border: 1px solid #cbd5e1;}
+    .mode-toggle { font-size: 14px; font-weight: 900; color: #0f172a; display:flex; align-items:center; gap:10px;}
 </style>
 """, unsafe_allow_html=True)
 
@@ -122,8 +125,6 @@ st.markdown(f"<div class='title-box'><h1>📊 충청호남팀 영업사원 주�
 
 def clean_str(val): return re.sub(r'\s+', '', str(val))
 def safe_get(row, idx): return str(row[idx]).strip() if len(row) > idx else ""
-
-# 🚀 천원 단위 강제 배분 (나누기 제거 - 시트 숫자 그대로 맵핑)
 def clean_val(v):
     if not v or pd.isna(v): return 0.0
     v_str = str(v).replace('%', '').replace(',', '').replace('원', '').replace('건', '').strip()
@@ -149,7 +150,7 @@ REGION_MAP = {
     "호남상권": ["광양", "여수", "익산"]
 }
 
-# 🚀 8주 트렌드 맵핑 (ISO 주차 기준 - 월요일부터 일요일까지 계산)
+# 🚀 8주 트렌드 기준 맵핑
 current_monday = current_date - timedelta(days=current_date.weekday())
 trend_ranges = []
 trend_labels = []
@@ -169,6 +170,10 @@ def get_trend_week_idx(m, d):
     except: pass
     return -1
 
+# 🚀 월간 트렌드 (8~11월) 맵핑
+month_list = [8, 9, 10, 11]
+month_labels = [f"{m}월" for m in month_list]
+
 def safe_api_call(func, *args, **kwargs):
     max_retries = 4
     for attempt in range(max_retries):
@@ -185,7 +190,7 @@ def safe_api_call(func, *args, **kwargs):
 
 @st.cache_data(ttl=600)
 def load_vdt_data():
-    if not client: return pd.DataFrame(), {}, {}, {}, {}, [], {}, {}, {}, {}, ""
+    if not client: return pd.DataFrame(), {}, {}, {}, {}, [], {}, ""
     
     status_box = st.empty()
     try:
@@ -195,13 +200,40 @@ def load_vdt_data():
         
         target_sheet_name = "주차별 목표 세팅"
         if target_sheet_name not in all_worksheets: 
-            return pd.DataFrame(), {}, {}, {}, {}, [], {}, {}, {}, {}, ""
+            return pd.DataFrame(), {}, {}, {}, {}, [], {}, ""
         
         target_ws = sh.worksheet(target_sheet_name)
-        status_box.info("📊 1단계: 시트 내 목표(Target) 데이터 스캔 중...")
+        status_box.info("📊 1단계: O~R열 목표 계산 (세종 통합) 중...")
         all_targets = safe_api_call(target_ws.get_all_values)
         
-        # 🚀 시트 3~4행에서 주차 및 날짜 다이내믹 파싱 (0주차 방어)
+        hc_to_dealer_master = {}
+        hc_info_dict = {}         
+        dealer_sales_sum = {} 
+        
+        for row in all_targets[15:]:
+            if len(row) > 17:
+                raw_dealer = str(row[14]).strip()
+                hc_name = clean_str(row[15])
+                tgt_str = str(row[17]).strip()
+                
+                if not raw_dealer or not hc_name: continue
+                if raw_dealer in ['대리점', '대리점명', '구분'] or hc_name in ['HC', 'HC명', '영업사원', '이름']: continue
+                if hc_name.isdigit(): continue
+                
+                dealer = get_mapped_dealer(raw_dealer)
+                hc_to_dealer_master[hc_name] = dealer
+                sales_target = clean_val(tgt_str) 
+                
+                if hc_name in hc_info_dict: 
+                    hc_info_dict[hc_name]['tgt'] += sales_target
+                else: 
+                    hc_info_dict[hc_name] = {'dealer': dealer, 'tgt': sales_target}
+                dealer_sales_sum[dealer] = dealer_sales_sum.get(dealer, 0.0) + sales_target
+
+        hc_info_raw = [(info['dealer'], name, info['tgt']) for name, info in hc_info_dict.items()]
+
+        status_box.info("🎯 2단계: 주차별 표 목표 자동 스캔 중...")
+        
         week_cols = {}
         date_headers = {}
         for i, row in enumerate(all_targets[:10]):
@@ -214,7 +246,15 @@ def load_vdt_data():
                         week_cols[c_val] = {'amt': col_idx, 'est': col_idx+1, 'cnt': col_idx+2}
                         date_headers[c_val] = str(date_row[col_idx]).strip()
                 if week_cols: break
-
+                
+        if not week_cols:
+            week_cols = {
+                '1주차': {'amt': 1, 'est': 2, 'cnt': 3}, '2주차': {'amt': 4, 'est': 5, 'cnt': 6},   
+                '3주차': {'amt': 7, 'est': 8, 'cnt': 9}, '4주차': {'amt': 10, 'est': 11, 'cnt': 12}, 
+                '5주차': {'amt': 13, 'est': 14, 'cnt': 15}, 
+            }
+            date_headers = {wk: wk for wk in week_cols}
+            
         week_keys = list(week_cols.keys())
         
         date_to_target_week = {}
@@ -238,33 +278,6 @@ def load_vdt_data():
                     date_to_target_week[(m1, d1)] = wk
                 except: pass
 
-        hc_to_dealer_master = {}
-        hc_info_dict = {}         
-        dealer_sales_sum = {} 
-        
-        # O~R열 스캔 (세종 합산 처리 및 목표 배분 기준 추출)
-        for row in all_targets[15:]:
-            if len(row) > 17:
-                raw_dealer = str(row[14]).strip()
-                hc_name = clean_str(row[15])
-                tgt_str = str(row[17]).strip()
-                
-                if not raw_dealer or not hc_name: continue
-                if raw_dealer in ['대리점', '대리점명', '구분'] or hc_name in ['HC', 'HC명', '영업사원', '이름']: continue
-                if hc_name.isdigit(): continue
-                
-                dealer = get_mapped_dealer(raw_dealer)
-                hc_to_dealer_master[hc_name] = dealer
-                sales_target = clean_val(tgt_str) # 🚀 천원 단위 고정 (나누기 삭제)
-                
-                if hc_name in hc_info_dict: 
-                    hc_info_dict[hc_name]['tgt'] += sales_target
-                else: 
-                    hc_info_dict[hc_name] = {'dealer': dealer, 'tgt': sales_target}
-                dealer_sales_sum[dealer] = dealer_sales_sum.get(dealer, 0.0) + sales_target
-
-        hc_info_raw = [(info['dealer'], name, info['tgt']) for name, info in hc_info_dict.items()]
-
         dealer_targets = {}
         for row in all_targets[:15]: 
             if len(row) > 0 and str(row[0]).strip():
@@ -274,11 +287,10 @@ def load_vdt_data():
                 if d_name not in dealer_targets:
                     dealer_targets[d_name] = {wk: {'amt': 0, 'est': 0, 'cnt': 0} for wk in week_keys}
                 for wk, cols in week_cols.items():
-                    dealer_targets[d_name][wk]['amt'] += clean_val(safe_get(row, cols['amt'])) # 🚀 천원 단위 고정
+                    dealer_targets[d_name][wk]['amt'] += clean_val(safe_get(row, cols['amt']))
                     dealer_targets[d_name][wk]['est'] += clean_val(safe_get(row, cols['est']))
                     dealer_targets[d_name][wk]['cnt'] += clean_val(safe_get(row, cols['cnt']))
 
-        status_box.info("🎯 2단계: 일일 실적(ACT) 데이터 및 입주 일보 스캔 중...")
         raw_daily_sheets = [ws for ws in safe_api_call(sh.worksheets) if "/" in ws.title or "일" in ws.title]
         def sort_key(ws):
             try:
@@ -288,28 +300,23 @@ def load_vdt_data():
             return 0
         daily_sheets = sorted(raw_daily_sheets, key=sort_key)
         
-        valid_daily_sheets = []
-        trend_sheets = []
+        all_sheet_ids = {} 
         for ws in daily_sheets:
             nums = re.findall(r'\d+', ws.title)
-            if len(nums) >= 2: 
+            if len(nums) >= 2:
                 m_val, d_val = int(nums[0]), int(nums[1])
                 wk_name = date_to_target_week.get((m_val, d_val))
-                if wk_name: valid_daily_sheets.append((m_val, wk_name, ws))
-                idx = get_trend_week_idx(m_val, d_val)
-                if idx != -1: trend_sheets.append((m_val, d_val, ws, idx))
+                tr_idx = get_trend_week_idx(m_val, d_val)
+                mo_idx = month_list.index(m_val) if m_val in month_list else -1
+                
+                if wk_name or tr_idx != -1 or mo_idx != -1:
+                    all_sheet_ids[ws.id] = (m_val, d_val, wk_name, tr_idx, mo_idx, ws)
 
-        valid_map = {ws.id: (m_val, wk) for m_val, wk, ws in valid_daily_sheets}
-        trend_map = {ws.id: idx for m_val, d_val, ws, idx in trend_sheets}
-        all_sheet_ids = set(list(valid_map.keys()) + list(trend_map.keys()))
-        
+        status_box.info(f"📉 3단계: 일별 실적 및 트렌드(주/월 누적) 스캔 중...")
         sheet_data_cache = {}
-        id_to_ws = {ws.id: ws for _,_,ws in valid_daily_sheets}
-        for _,_,ws,_ in trend_sheets: id_to_ws[ws.id] = ws
-        
-        for ws_id in all_sheet_ids:
+        for ws_id, info in all_sheet_ids.items():
             time.sleep(0.2) 
-            sheet_data_cache[ws_id] = safe_api_call(id_to_ws[ws_id].get_all_values)
+            sheet_data_cache[ws_id] = safe_api_call(info[-1].get_all_values)
         
         existing_hcs = [clean_str(h) for d, h, t in hc_info_raw]
         valid_dealers = list(set([d for d, _, _ in hc_info_raw]))
@@ -321,28 +328,29 @@ def load_vdt_data():
         real_dealer_monthly = {d: {'amt': 0, 'est': 0, 'cnt': 0} for d in valid_dealers}
         real_dealer_weekly = {d: {wk: {'amt': 0, 'est': 0, 'cnt': 0} for wk in week_keys} for d in valid_dealers}
         
-        trend_hc_data = {clean_str(hc): [{'amt':0, 'est':0, 'cnt':0, 'amt_wd':0, 'amt_we':0, 'sales':0, 'next_sales':0, 'amt_move':0} for _ in range(8)] for _, hc, _ in hc_info_raw}
-        trend_dealer_data = {d: [{'amt':0, 'est':0, 'cnt':0, 'amt_wd':0, 'amt_we':0, 'sales':0, 'next_sales':0, 'amt_move':0} for _ in range(8)] for d in valid_dealers}
-        trend_total_data = [{'amt':0, 'est':0, 'cnt':0, 'amt_wd':0, 'amt_we':0, 'sales':0, 'next_sales':0, 'amt_move':0} for _ in range(8)]
+        # 주간(W) 데이터 버퍼
+        trend_hc_w = {clean_str(hc): [{'amt':0, 'est':0, 'cnt':0, 'amt_wd':0, 'amt_we':0, 'sales':0, 'next_sales':0, 'amt_move':0} for _ in range(8)] for _, hc, _ in hc_info_raw}
+        trend_dealer_w = {d: [{'amt':0, 'est':0, 'cnt':0, 'amt_wd':0, 'amt_we':0, 'sales':0, 'next_sales':0, 'amt_move':0} for _ in range(8)] for d in valid_dealers}
+        trend_total_w = [{'amt':0, 'est':0, 'cnt':0, 'amt_wd':0, 'amt_we':0, 'sales':0, 'next_sales':0, 'amt_move':0} for _ in range(8)]
         
-        for ws_id in all_sheet_ids:
+        # 월간(M) 데이터 버퍼
+        trend_hc_m = {clean_str(hc): [{'amt':0, 'est':0, 'cnt':0, 'amt_wd':0, 'amt_we':0, 'sales':0, 'next_sales':0, 'amt_move':0} for _ in range(4)] for _, hc, _ in hc_info_raw}
+        trend_dealer_m = {d: [{'amt':0, 'est':0, 'cnt':0, 'amt_wd':0, 'amt_we':0, 'sales':0, 'next_sales':0, 'amt_move':0} for _ in range(4)] for d in valid_dealers}
+        trend_total_m = [{'amt':0, 'est':0, 'cnt':0, 'amt_wd':0, 'amt_we':0, 'sales':0, 'next_sales':0, 'amt_move':0} for _ in range(4)]
+
+        for ws_id, info in all_sheet_ids.items():
+            m_val, d_val, wk_info, tr_idx, mo_idx, ws = info
             d_data = sheet_data_cache[ws_id] 
-            wk_info = valid_map.get(ws_id) 
-            tr_idx = trend_map.get(ws_id, -1)
             
             is_weekend = False
-            if tr_idx != -1:
-                for m_val, d_val, ws, idx in trend_sheets:
-                    if ws.id == ws_id:
-                        try:
-                            sheet_date = datetime(current_date.year, m_val, d_val)
-                            is_weekend = sheet_date.weekday() >= 5 
-                        except: pass
-                        break
+            try:
+                sheet_date = datetime(current_date.year, m_val, d_val)
+                is_weekend = sheet_date.weekday() >= 5 
+            except: pass
 
             # 🚀 1. 기본 테이블 스캔 (행 1 ~ 34)
             for r_idx, row in enumerate(d_data):
-                if r_idx >= 34: break # 입주 일보 이전까지만 
+                if r_idx >= 34: break 
                 if len(row) > 3: 
                     temp_est = clean_val(safe_get(row, 4))
                     temp_cnt = clean_val(safe_get(row, 5))
@@ -350,8 +358,8 @@ def load_vdt_data():
                     temp_sales = clean_val(safe_get(row, 18))       # S열 매출
                     temp_next_sales = clean_val(safe_get(row, 24))  # Y열 이월매출
                     
-                    hc_name = clean_str(safe_get(row, 3)) # D열 HC명
-                    if not hc_name and len(row) > 1: hc_name = clean_str(safe_get(row, 1)) # B열 fallback
+                    hc_name = clean_str(safe_get(row, 3)) 
+                    if not hc_name and len(row) > 1: hc_name = clean_str(safe_get(row, 1)) 
                     if any(x in hc_name for x in ['합계', '소계', '총계', '목표', '대리점', '사번', '비고']): continue
                     if not hc_name: continue 
                         
@@ -367,61 +375,90 @@ def load_vdt_data():
                         acts[hc_name] = {wk: {'amt': 0, 'est': 0, 'cnt': 0} for wk in week_keys}
                         month_acts[hc_name] = {'amt': 0, 'est': 0, 'cnt': 0}
                         hc_to_dealer[hc_name] = matched_dealer
-                        trend_hc_data[hc_name] = [{'amt':0, 'est':0, 'cnt':0, 'amt_wd':0, 'amt_we':0, 'sales':0, 'next_sales':0, 'amt_move':0} for _ in range(8)]
+                        trend_hc_w[hc_name] = [{'amt':0, 'est':0, 'cnt':0, 'amt_wd':0, 'amt_we':0, 'sales':0, 'next_sales':0, 'amt_move':0} for _ in range(8)]
+                        trend_hc_m[hc_name] = [{'amt':0, 'est':0, 'cnt':0, 'amt_wd':0, 'amt_we':0, 'sales':0, 'next_sales':0, 'amt_move':0} for _ in range(4)]
                         if matched_dealer not in valid_dealers:
                             valid_dealers.append(matched_dealer)
                             real_dealer_monthly[matched_dealer] = {'amt': 0, 'est': 0, 'cnt': 0}
                             real_dealer_weekly[matched_dealer] = {wk: {'amt': 0, 'est': 0, 'cnt': 0} for wk in week_keys}
-                            trend_dealer_data[matched_dealer] = [{'amt':0, 'est':0, 'cnt':0, 'amt_wd':0, 'amt_we':0, 'sales':0, 'next_sales':0, 'amt_move':0} for _ in range(8)]
+                            trend_dealer_w[matched_dealer] = [{'amt':0, 'est':0, 'cnt':0, 'amt_wd':0, 'amt_we':0, 'sales':0, 'next_sales':0, 'amt_move':0} for _ in range(8)]
+                            trend_dealer_m[matched_dealer] = [{'amt':0, 'est':0, 'cnt':0, 'amt_wd':0, 'amt_we':0, 'sales':0, 'next_sales':0, 'amt_move':0} for _ in range(4)]
 
+                    # [VDT 표 반영]
                     if wk_info:
-                        m_val, wk = wk_info
-                        acts[hc_name][wk]['est'] += temp_est
-                        acts[hc_name][wk]['cnt'] += temp_cnt
-                        acts[hc_name][wk]['amt'] += temp_amt
+                        acts[hc_name][wk_info]['est'] += temp_est
+                        acts[hc_name][wk_info]['cnt'] += temp_cnt
+                        acts[hc_name][wk_info]['amt'] += temp_amt
                         if m_val == current_month:
                             month_acts[hc_name]['est'] += temp_est
                             month_acts[hc_name]['cnt'] += temp_cnt
                             month_acts[hc_name]['amt'] += temp_amt
                                 
                         if matched_dealer in valid_dealers:
-                            if wk in real_dealer_weekly[matched_dealer]:
-                                real_dealer_weekly[matched_dealer][wk]['est'] += temp_est
-                                real_dealer_weekly[matched_dealer][wk]['cnt'] += temp_cnt
-                                real_dealer_weekly[matched_dealer][wk]['amt'] += temp_amt
+                            if wk_info in real_dealer_weekly[matched_dealer]:
+                                real_dealer_weekly[matched_dealer][wk_info]['est'] += temp_est
+                                real_dealer_weekly[matched_dealer][wk_info]['cnt'] += temp_cnt
+                                real_dealer_weekly[matched_dealer][wk_info]['amt'] += temp_amt
                             if m_val == current_month:
                                 real_dealer_monthly[matched_dealer]['est'] += temp_est
                                 real_dealer_monthly[matched_dealer]['cnt'] += temp_cnt
                                 real_dealer_monthly[matched_dealer]['amt'] += temp_amt
 
+                    # [8주 트렌드 반영]
                     if tr_idx != -1:
-                        trend_hc_data[hc_name][tr_idx]['est'] += temp_est
-                        trend_hc_data[hc_name][tr_idx]['cnt'] += temp_cnt
-                        trend_hc_data[hc_name][tr_idx]['amt'] += temp_amt
-                        trend_hc_data[hc_name][tr_idx]['sales'] = max(trend_hc_data[hc_name][tr_idx]['sales'], temp_sales)
-                        trend_hc_data[hc_name][tr_idx]['next_sales'] = max(trend_hc_data[hc_name][tr_idx]['next_sales'], temp_next_sales)
-                        
-                        if is_weekend: trend_hc_data[hc_name][tr_idx]['amt_we'] += temp_amt
-                        else: trend_hc_data[hc_name][tr_idx]['amt_wd'] += temp_amt
+                        trend_hc_w[hc_name][tr_idx]['est'] += temp_est
+                        trend_hc_w[hc_name][tr_idx]['cnt'] += temp_cnt
+                        trend_hc_w[hc_name][tr_idx]['amt'] += temp_amt
+                        trend_hc_w[hc_name][tr_idx]['sales'] = max(trend_hc_w[hc_name][tr_idx]['sales'], temp_sales)
+                        trend_hc_w[hc_name][tr_idx]['next_sales'] = max(trend_hc_w[hc_name][tr_idx]['next_sales'], temp_next_sales)
+                        if is_weekend: trend_hc_w[hc_name][tr_idx]['amt_we'] += temp_amt
+                        else: trend_hc_w[hc_name][tr_idx]['amt_wd'] += temp_amt
                         
                         if matched_dealer in valid_dealers:
-                            trend_dealer_data[matched_dealer][tr_idx]['est'] += temp_est
-                            trend_dealer_data[matched_dealer][tr_idx]['cnt'] += temp_cnt
-                            trend_dealer_data[matched_dealer][tr_idx]['amt'] += temp_amt
-                            trend_dealer_data[matched_dealer][tr_idx]['sales'] = max(trend_dealer_data[matched_dealer][tr_idx]['sales'], temp_sales)
-                            trend_dealer_data[matched_dealer][tr_idx]['next_sales'] = max(trend_dealer_data[matched_dealer][tr_idx]['next_sales'], temp_next_sales)
-                            if is_weekend: trend_dealer_data[matched_dealer][tr_idx]['amt_we'] += temp_amt
-                            else: trend_dealer_data[matched_dealer][tr_idx]['amt_wd'] += temp_amt
+                            trend_dealer_w[matched_dealer][tr_idx]['est'] += temp_est
+                            trend_dealer_w[matched_dealer][tr_idx]['cnt'] += temp_cnt
+                            trend_dealer_w[matched_dealer][tr_idx]['amt'] += temp_amt
+                            trend_dealer_w[matched_dealer][tr_idx]['sales'] = max(trend_dealer_w[matched_dealer][tr_idx]['sales'], temp_sales)
+                            trend_dealer_w[matched_dealer][tr_idx]['next_sales'] = max(trend_dealer_w[matched_dealer][tr_idx]['next_sales'], temp_next_sales)
+                            if is_weekend: trend_dealer_w[matched_dealer][tr_idx]['amt_we'] += temp_amt
+                            else: trend_dealer_w[matched_dealer][tr_idx]['amt_wd'] += temp_amt
                             
-                            trend_total_data[tr_idx]['est'] += temp_est
-                            trend_total_data[tr_idx]['cnt'] += temp_cnt
-                            trend_total_data[tr_idx]['amt'] += temp_amt
-                            trend_total_data[tr_idx]['sales'] = max(trend_total_data[tr_idx]['sales'], temp_sales)
-                            trend_total_data[tr_idx]['next_sales'] = max(trend_total_data[tr_idx]['next_sales'], temp_next_sales)
-                            if is_weekend: trend_total_data[tr_idx]['amt_we'] += temp_amt
-                            else: trend_total_data[tr_idx]['amt_wd'] += temp_amt
+                            trend_total_w[tr_idx]['est'] += temp_est
+                            trend_total_w[tr_idx]['cnt'] += temp_cnt
+                            trend_total_w[tr_idx]['amt'] += temp_amt
+                            trend_total_w[tr_idx]['sales'] = max(trend_total_w[tr_idx]['sales'], temp_sales)
+                            trend_total_w[tr_idx]['next_sales'] = max(trend_total_w[tr_idx]['next_sales'], temp_next_sales)
+                            if is_weekend: trend_total_w[tr_idx]['amt_we'] += temp_amt
+                            else: trend_total_w[tr_idx]['amt_wd'] += temp_amt
                             
-            # 🚀 2. 입주 일보 스캔 (행 35 ~ 60) -> M+R 합산
+                    # [월간 누적 트렌드 반영]
+                    if mo_idx != -1:
+                        trend_hc_m[hc_name][mo_idx]['est'] += temp_est
+                        trend_hc_m[hc_name][mo_idx]['cnt'] += temp_cnt
+                        trend_hc_m[hc_name][mo_idx]['amt'] += temp_amt
+                        trend_hc_m[hc_name][mo_idx]['sales'] = max(trend_hc_m[hc_name][mo_idx]['sales'], temp_sales)
+                        trend_hc_m[hc_name][mo_idx]['next_sales'] = max(trend_hc_m[hc_name][mo_idx]['next_sales'], temp_next_sales)
+                        if is_weekend: trend_hc_m[hc_name][mo_idx]['amt_we'] += temp_amt
+                        else: trend_hc_m[hc_name][mo_idx]['amt_wd'] += temp_amt
+                        
+                        if matched_dealer in valid_dealers:
+                            trend_dealer_m[matched_dealer][mo_idx]['est'] += temp_est
+                            trend_dealer_m[matched_dealer][mo_idx]['cnt'] += temp_cnt
+                            trend_dealer_m[matched_dealer][mo_idx]['amt'] += temp_amt
+                            trend_dealer_m[matched_dealer][mo_idx]['sales'] = max(trend_dealer_m[matched_dealer][mo_idx]['sales'], temp_sales)
+                            trend_dealer_m[matched_dealer][mo_idx]['next_sales'] = max(trend_dealer_m[matched_dealer][mo_idx]['next_sales'], temp_next_sales)
+                            if is_weekend: trend_dealer_m[matched_dealer][mo_idx]['amt_we'] += temp_amt
+                            else: trend_dealer_m[matched_dealer][mo_idx]['amt_wd'] += temp_amt
+                            
+                            trend_total_m[mo_idx]['est'] += temp_est
+                            trend_total_m[mo_idx]['cnt'] += temp_cnt
+                            trend_total_m[mo_idx]['amt'] += temp_amt
+                            trend_total_m[mo_idx]['sales'] = max(trend_total_m[mo_idx]['sales'], temp_sales)
+                            trend_total_m[mo_idx]['next_sales'] = max(trend_total_m[mo_idx]['next_sales'], temp_next_sales)
+                            if is_weekend: trend_total_m[mo_idx]['amt_we'] += temp_amt
+                            else: trend_total_m[mo_idx]['amt_wd'] += temp_amt
+                            
+            # 🚀 2. 입주 일보 스캔 (행 35 ~ 60) -> M+R 합산 (워크인/입주 분리)
             if len(d_data) > 34:
                 for r_idx, row in enumerate(d_data[34:]):
                     if len(row) > 17:
@@ -429,19 +466,24 @@ def load_vdt_data():
                         if not hc_name: hc_name = clean_str(safe_get(row, 3)) # D열 Fallback
                         if not hc_name or any(x in hc_name for x in ['합계', '소계', '총계', '목표', '대리점']): continue
                         
-                        move_amt_m = clean_val(safe_get(row, 12)) # M열
-                        move_amt_r = clean_val(safe_get(row, 17)) # R열
+                        move_amt_m = clean_val(safe_get(row, 12)) # M열 (일 계약액)
+                        move_amt_r = clean_val(safe_get(row, 17)) # R열 (일 증감액)
                         daily_move_amt = move_amt_m + move_amt_r
                         
                         matched_dealer = hc_to_dealer_master.get(hc_name)
                         if not matched_dealer or matched_dealer not in valid_dealers: continue
                         
                         if tr_idx != -1:
-                            trend_hc_data[hc_name][tr_idx]['amt_move'] += daily_move_amt
-                            trend_dealer_data[matched_dealer][tr_idx]['amt_move'] += daily_move_amt
-                            trend_total_data[tr_idx]['amt_move'] += daily_move_amt
+                            trend_hc_w[hc_name][tr_idx]['amt_move'] += daily_move_amt
+                            trend_dealer_w[matched_dealer][tr_idx]['amt_move'] += daily_move_amt
+                            trend_total_w[tr_idx]['amt_move'] += daily_move_amt
+                            
+                        if mo_idx != -1:
+                            trend_hc_m[hc_name][mo_idx]['amt_move'] += daily_move_amt
+                            trend_dealer_m[matched_dealer][mo_idx]['amt_move'] += daily_move_amt
+                            trend_total_m[mo_idx]['amt_move'] += daily_move_amt
 
-        status_box.info("🎯 3단계: 실적 기반 목표(Target) 분배 중...")
+        status_box.info("🎯 4단계: 실적 데이터 기반 목표 배분 중...")
         
         dealer_active_hcs = {}
         for dealer, hc, _ in hc_info_raw:
@@ -488,7 +530,7 @@ def load_vdt_data():
                     'cnt': d_t.get(wk, {}).get('cnt', 0) * weight,
                 }
 
-        # 당월매출 누적 추출 (VDT표용)
+        # 당월매출 누적 추출 (VDT표용 마지막 시트)
         latest_sales_dict = {}
         if valid_daily_sheets:
             latest_m, latest_wk, latest_sheet = valid_daily_sheets[-1]
@@ -547,36 +589,56 @@ def load_vdt_data():
         for col in df.columns[2:]:
             if col[2] == '달성율(%)':
                 tgt_col, act_col = (col[0], col[1], '목표'), (col[0], col[1], 'ACT')
-                # 🚀 달성율 소수점 완벽 제거 및 반올림 처리
+                # 🚀 달성율(%) 반올림(소수점 제거) 완벽 적용
                 df[col] = np.where(df[tgt_col] > 0, (df[act_col] / df[tgt_col] * 100).round(0), 0)
         
-        trend_region_data = {"충청상권": [{'amt':0, 'est':0, 'cnt':0, 'amt_wd':0, 'amt_we':0, 'sales':0, 'next_sales':0, 'amt_move':0} for _ in range(8)],
+        # 주간(W) 상권 통합
+        trend_region_w = {"충청상권": [{'amt':0, 'est':0, 'cnt':0, 'amt_wd':0, 'amt_we':0, 'sales':0, 'next_sales':0, 'amt_move':0} for _ in range(8)],
                              "호남상권": [{'amt':0, 'est':0, 'cnt':0, 'amt_wd':0, 'amt_we':0, 'sales':0, 'next_sales':0, 'amt_move':0} for _ in range(8)]}
+        # 월간(M) 상권 통합
+        trend_region_m = {"충청상권": [{'amt':0, 'est':0, 'cnt':0, 'amt_wd':0, 'amt_we':0, 'sales':0, 'next_sales':0, 'amt_move':0} for _ in range(4)],
+                             "호남상권": [{'amt':0, 'est':0, 'cnt':0, 'amt_wd':0, 'amt_we':0, 'sales':0, 'next_sales':0, 'amt_move':0} for _ in range(4)]}
+        
         for region, dealers in REGION_MAP.items():
             for d in dealers:
-                d_data = trend_dealer_data.get(d, [{'amt':0, 'est':0, 'cnt':0, 'amt_wd':0, 'amt_we':0, 'sales':0, 'next_sales':0, 'amt_move':0} for _ in range(8)])
+                dw_data = trend_dealer_w.get(d, [{'amt':0, 'est':0, 'cnt':0, 'amt_wd':0, 'amt_we':0, 'sales':0, 'next_sales':0, 'amt_move':0} for _ in range(8)])
+                dm_data = trend_dealer_m.get(d, [{'amt':0, 'est':0, 'cnt':0, 'amt_wd':0, 'amt_we':0, 'sales':0, 'next_sales':0, 'amt_move':0} for _ in range(4)])
                 for i in range(8):
-                    trend_region_data[region][i]['amt'] += d_data[i]['amt']
-                    trend_region_data[region][i]['est'] += d_data[i]['est']
-                    trend_region_data[region][i]['cnt'] += d_data[i]['cnt']
-                    trend_region_data[region][i]['amt_wd'] += d_data[i]['amt_wd']
-                    trend_region_data[region][i]['amt_we'] += d_data[i]['amt_we']
-                    trend_region_data[region][i]['sales'] += d_data[i]['sales']
-                    trend_region_data[region][i]['next_sales'] += d_data[i]['next_sales']
-                    trend_region_data[region][i]['amt_move'] += d_data[i]['amt_move']
+                    trend_region_w[region][i]['amt'] += dw_data[i]['amt']
+                    trend_region_w[region][i]['est'] += dw_data[i]['est']
+                    trend_region_w[region][i]['cnt'] += dw_data[i]['cnt']
+                    trend_region_w[region][i]['amt_wd'] += dw_data[i]['amt_wd']
+                    trend_region_w[region][i]['amt_we'] += dw_data[i]['amt_we']
+                    trend_region_w[region][i]['sales'] += dw_data[i]['sales']
+                    trend_region_w[region][i]['next_sales'] += dw_data[i]['next_sales']
+                    trend_region_w[region][i]['amt_move'] += dw_data[i]['amt_move']
+                for i in range(4):
+                    trend_region_m[region][i]['amt'] += dm_data[i]['amt']
+                    trend_region_m[region][i]['est'] += dm_data[i]['est']
+                    trend_region_m[region][i]['cnt'] += dm_data[i]['cnt']
+                    trend_region_m[region][i]['amt_wd'] += dm_data[i]['amt_wd']
+                    trend_region_m[region][i]['amt_we'] += dm_data[i]['amt_we']
+                    trend_region_m[region][i]['sales'] += dm_data[i]['sales']
+                    trend_region_m[region][i]['next_sales'] += dm_data[i]['next_sales']
+                    trend_region_m[region][i]['amt_move'] += dm_data[i]['amt_move']
 
         now_m, now_d = current_date.month, current_date.day
         CURRENT_TABLE_WEEK = date_to_target_week.get((now_m, now_d))
         if not CURRENT_TABLE_WEEK: CURRENT_TABLE_WEEK = week_keys[-1] if week_keys else '1주차'
+        
+        trend_pack = {
+            'W': {'hc': trend_hc_w, 'dlr': trend_dealer_w, 'tot': trend_total_w, 'reg': trend_region_w},
+            'M': {'hc': trend_hc_m, 'dlr': trend_dealer_m, 'tot': trend_total_m, 'reg': trend_region_m}
+        }
 
         status_box.empty()
-        return df, date_headers, hc_to_dealer_master, real_dealer_monthly, real_dealer_weekly, week_keys, trend_hc_data, trend_dealer_data, trend_total_data, trend_region_data, CURRENT_TABLE_WEEK
+        return df, date_headers, hc_to_dealer_master, real_dealer_monthly, real_dealer_weekly, week_keys, trend_pack, CURRENT_TABLE_WEEK
 
     except Exception as e:
         status_box.empty()
         st.error("🚨 데이터 구성 중 에러가 발생했습니다!")
         with st.expander("🛠️ 상세 에러 보기"): st.code(traceback.format_exc())
-        return pd.DataFrame(), {}, {}, {}, {}, [], {}, {}, {}, {}, ""
+        return pd.DataFrame(), {}, {}, {}, {}, [], {}, ""
 
 def calculate_subtotals(df, hc_to_dealer_master, real_dealer_monthly, real_dealer_weekly):
     if df.empty: return df
@@ -635,7 +697,7 @@ def calculate_subtotals(df, hc_to_dealer_master, real_dealer_monthly, real_deale
     
     return pd.DataFrame(result_rows)
 
-df_raw, date_headers, hc_to_dealer_master, real_dealer_monthly, real_dealer_weekly, week_keys_list, trend_hc_data, trend_dealer_data, trend_total_data, trend_region_data, CURRENT_TABLE_WEEK = load_vdt_data()
+df_raw, date_headers, hc_to_dealer_master, real_dealer_monthly, real_dealer_weekly, week_keys_list, trend_pack, CURRENT_TABLE_WEEK = load_vdt_data()
 
 if not df_raw.empty:
     final_df = calculate_subtotals(df_raw, hc_to_dealer_master, real_dealer_monthly, real_dealer_weekly)
@@ -679,52 +741,29 @@ if not df_raw.empty:
         st.selectbox("인원선택", options=hc_list, key='hc_selector', on_change=on_hc_select, label_visibility="collapsed")
 
     vt = st.session_state['view_target']
-    is_dealer_total = False
-    is_region_total = False
     
     if vt == "충청호남팀 전체":
-        target_row = final_df[final_df[('기본정보', 'HC명', 'HC명')] == '🌟 총계'].iloc[0]
         chart_title = "충청호남팀 전체"
-        source_data = trend_total_data
-        sub_units = [("충청팀 통합", trend_region_data["충청상권"]), ("호남팀 통합", trend_region_data["호남상권"])]
+        sub_units = [("충청팀 통합", trend_pack['W']['reg']["충청상권"]), ("호남팀 통합", trend_pack['W']['reg']["호남상권"])]
     elif vt in ["충청팀 통합", "호남팀 통합"]:
-        is_region_total = True
         region_key = "충청상권" if vt == "충청팀 통합" else "호남상권"
         dealers_in_region = REGION_MAP[region_key]
-        
-        region_rows = final_df[(final_df[('기본정보', '대리점', '대리점')].isin(dealers_in_region)) & (final_df[('기본정보', 'HC명', 'HC명')] == '합계')]
-        target_row = region_rows.select_dtypes(include=[np.number]).sum()
-        target_row[('기본정보', '대리점', '대리점')] = region_key
-        target_row[('기본정보', 'HC명', 'HC명')] = '상권합계'
-        
-        for col in final_df.columns[2:]:
-            if col[2] == '달성율(%)':
-                tgt_col = (col[0], col[1], '목표')
-                act_col = (col[0], col[1], 'ACT')
-                target_row[col] = (target_row[act_col] / target_row[tgt_col] * 100) if target_row.get(tgt_col, 0) > 0 else 0.0
-                
         chart_title = f"{vt} 전체"
-        source_data = trend_region_data[region_key]
-        sub_units = [(d, trend_dealer_data.get(d, [{'amt':0, 'est':0, 'cnt':0, 'sales':0, 'amt_move':0} for _ in range(8)])) for d in dealers_in_region]
+        sub_units = [(d, trend_pack['W']['dlr'].get(d, [{'amt':0, 'est':0, 'cnt':0, 'sales':0, 'amt_move':0} for _ in range(8)])) for d in dealers_in_region]
     elif "대리점" in vt: 
-        is_dealer_total = True
         target_dealer = vt.replace(" 대리점", "")
-        target_row = final_df[(final_df[('기본정보', '대리점', '대리점')] == target_dealer) & (final_df[('기본정보', 'HC명', 'HC명')] == '합계')].iloc[0]
         chart_title = f"{target_dealer} 대리점"
-        source_data = trend_dealer_data.get(target_dealer, [{'amt':0, 'est':0, 'cnt':0, 'sales':0, 'amt_wd':0, 'amt_we':0, 'amt_move':0} for _ in range(8)])
         hcs = [hc for hc, d in hc_to_dealer_master.items() if d == target_dealer and hc not in EXCLUDED_HCS]
-        sub_units = [(hc, trend_hc_data.get(hc, [{'amt':0, 'est':0, 'cnt':0, 'sales':0, 'amt_move':0} for _ in range(8)])) for hc in hcs]
+        sub_units = [(hc, trend_pack['W']['hc'].get(hc, [{'amt':0, 'est':0, 'cnt':0, 'sales':0, 'amt_move':0} for _ in range(8)])) for hc in hcs]
     else: 
         parts = vt.replace("👤 ", "").split(" - ")
-        target_dealer, target_hc = parts[0], parts[1]
-        target_row = final_df[(final_df[('기본정보', '대리점', '대리점')] == target_dealer) & (final_df[('기본정보', 'HC명', 'HC명')] == target_hc)].iloc[0]
+        target_hc = parts[1]
         chart_title = f"{target_hc} 님"
-        source_data = trend_hc_data.get(target_hc, [{'amt':0, 'est':0, 'cnt':0, 'sales':0, 'amt_wd':0, 'amt_we':0, 'amt_move':0} for _ in range(8)])
-        sub_units = [(target_hc, source_data)]
+        sub_units = [(target_hc, trend_pack['W']['hc'].get(target_hc, [{'amt':0, 'est':0, 'cnt':0, 'sales':0, 'amt_move':0} for _ in range(8)]))]
 
     st.markdown("---")
     
-    # 🚀 4. 주간 회의 전용 브리핑 보드 (WoW 증감 분석기)
+    # 🚀 4. 주간 회의 전용 브리핑 보드 (WoW 증감 분석기 - 주간 고정)
     st.markdown("#### 💡 주간 회의 전용 브리핑 보드 (전주 대비 증감 분석)")
     
     wow_week_list = list(reversed(trend_labels))
@@ -753,54 +792,78 @@ if not df_raw.empty:
             else:
                 return "<span class='wow-same'>-</span>"
 
-        html_wow = f"""
-        <table class="wow-table">
-            <thead>
-                <tr>
-                    <th rowspan="2" style="background-color:#0f172a;">구분<br>({chart_title})</th>
-                    <th colspan="3" style="background-color:#1e3a8a;">계약액 (천원)</th>
-                    <th colspan="3" style="background-color:#0f766e;">매출액 (천원)</th>
-                    <th colspan="3" style="background-color:#c2410c;">계약건 (건)</th>
-                </tr>
-                <tr>
-                    <th class="sub">{trend_labels[prev_idx]} (전주)</th><th class="sub">{trend_labels[tgt_idx]} (당주)</th><th class="sub" style="background-color:#334155;">증감</th>
-                    <th class="sub">{trend_labels[prev_idx]} (전주)</th><th class="sub">{trend_labels[tgt_idx]} (당주)</th><th class="sub" style="background-color:#334155;">증감</th>
-                    <th class="sub">{trend_labels[prev_idx]} (전주)</th><th class="sub">{trend_labels[tgt_idx]} (당주)</th><th class="sub" style="background-color:#334155;">증감</th>
-                </tr>
-            </thead>
-            <tbody>
-        """
+        # 🚀 들여쓰기 꼬임 방지를 위해 완벽한 리스트 조합 형태의 HTML 렌더링
+        html_wow_list = [
+            '<table class="wow-table">',
+            '<thead>',
+            '<tr>',
+            f'<th rowspan="2" style="background-color:#0f172a;">구분<br>({chart_title})</th>',
+            '<th colspan="3" style="background-color:#1e3a8a;">계약액 (천원)</th>',
+            '<th colspan="3" style="background-color:#0f766e;">매출액 (천원)</th>',
+            '<th colspan="3" style="background-color:#c2410c;">계약건 (건)</th>',
+            '</tr>',
+            '<tr>',
+            f'<th class="sub">{trend_labels[prev_idx]} (전주)</th><th class="sub">{trend_labels[tgt_idx]} (당주)</th><th class="sub" style="background-color:#334155;">증감</th>',
+            f'<th class="sub">{trend_labels[prev_idx]} (전주)</th><th class="sub">{trend_labels[tgt_idx]} (당주)</th><th class="sub" style="background-color:#334155;">증감</th>',
+            f'<th class="sub">{trend_labels[prev_idx]} (전주)</th><th class="sub">{trend_labels[tgt_idx]} (당주)</th><th class="sub" style="background-color:#334155;">증감</th>',
+            '</tr>',
+            '</thead>',
+            '<tbody>'
+        ]
         
         for unit_name, unit_data in sub_units:
             p_data = unit_data[prev_idx]
             t_data = unit_data[tgt_idx]
+            html_wow_list.append("<tr>")
+            html_wow_list.append(f"<td class='name-col'>{unit_name}</td>")
+            html_wow_list.append(f"<td>{p_data.get('amt',0):,.0f}</td>")
+            html_wow_list.append(f"<td class='wow-highlight'>{t_data.get('amt',0):,.0f}</td>")
+            html_wow_list.append(f"<td style='background-color:#f8fafc; text-align:center;'>{render_wow_cell(p_data.get('amt',0), t_data.get('amt',0))}</td>")
             
-            html_wow += f"""
-                <tr>
-                    <td class="name-col">{unit_name}</td>
-                    <td>{p_data.get('amt',0):,.0f}</td>
-                    <td class="wow-highlight">{t_data.get('amt',0):,.0f}</td>
-                    <td style="background-color:#f8fafc; text-align:center;">{render_wow_cell(p_data.get('amt',0), t_data.get('amt',0))}</td>
-                    
-                    <td>{p_data.get('sales',0):,.0f}</td>
-                    <td class="wow-highlight">{t_data.get('sales',0):,.0f}</td>
-                    <td style="background-color:#f8fafc; text-align:center;">{render_wow_cell(p_data.get('sales',0), t_data.get('sales',0))}</td>
-                    
-                    <td>{p_data.get('cnt',0):,.0f}</td>
-                    <td class="wow-highlight">{t_data.get('cnt',0):,.0f}</td>
-                    <td style="background-color:#f8fafc; text-align:center;">{render_wow_cell(p_data.get('cnt',0), t_data.get('cnt',0))}</td>
-                </tr>
-            """
-        html_wow += "</tbody></table>"
-        st.markdown(html_wow, unsafe_allow_html=True)
+            html_wow_list.append(f"<td>{p_data.get('sales',0):,.0f}</td>")
+            html_wow_list.append(f"<td class='wow-highlight'>{t_data.get('sales',0):,.0f}</td>")
+            html_wow_list.append(f"<td style='background-color:#f8fafc; text-align:center;'>{render_wow_cell(p_data.get('sales',0), t_data.get('sales',0))}</td>")
+            
+            html_wow_list.append(f"<td>{p_data.get('cnt',0):,.0f}</td>")
+            html_wow_list.append(f"<td class='wow-highlight'>{t_data.get('cnt',0):,.0f}</td>")
+            html_wow_list.append(f"<td style='background-color:#f8fafc; text-align:center;'>{render_wow_cell(p_data.get('cnt',0), t_data.get('cnt',0))}</td>")
+            html_wow_list.append("</tr>")
+            
+        html_wow_list.append("</tbody></table>")
+        st.markdown("".join(html_wow_list), unsafe_allow_html=True)
         
     st.markdown("---")
             
     def toggle_state(key):
         st.session_state[key] = not st.session_state[key]
 
-    # 🚀 5. 8주 트렌드 그래프
-    st.markdown(f"#### 📈 {chart_title} 8주 실적 추이")
+    # 🚀 5. 8주 추이 및 월간 누적 트렌드 그래프
+    
+    t_c1, t_c2 = st.columns([7, 3])
+    with t_c1: st.markdown(f"#### 📈 {chart_title} 실적 추이 그래프")
+    with t_c2:
+        view_mode = st.radio("보기 기준", ["주간 추이 (최근 8주)", "월간 누적 추이 (8~11월)"], horizontal=True, label_visibility="collapsed", key='view_mode')
+        
+    is_monthly = "월간" in view_mode
+    if is_monthly:
+        labels_arr = month_labels
+        pack = trend_pack['M']
+    else:
+        labels_arr = trend_labels
+        pack = trend_pack['W']
+
+    if vt == "충청호남팀 전체":
+        source_data = pack['tot']
+    elif vt in ["충청팀 통합", "호남팀 통합"]:
+        region_key = "충청상권" if vt == "충청팀 통합" else "호남상권"
+        source_data = pack['reg'][region_key]
+    elif "대리점" in vt: 
+        target_dealer = vt.replace(" 대리점", "")
+        source_data = pack['dlr'].get(target_dealer, [{'amt':0, 'est':0, 'cnt':0, 'sales':0, 'amt_wd':0, 'amt_we':0, 'amt_move':0} for _ in labels_arr])
+    else: 
+        parts = vt.replace("👤 ", "").split(" - ")
+        target_hc = parts[1]
+        source_data = pack['hc'].get(target_hc, [{'amt':0, 'est':0, 'cnt':0, 'sales':0, 'amt_wd':0, 'amt_we':0, 'amt_move':0} for _ in labels_arr])
     
     g_col1, g_col2, g_col3, g_col4 = st.columns([5, 3, 2, 2])
     
@@ -810,7 +873,7 @@ if not df_raw.empty:
         with c1: st.button("계약액" if not st.session_state['t_amt'] else "✅ 계약액", on_click=toggle_state, args=('t_amt',), use_container_width=True, type="primary" if st.session_state['t_amt'] else "secondary")
         with c2: st.button("매출액" if not st.session_state['t_sales'] else "✅ 매출액", on_click=toggle_state, args=('t_sales',), use_container_width=True, type="primary" if st.session_state['t_sales'] else "secondary")
         with c3: st.button("이월매출" if not st.session_state['t_next'] else "✅ 이월매출", on_click=toggle_state, args=('t_next',), use_container_width=True, type="primary" if st.session_state['t_next'] else "secondary")
-        with c4: st.button("8주평균(계약)" if not st.session_state['t_avg'] else "✅ 8주평균(계약)", on_click=toggle_state, args=('t_avg',), use_container_width=True, type="primary" if st.session_state['t_avg'] else "secondary")
+        with c4: st.button("평균(계약)" if not st.session_state['t_avg'] else "✅ 평균(계약)", on_click=toggle_state, args=('t_avg',), use_container_width=True, type="primary" if st.session_state['t_avg'] else "secondary")
 
     with g_col2:
         st.markdown("<div class='chart-btn-group'>🏢 분류 지표 (계약액)</div>", unsafe_allow_html=True)
@@ -840,17 +903,27 @@ if not df_raw.empty:
     y_next_억 = [v / 100000 for v in y_next]
     
     y_avg_val = sum(y_amt) / len(y_amt) if y_amt else 0
-    y_avg_억 = [y_avg_val / 100000] * 8
+    y_avg_억 = [y_avg_val / 100000] * len(y_amt)
     
     y_wd = [w.get('amt_wd', 0) for w in source_data]
     y_wd_억 = [v / 100000 for v in y_wd]
     y_we = [w.get('amt_we', 0) for w in source_data]
     y_we_억 = [v / 100000 for v in y_we]
     
-    # 🚀 워크인/입주 계약액 정확한 분리 계산
+    # 🚀 워크인/입주 분리 및 비중(%) 텍스트 계산
     y_move = [w.get('amt_move', 0) for w in source_data]
     y_move_억 = [v / 100000 for v in y_move]
     y_walk_억 = [(a - m) / 100000 for a, m in zip(y_amt, y_move)]
+    
+    y_move_text = []
+    y_walk_text = []
+    for w_val, m_val, a_val in zip(y_walk_억, y_move_억, y_amt_억):
+        if a_val > 0:
+            y_move_text.append(f"<b>{m_val:.2f}억</b><br><span style='font-size:11px'>({(m_val/a_val*100):.1f}%)</span>")
+            y_walk_text.append(f"<b>{w_val:.2f}억</b><br><span style='font-size:11px'>({(w_val/a_val*100):.1f}%)</span>")
+        else:
+            y_move_text.append(f"<b>{m_val:.2f}억</b>")
+            y_walk_text.append(f"<b>{w_val:.2f}억</b>")
     
     y_est = [w.get('est', 0) for w in source_data]
     y_cnt = [w.get('cnt', 0) for w in source_data]
@@ -861,50 +934,50 @@ if not df_raw.empty:
     
     if any_active:
         fig_trend = go.Figure()
-        marker_sizes = [10, 10, 10, 10, 10, 10, 10, 20]
+        marker_sizes = [10] * (len(labels_arr)-1) + [20] # 최신 주차/월은 마커 크기 20
         
         if st.session_state['t_amt']:
-            marker_colors = ['#0f172a'] * 7 + ['#dc2626'] 
-            fig_trend.add_trace(go.Scatter(x=trend_labels, y=y_amt_억, mode='lines+markers+text', name='주간 계약액', text=[f"<b>{v:.2f}억</b>" for v in y_amt_억], textposition='top center', textfont=dict(size=15, color='black'), line=dict(color='#0f172a', width=4), marker=dict(size=marker_sizes, color=marker_colors, line=dict(width=2, color='white'))))
+            marker_colors = ['#0f172a'] * (len(labels_arr)-1) + ['#dc2626'] 
+            fig_trend.add_trace(go.Scatter(x=labels_arr, y=y_amt_억, mode='lines+markers+text', name='계약액', text=[f"<b>{v:.2f}억</b>" for v in y_amt_억], textposition='top center', textfont=dict(size=15, color='black'), line=dict(color='#0f172a', width=4), marker=dict(size=marker_sizes, color=marker_colors, line=dict(width=2, color='white'))))
         
         if st.session_state['t_sales']:
-            fig_trend.add_trace(go.Scatter(x=trend_labels, y=y_sales_억, mode='lines+markers+text', name='주간 매출액', text=[f"<b>{v:.2f}억</b>" for v in y_sales_억], textposition='bottom right', textfont=dict(size=15, color='#0d9488'), line=dict(color='#14b8a6', width=3), marker=dict(size=marker_sizes, line=dict(width=2, color='white'))))
+            fig_trend.add_trace(go.Scatter(x=labels_arr, y=y_sales_억, mode='lines+markers+text', name='매출액', text=[f"<b>{v:.2f}억</b>" for v in y_sales_억], textposition='bottom right', textfont=dict(size=15, color='#0d9488'), line=dict(color='#14b8a6', width=3), marker=dict(size=marker_sizes, line=dict(width=2, color='white'))))
             
         if st.session_state['t_next']:
-            fig_trend.add_trace(go.Scatter(x=trend_labels, y=y_next_억, mode='lines+markers+text', name='이월매출 (M+1)', text=[f"<b>{v:.2f}억</b>" for v in y_next_억], textposition='top left', textfont=dict(size=15, color='#d97706'), line=dict(color='#f59e0b', width=3), marker=dict(size=marker_sizes, line=dict(width=2, color='white'))))
+            fig_trend.add_trace(go.Scatter(x=labels_arr, y=y_next_억, mode='lines+markers+text', name='이월매출 (M+1)', text=[f"<b>{v:.2f}억</b>" for v in y_next_억], textposition='top left', textfont=dict(size=15, color='#d97706'), line=dict(color='#f59e0b', width=3), marker=dict(size=marker_sizes, line=dict(width=2, color='white'))))
         
         if st.session_state['t_avg']:
-            y_avg_text = [""] * 7 + [f"<b>평균 {y_avg_억[-1]:.2f}억</b>"]
-            fig_trend.add_trace(go.Scatter(x=trend_labels, y=y_avg_억, mode='lines+text', name='최근 8주 평균', text=y_avg_text, textposition='top right', textfont=dict(size=15, color='#475569'), line=dict(color='#94a3b8', width=2, dash='dash')))
+            y_avg_text = [""] * (len(labels_arr)-1) + [f"<b>평균 {y_avg_억[-1]:.2f}억</b>"]
+            fig_trend.add_trace(go.Scatter(x=labels_arr, y=y_avg_억, mode='lines+text', name='평균선', text=y_avg_text, textposition='top right', textfont=dict(size=15, color='#475569'), line=dict(color='#94a3b8', width=2, dash='dash')))
         
         if st.session_state['t_wd']:
-            fig_trend.add_trace(go.Scatter(x=trend_labels, y=y_wd_억, mode='lines+markers+text', name='계약액(주중)', text=[f"<b>{v:.2f}억</b>" for v in y_wd_억], textposition='bottom center', textfont=dict(size=15, color='#0ea5e9'), line=dict(color='#0ea5e9', width=3), marker=dict(size=marker_sizes, line=dict(width=2, color='white'))))
+            fig_trend.add_trace(go.Scatter(x=labels_arr, y=y_wd_억, mode='lines+markers+text', name='계약액(주중)', text=[f"<b>{v:.2f}억</b>" for v in y_wd_억], textposition='bottom center', textfont=dict(size=15, color='#0ea5e9'), line=dict(color='#0ea5e9', width=3), marker=dict(size=marker_sizes, line=dict(width=2, color='white'))))
         
         if st.session_state['t_we']:
-            fig_trend.add_trace(go.Scatter(x=trend_labels, y=y_we_억, mode='lines+markers+text', name='계약액(주말)', text=[f"<b>{v:.2f}억</b>" for v in y_we_억], textposition='top right', textfont=dict(size=15, color='#ef4444'), line=dict(color='#ef4444', width=3), marker=dict(size=marker_sizes, line=dict(width=2, color='white'))))
+            fig_trend.add_trace(go.Scatter(x=labels_arr, y=y_we_억, mode='lines+markers+text', name='계약액(주말)', text=[f"<b>{v:.2f}억</b>" for v in y_we_억], textposition='top right', textfont=dict(size=15, color='#ef4444'), line=dict(color='#ef4444', width=3), marker=dict(size=marker_sizes, line=dict(width=2, color='white'))))
         
         if st.session_state['t_walk']:
-            fig_trend.add_trace(go.Scatter(x=trend_labels, y=y_walk_억, mode='lines+markers+text', name='워크인 계약액', text=[f"<b>{v:.2f}억</b>" for v in y_walk_억], textposition='top left', textfont=dict(size=15, color='#f97316'), line=dict(color='#f97316', width=3, dash='dot')))
+            fig_trend.add_trace(go.Scatter(x=labels_arr, y=y_walk_억, mode='lines+markers+text', name='워크인 계약액', text=y_walk_text, textposition='top left', textfont=dict(size=15, color='#f97316'), line=dict(color='#f97316', width=3, dash='dot')))
         
         if st.session_state['t_move']:
-            fig_trend.add_trace(go.Scatter(x=trend_labels, y=y_move_억, mode='lines+markers+text', name='입주 계약액', text=[f"<b>{v:.2f}억</b>" for v in y_move_억], textposition='bottom right', textfont=dict(size=15, color='#a855f7'), line=dict(color='#a855f7', width=3, dash='dot')))
+            fig_trend.add_trace(go.Scatter(x=labels_arr, y=y_move_억, mode='lines+markers+text', name='입주 계약액', text=y_move_text, textposition='bottom right', textfont=dict(size=15, color='#a855f7'), line=dict(color='#a855f7', width=3, dash='dot')))
 
         if st.session_state['t_est']:
-            fig_trend.add_trace(go.Scatter(x=trend_labels, y=y_est, mode='lines+markers+text', name='견적건', text=[f"<b>{v:,.0f}건</b>" for v in y_est], textposition='top center', textfont=dict(size=15, color='#4338ca'), line=dict(color='#4338ca', width=3), marker=dict(size=marker_sizes, line=dict(width=2, color='white')), yaxis='y2'))
+            fig_trend.add_trace(go.Scatter(x=labels_arr, y=y_est, mode='lines+markers+text', name='견적건', text=[f"<b>{v:,.0f}건</b>" for v in y_est], textposition='top center', textfont=dict(size=15, color='#4338ca'), line=dict(color='#4338ca', width=3), marker=dict(size=marker_sizes, line=dict(width=2, color='white')), yaxis='y2'))
         
         if st.session_state['t_cnt']:
-            fig_trend.add_trace(go.Scatter(x=trend_labels, y=y_cnt, mode='lines+markers+text', name='계약건', text=[f"<b>{v:,.0f}건</b>" for v in y_cnt], textposition='bottom center', textfont=dict(size=15, color='#10b981'), line=dict(color='#10b981', width=3), marker=dict(size=marker_sizes, line=dict(width=2, color='white')), yaxis='y2'))
+            fig_trend.add_trace(go.Scatter(x=labels_arr, y=y_cnt, mode='lines+markers+text', name='계약건', text=[f"<b>{v:,.0f}건</b>" for v in y_cnt], textposition='bottom center', textfont=dict(size=15, color='#10b981'), line=dict(color='#10b981', width=3), marker=dict(size=marker_sizes, line=dict(width=2, color='white')), yaxis='y2'))
 
         if st.session_state['t_rate']:
-            fig_trend.add_trace(go.Scatter(x=trend_labels, y=y_rate, mode='lines+markers+text', name='계약률', text=[f"<b>{v:.1f}%</b>" for v in y_rate], textposition='top right', textfont=dict(size=15, color='#ca8a04'), line=dict(color='#ca8a04', width=3), marker=dict(size=marker_sizes, line=dict(width=2, color='white')), yaxis='y3'))
+            fig_trend.add_trace(go.Scatter(x=labels_arr, y=y_rate, mode='lines+markers+text', name='계약률', text=[f"<b>{v:.1f}%</b>" for v in y_rate], textposition='top right', textfont=dict(size=15, color='#ca8a04'), line=dict(color='#ca8a04', width=3), marker=dict(size=marker_sizes, line=dict(width=2, color='white')), yaxis='y3'))
         
         if st.session_state['t_unit']:
-            fig_trend.add_trace(go.Scatter(x=trend_labels, y=y_unit, mode='lines+markers+text', name='객단가', text=[f"<b>{int(v):,}만</b>" for v in y_unit], textposition='bottom left', textfont=dict(size=15, color='#ec4899'), line=dict(color='#ec4899', width=3), marker=dict(size=marker_sizes, line=dict(width=2, color='white')), yaxis='y4'))
+            fig_trend.add_trace(go.Scatter(x=labels_arr, y=y_unit, mode='lines+markers+text', name='객단가', text=[f"<b>{int(v):,}만</b>" for v in y_unit], textposition='bottom left', textfont=dict(size=15, color='#ec4899'), line=dict(color='#ec4899', width=3), marker=dict(size=marker_sizes, line=dict(width=2, color='white')), yaxis='y4'))
             
         fig_trend.update_layout(
             height=450, margin=dict(l=20, r=20, t=60, b=20), plot_bgcolor='white', 
             legend=dict(orientation="h", yanchor="bottom", y=1.05, xanchor="right", x=1),
-            annotations=[dict(xref='paper', yref='paper', x=0, y=1.08, xanchor='left', yanchor='bottom', text='<b>금액 (억)</b>', font=dict(size=13, color='#1e3a8a'), showarrow=False)],
+            annotations=[dict(xref='paper', yref='paper', x=0, y=1.1, xanchor='left', yanchor='bottom', text='<b>금액 (억)</b>', font=dict(size=13, color='#1e3a8a'), showarrow=False)],
             yaxis=dict(title="", tickformat=".1f", ticksuffix="억", dtick=0.5, gridcolor='#f1f5f9'),
             yaxis2=dict(title=dict(text="<b>건수 (건)</b>", font=dict(size=13, color='#ea580c')), overlaying='y', side='right', showgrid=False),
             yaxis3=dict(overlaying='y', visible=False),
@@ -913,7 +986,7 @@ if not df_raw.empty:
         fig_trend.update_xaxes(showgrid=True, gridcolor='#f1f5f9', tickfont=dict(size=12, color='black'))
         st.plotly_chart(fig_trend, use_container_width=True)
     else:
-        st.info("👆 위 세부 지표 버튼을 클릭하시면 실시간 8주 추이 꺾은선 그래프가 나타납니다.")
+        st.info("👆 위 세부 지표 버튼을 클릭하시면 실시간 꺾은선 그래프가 나타납니다.")
     
     st.markdown("---")
 
@@ -934,11 +1007,13 @@ if not df_raw.empty:
             
         col_widths = [80, 90, 70, 70, 70, 70, 70, 70, 55, 55, 55, 55, 55, 55]
         col_lefts = [0, 80, 170, 240, 310, 380, 450, 520, 590, 645, 700, 755, 810, 865]
-        html = ["<div class='vdt-table-container'><table class='vdt-table'><thead>"]
         
-        html.append("<tr>")
-        html.append(f"<th rowspan='3' style='position: sticky; top: 0; left: 0; z-index: 20; background-color: #0f172a; min-width: {col_widths[0]}px; max-width: {col_widths[0]}px; border-right: 1px solid #cbd5e1;'>대리점</th>")
-        html.append(f"<th rowspan='3' style='position: sticky; top: 0; left: {col_lefts[1]}px; z-index: 20; background-color: #0f172a; min-width: {col_widths[1]}px; max-width: {col_widths[1]}px; border-right: 2px solid #94a3b8;'>HC명</th>")
+        # 들여쓰기로 인한 마크다운 코드블록 방지를 위해 리스트로 HTML 조합
+        html_list = ["<div class='vdt-table-container'><table class='vdt-table'><thead>"]
+        
+        html_list.append("<tr>")
+        html_list.append(f"<th rowspan='3' style='position: sticky; top: 0; left: 0; z-index: 20; background-color: #0f172a; min-width: {col_widths[0]}px; max-width: {col_widths[0]}px; border-right: 1px solid #cbd5e1;'>대리점</th>")
+        html_list.append(f"<th rowspan='3' style='position: sticky; top: 0; left: {col_lefts[1]}px; z-index: 20; background-color: #0f172a; min-width: {col_widths[1]}px; max-width: {col_widths[1]}px; border-right: 2px solid #94a3b8;'>HC명</th>")
         
         headers_l1 = []
         for col in df.columns[2:]:
@@ -954,16 +1029,16 @@ if not df_raw.empty:
                 
             if h1 == '🎯 당월매출':
                 style_parts.extend([f"left: {col_lefts[2]}px;", "z-index: 15;", "border-right: 3px solid #1e293b;"])
-                html.append(f"<th colspan='3' style='{'; '.join(style_parts)}'>{h1}</th>")
+                html_list.append(f"<th colspan='3' style='{'; '.join(style_parts)}'>{h1}</th>")
             elif "🌟 당월 합계" in h1:
                 style_parts.extend([f"left: {col_lefts[5]}px;", "z-index: 15;", "border-right: 4px solid #94a3b8;"])
-                html.append(f"<th colspan='9' style='{'; '.join(style_parts)}'>{h1}</th>")
+                html_list.append(f"<th colspan='9' style='{'; '.join(style_parts)}'>{h1}</th>")
             else:
                 style_parts.append("z-index: 10;")
-                html.append(f"<th colspan='9' style='{'; '.join(style_parts)}'>{h1}</th>")
-        html.append("</tr>")
+                html_list.append(f"<th colspan='9' style='{'; '.join(style_parts)}'>{h1}</th>")
+        html_list.append("</tr>")
         
-        html.append("<tr>")
+        html_list.append("<tr>")
         for h1 in headers_l1:
             is_curr, is_monthly = CURRENT_TABLE_WEEK in h1, "당월" in h1
             base_styles = ["position: sticky; top: 33px;"]
@@ -973,16 +1048,16 @@ if not df_raw.empty:
             
             if h1 == '🎯 당월매출':
                 s_parts = base_styles.copy() + [f"left: {col_lefts[2]}px;", "z-index: 15;", "border-right: 3px solid #1e293b;"]
-                html.append(f"<th colspan='3' style='{'; '.join(s_parts)}'>인별매출(천)</th>")
+                html_list.append(f"<th colspan='3' style='{'; '.join(s_parts)}'>인별매출(천)</th>")
             elif "🌟 당월 합계" in h1:
                 s1, s2, s3 = base_styles.copy() + [f"left: {col_lefts[5]}px;", "z-index: 15;"], base_styles.copy() + [f"left: {col_lefts[8]}px;", "z-index: 15;"], base_styles.copy() + [f"left: {col_lefts[11]}px;", "z-index: 15;", "border-right: 4px solid #94a3b8;"]
-                html.append(f"<th colspan='3' style='{'; '.join(s1)}'>계약액(천)</th><th colspan='3' style='{'; '.join(s2)}'>견적건</th><th colspan='3' style='{'; '.join(s3)}'>계약건</th>")
+                html_list.append(f"<th colspan='3' style='{'; '.join(s1)}'>계약액(천)</th><th colspan='3' style='{'; '.join(s2)}'>견적건</th><th colspan='3' style='{'; '.join(s3)}'>계약건</th>")
             else:
                 bg_style = f"style='{'; '.join(base_styles + ['z-index: 10;'])}'"
-                html.append(f"<th colspan='3' {bg_style}>계약액(천)</th><th colspan='3' {bg_style}>견적건</th><th colspan='3' {bg_style}>계약건</th>")
-        html.append("</tr>")
+                html_list.append(f"<th colspan='3' {bg_style}>계약액(천)</th><th colspan='3' {bg_style}>견적건</th><th colspan='3' {bg_style}>계약건</th>")
+        html_list.append("</tr>")
         
-        html.append("<tr>")
+        html_list.append("<tr>")
         for c_idx, col in enumerate(df.columns[2:]):
             abs_idx = c_idx + 2
             is_curr, is_monthly = CURRENT_TABLE_WEEK in col[0], "당월" in col[0]
@@ -1004,8 +1079,8 @@ if not df_raw.empty:
             if is_last_monthly: style_parts.append("border-right: 4px solid #94a3b8;")
                 
             bg_style = f"style='{'; '.join(style_parts)}'"
-            html.append(f"<th {bg_style}>{col[2]}</th>")
-        html.append("</tr></thead><tbody>")
+            html_list.append(f"<th {bg_style}>{col[2]}</th>")
+        html_list.append("</tr></thead><tbody>")
         
         for r_idx in range(len(df)):
             row = df.iloc[r_idx]
@@ -1015,9 +1090,9 @@ if not df_raw.empty:
             elif "🌟" in str(hc): bg_color, row_bg = "#cbd5e1", "style='background-color: #cbd5e1; font-weight: bold;'"
             else: bg_color, row_bg = dealer_colors.get(dealer, '#ffffff'), f"style='background-color: {dealer_colors.get(dealer, '#ffffff')};'"
                 
-            html.append(f"<tr {row_bg}>")
-            html.append(f"<td class='text-center' style='position: sticky; left: 0; z-index: 6; background-color: {bg_color}; min-width: {col_widths[0]}px; max-width: {col_widths[0]}px; border-right: 1px solid #cbd5e1;'>{dealer}</td>")
-            html.append(f"<td class='text-center' style='position: sticky; left: {col_lefts[1]}px; z-index: 6; background-color: {bg_color}; min-width: {col_widths[1]}px; max-width: {col_widths[1]}px; border-right: 2px solid #94a3b8;'>{hc}</td>")
+            html_list.append(f"<tr {row_bg}>")
+            html_list.append(f"<td class='text-center' style='position: sticky; left: 0; z-index: 6; background-color: {bg_color}; min-width: {col_widths[0]}px; max-width: {col_widths[0]}px; border-right: 1px solid #cbd5e1;'>{dealer}</td>")
+            html_list.append(f"<td class='text-center' style='position: sticky; left: {col_lefts[1]}px; z-index: 6; background-color: {bg_color}; min-width: {col_widths[1]}px; max-width: {col_widths[1]}px; border-right: 2px solid #94a3b8;'>{hc}</td>")
             
             for c_idx, val in enumerate(row[2:]):
                 abs_idx = c_idx + 2
@@ -1052,11 +1127,11 @@ if not df_raw.empty:
                 else: val_str = f"{val:,.0f}"
                     
                 border_style = f"{'; '.join(style_parts)}" if style_parts else ""
-                html.append(f"<td style='{border_style}'>{val_str}</td>")
-            html.append("</tr>")
+                html_list.append(f"<td style='{border_style}'>{val_str}</td>")
+            html_list.append("</tr>")
             
-        html.append("</tbody></table></div>")
-        return "".join(html)
+        html_list.append("</tbody></table></div>")
+        return "".join(html_list)
     
     table_html = render_custom_html_table(final_df)
     st.markdown(table_html, unsafe_allow_html=True)
