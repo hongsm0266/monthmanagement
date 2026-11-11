@@ -16,12 +16,12 @@ import time
 st.set_page_config(page_title="충청호남팀 영업사원 주차별 VDT 목표 관리", layout="wide")
 SHEET_URL = "https://docs.google.com/spreadsheets/d/1yZdc4BL5CHLwBQ2QGp8zD5_ov7LDKsEcnrONdQvDyHI/edit?gid=1748736055#gid=1748736055"
 
-if 'init_v23' not in st.session_state:
+if 'init_v24' not in st.session_state:
     st.session_state.update({'view_target': "충청호남팀 전체", 'hc_selector': "✨ 인원별 상세 실적 (선택 시 우선 적용)", 
                              'view_mode': "주간 추이 (최근 8주)", 't_amt': True, 't_sales': False, 't_next': False,
                              't_avg': False, 't_wd': False, 't_we': False, 't_walk': False, 't_move': False,
                              't_est': False, 't_cnt': False, 't_rate': False, 't_unit': False, 
-                             'wow_prev': None, 'wow_curr': None, 'init_v23': True})
+                             'wow_prev': None, 'wow_curr': None, 'init_v24': True})
 
 toggle_keys = ['t_amt', 't_sales', 't_next', 't_avg', 't_wd', 't_we', 't_walk', 't_move', 't_est', 't_cnt', 't_rate', 't_unit']
 EXCLUDED_HCS = ["장재형", "강지인", "신재민"]
@@ -260,13 +260,13 @@ def load_vdt_data():
                 t_sales = clean_val(safe_get(row, 18)) 
                 t_next = clean_val(safe_get(row, 24))  
                 
-                # 🚀 이름(D열 또는 B열) 괄호 제거 & 사번 삭제
                 raw_hc = safe_get(row, 3) 
                 if not raw_hc and len(row) > 1: raw_hc = safe_get(row, 1) 
-                hc_name = clean_str(raw_hc.split('(')[0]) # 괄호 앞까지만 자르기
-                hc_name = re.sub(r'\d+', '', hc_name) # 혹시 남은 숫자도 삭제
+                hc_name = clean_str(raw_hc.split('(')[0]) 
+                hc_name = re.sub(r'\d+', '', hc_name) 
                 
-                if any(x in hc_name for x in ['합계', '소계', '총계', '목표', '사번', '비고', '계']): continue
+                # 🚀 '계' 민석 보호: 합계, 총계, 소계, 목표, 비고 등 명확한 키워드만 스킵
+                if '합계' in hc_name or '총계' in hc_name or '소계' in hc_name or hc_name in ['목표', '사번', '비고', '계']: continue
                 dc = hc_name.replace("팀", "").replace("대리점", "").strip()
                 if dc in valid_dealers or dc in ["충청상권", "호남상권", "세종2"]: continue
                 if not hc_name: continue 
@@ -328,13 +328,13 @@ def load_vdt_data():
                 if t_sales > 0: latest_sales_dict[hc_name] = t_sales
 
             elif curr_mode == "입주" and len(row) > 3:
-                # 🚀 이름(B열 또는 D열) 괄호 제거 & 사번 삭제
                 raw_hc = safe_get(row, 1)
                 if not raw_hc: raw_hc = safe_get(row, 3)
-                hc_name = clean_str(raw_hc.split('(')[0]) # 괄호 앞까지만 자르기
-                hc_name = re.sub(r'\d+', '', hc_name) # 혹시 남은 숫자도 삭제
+                hc_name = clean_str(raw_hc.split('(')[0]) 
+                hc_name = re.sub(r'\d+', '', hc_name) 
                 
-                if not hc_name or any(x in hc_name for x in ['합계', '소계', '총계', '목표', '대리점', '계']): continue
+                # 🚀 '계' 민석 보호
+                if not hc_name or '합계' in hc_name or '총계' in hc_name or '소계' in hc_name or hc_name in ['목표', '대리점', '계']: continue
                 dc = hc_name.replace("팀", "").replace("대리점", "").strip()
                 if dc in valid_dealers or dc in ["충청상권", "호남상권", "세종2"]: continue
                 
