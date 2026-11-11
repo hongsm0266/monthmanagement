@@ -16,12 +16,12 @@ import time
 st.set_page_config(page_title="충청호남팀 영업사원 주차별 VDT 목표 관리", layout="wide")
 SHEET_URL = "https://docs.google.com/spreadsheets/d/1yZdc4BL5CHLwBQ2QGp8zD5_ov7LDKsEcnrONdQvDyHI/edit?gid=1748736055#gid=1748736055"
 
-if 'init_v18' not in st.session_state:
+if 'init_v19' not in st.session_state:
     st.session_state.update({'view_target': "충청호남팀 전체", 'hc_selector': "✨ 인원별 상세 실적 (선택 시 우선 적용)", 
                              'view_mode': "주간 추이 (최근 8주)", 't_amt': True, 't_sales': False, 't_next': False,
                              't_avg': False, 't_wd': False, 't_we': False, 't_walk': False, 't_move': False,
                              't_est': False, 't_cnt': False, 't_rate': False, 't_unit': False, 
-                             'wow_prev': None, 'wow_curr': None, 'init_v18': True})
+                             'wow_prev': None, 'wow_curr': None, 'init_v19': True})
 
 toggle_keys = ['t_amt', 't_sales', 't_next', 't_avg', 't_wd', 't_we', 't_walk', 't_move', 't_est', 't_cnt', 't_rate', 't_unit']
 EXCLUDED_HCS = ["장재형", "강지인", "신재민"]
@@ -126,7 +126,6 @@ def safe_api_call(func, *args, **kwargs):
                 continue
             raise e
 
-# 🚀 에러 방지: 캐시 함수 안에서는 st.info 같은 UI 요소를 절대 사용하지 않음
 @st.cache_data(ttl=600, show_spinner=False)
 def load_vdt_data():
     if not client: return pd.DataFrame(), {}, {}, {}, {}, [], {}, ""
@@ -326,7 +325,8 @@ def load_vdt_data():
                         
                 if t_sales > 0: latest_sales_dict[hc_name] = t_sales
 
-            elif curr_mode == "입주" and len(row) > 17:
+            # 🚀 입주 일보 스캔 오류 해결 (len(row) > 3으로 조건 완화)
+            elif curr_mode == "입주" and len(row) > 3:
                 hc_name = clean_str(safe_get(row, 1)) 
                 if not hc_name: hc_name = clean_str(safe_get(row, 3))
                 if not hc_name or any(x in hc_name for x in ['합계', '소계', '총계', '목표', '대리점', '계']): continue
@@ -334,7 +334,7 @@ def load_vdt_data():
                 dc = hc_name.replace("팀", "").replace("대리점", "").strip()
                 if dc in valid_dealers or dc in ["충청상권", "호남상권", "세종2"]: continue
                 
-                m_m, m_r = clean_val(safe_get(row, 12)), clean_val(safe_get(row, 17))
+                m_m, m_r = clean_val(safe_get(row, 12)) / 1000.0, clean_val(safe_get(row, 17)) / 1000.0
                 dm = m_m + m_r
                 md = hc_to_dealer_master.get(hc_name)
                 
@@ -480,42 +480,63 @@ if not df_raw.empty:
         
     vt = st.session_state['view_target']
     
-    if vt == "충청호남팀 전체": ct, su = "충청호남팀 전체", [("충청호남팀 전체", trend_pack['W']['tot'])]
+    # 헬퍼 함수: 주/월 데이터를 모두 찾을 수 있도록 통합 탐색
+    def get_period_data(label, hc_or_dlr_key):
+        if label in trend_labels:
+            idx = trend_labels.index(label)
+            if vt == "충청호남팀 전체": return trend_pack['W']['tot'][idx]
+            elif vt in ["충청팀 통합", "호남팀 통합"]: return trend_pack['W']['reg'][hc_or_dlr_key][idx]
+            elif "대리점" in vt: return trend_pack['W']['dlr'].get(hc_or_dlr_key, [{'amt':0,'est':0,'cnt':0,'sales':0,'amt_move':0} for _ in range(8)])[idx]
+            else: return trend_pack['W']['hc'].get(hc_or_dlr_key, [{'amt':0,'est':0,'cnt':0,'sales':0,'amt_move':0} for _ in range(8)])[idx]
+        elif label in month_labels:
+            idx = month_labels.index(label)
+            if vt == "충청호남팀 전체": return trend_pack['M']['tot'][idx]
+            elif vt in ["충청팀 통합", "호남팀 통합"]: return trend_pack['M']['reg'][hc_or_dlr_key][idx]
+            elif "대리점" in vt: return trend_pack['M']['dlr'].get(hc_or_dlr_key, [{'amt':0,'est':0,'cnt':0,'sales':0,'amt_move':0} for _ in range(4)])[idx]
+            else: return trend_pack['M']['hc'].get(hc_or_dlr_key, [{'amt':0,'est':0,'cnt':0,'sales':0,'amt_move':0} for _ in range(4)])[idx]
+        return {'amt':0,'est':0,'cnt':0,'sales':0,'amt_move':0}
+    
+    if vt == "충청호남팀 전체":
+        ct, data_key = "충청호남팀 전체", "tot"
     elif vt in ["충청팀 통합", "호남팀 통합"]:
-        rk = "충청상권" if vt == "충청팀 통합" else "호남상권"
-        ct, su = f"{vt}", [(f"{vt}", trend_pack['W']['reg'][rk])]
+        ct, data_key = f"{vt}", "충청상권" if vt == "충청팀 통합" else "호남상권"
     elif "대리점" in vt: 
         td = vt.replace(" 대리점", "")
-        ct, su = f"{td} 대리점", [(f"{td} 합계", trend_pack['W']['dlr'].get(td, [{'amt':0,'est':0,'cnt':0,'sales':0,'amt_move':0} for _ in range(8)]))]
+        ct, data_key = f"{td} 대리점", td
     else: 
         thc = vt.replace("👤 ", "").split(" - ")[1]
-        ct, su = f"{thc} 님", [(thc, trend_pack['W']['hc'].get(thc, [{'amt':0,'est':0,'cnt':0,'sales':0,'amt_move':0} for _ in range(8)]))]
+        ct, data_key = f"{thc} 님", thc
 
-    # 🚀 1. 브리핑 보드
-    st.markdown("#### 💡 **주간 회의 전용 브리핑 보드 (자유 비교)**")
-    ww_list = list(reversed(trend_labels))
+    # 🚀 1. 브리핑 보드 (주/월 통합 자유 비교 모드)
+    st.markdown("#### 💡 **주/월 종합지표 비교**")
+    all_options = list(reversed(trend_labels)) + list(reversed(month_labels))
     
-    if st.session_state.get('wow_curr') not in ww_list: st.session_state['wow_curr'] = ww_list[0]
-    if st.session_state.get('wow_prev') not in ww_list: st.session_state['wow_prev'] = ww_list[1] if len(ww_list)>1 else ww_list[0]
+    if st.session_state.get('wow_curr') not in all_options: 
+        st.session_state['wow_curr'] = all_options[0]
+    if st.session_state.get('wow_prev') not in all_options: 
+        st.session_state['wow_prev'] = all_options[1] if len(all_options)>1 else all_options[0]
         
     w1, w2 = st.columns([1, 1])
     with w1: 
-        st.markdown("<div style='font-size:14px; font-weight:900; color:#1e293b; margin-bottom:5px;'>⬅️ 비교 기준 주차 (전주/과거)</div>", unsafe_allow_html=True)
-        sel_prev = st.selectbox("비교 기준", options=ww_list, key="wow_prev", label_visibility="collapsed")
+        st.markdown("<div style='font-size:14px; font-weight:900; color:#1e293b; margin-bottom:5px;'>⬅️ 비교 기준 주/월 (과거)</div>", unsafe_allow_html=True)
+        sel_prev = st.selectbox("비교 기준", options=all_options, key="wow_prev", label_visibility="collapsed")
     with w2: 
-        st.markdown("<div style='font-size:14px; font-weight:900; color:#dc2626; margin-bottom:5px;'>➡️ 회의 조회 주차 (당주/현재)</div>", unsafe_allow_html=True)
-        sel_curr = st.selectbox("조회 기준", options=ww_list, key="wow_curr", label_visibility="collapsed")
+        st.markdown("<div style='font-size:14px; font-weight:900; color:#dc2626; margin-bottom:5px;'>➡️ 회의 조회 주/월 (현재)</div>", unsafe_allow_html=True)
+        sel_curr = st.selectbox("조회 기준", options=all_options, key="wow_curr", label_visibility="collapsed")
         
-    pi = trend_labels.index(sel_prev)
-    ti = trend_labels.index(sel_curr)
-    
-    def td_cell(val, p_val, is_pct=False, is_unit=False, is_rate=False):
+    def td_cell(val, p_val, is_unit=False, is_rate=False):
         delta = val - p_val
-        if is_rate: v_s = f"+{delta:.1f}p%" if delta > 0 else f"{delta:.1f}p%"
-        elif is_pct: v_s = f"+{delta:.0f}%" if delta > 0 else f"{delta:.0f}%"
-        elif is_unit: v_s = f"+{int(delta):,}만" if delta > 0 else f"{int(delta):,}만"
-        else: v_s = f"+{delta:,.0f}" if delta > 0 else f"{delta:,.0f}"
-        
+        if is_rate: 
+            v_s = f"+{delta:.1f}p%" if delta > 0 else f"{delta:.1f}p%"
+        else:
+            pct_str = ""
+            if p_val != 0:
+                pct_val = (delta / abs(p_val)) * 100
+                pct_str = f" <span style='font-size:11px; letter-spacing:-0.5px;'>({'+' if pct_val>0 else ''}{pct_val:.0f}%)</span>"
+            
+            if is_unit: v_s = f"+{int(delta):,}만{pct_str}" if delta > 0 else f"{int(delta):,}만{pct_str}"
+            else: v_s = f"+{delta:,.0f}{pct_str}" if delta > 0 else f"{delta:,.0f}{pct_str}"
+            
         if delta > 0: return f"<td style='text-align:center; background-color:#f8fafc;'><span class='wow-up'>{v_s} 🔺</span></td>"
         elif delta < 0: return f"<td style='text-align:center; background-color:#f8fafc;'><span class='wow-down'>{v_s} 🔻</span></td>"
         return "<td style='text-align:center; background-color:#f8fafc;'><span class='wow-same'>-</span></td>"
@@ -526,8 +547,9 @@ if not df_raw.empty:
         b = f"background-color:{bg};" if bg else ""
         return f"<td style='text-align:center; {c} {b}'>{s}</td>"
 
-    un, ud = su[0]
-    pv, tv = ud[pi], ud[ti]
+    pv = get_period_data(sel_prev, data_key)
+    tv = get_period_data(sel_curr, data_key)
+    
     pa, ta, ps, ts = pv.get('amt',0), tv.get('amt',0), pv.get('sales',0), tv.get('sales',0)
     pe, te, pc, tc = pv.get('est',0), tv.get('est',0), pv.get('cnt',0), tv.get('cnt',0)
     pm, tm = pv.get('amt_move',0), tv.get('amt_move',0)
@@ -538,14 +560,14 @@ if not df_raw.empty:
     html_wow = [
         '<table class="wow-table" style="width: 100%; border: 2px solid #94a3b8; border-radius: 8px; overflow: hidden;">',
         '<thead><tr style="background-color: #1e293b; color: white;">',
-        f'<th style="padding: 10px; font-size: 13px; border-right: 2px solid #94a3b8;">주차 구분<br><span style="font-size:11px; color:#cbd5e1;">({ct})</span></th>',
+        f'<th style="padding: 10px; font-size: 13px; border-right: 2px solid #94a3b8;">주차/월 구분<br><span style="font-size:11px; color:#cbd5e1;">({ct})</span></th>',
         '<th style="padding: 10px;">💰 총 계약액<br>(천원)</th><th style="padding: 10px;">💰 총 매출액<br>(천원)</th><th style="padding: 10px;">📝 견적건<br>(건)</th><th style="padding: 10px;">🤝 계약건<br>(건)</th>',
         '<th style="padding: 10px; background-color:#334155;">🚶 워크인 계약액<br>(천원)</th><th style="padding: 10px; background-color:#334155;">🏠 입주 계약액<br>(천원)</th>',
         '<th style="padding: 10px;">📊 계약률<br>(%)</th><th style="padding: 10px;">💸 객단가<br>(만원)</th></tr></thead><tbody>'
     ]
-    html_wow.append(f"<tr style='background-color: #f8fafc;'><td style='text-align:center; font-weight:900; border-right:2px solid #94a3b8;'>{trend_labels[pi]} (비교 대상)</td>" + td_val(pa)+td_val(ps)+td_val(pe)+td_val(pc)+td_val(pw,bg='#f1f5f9')+td_val(pm,bg='#f1f5f9')+td_val(pr,True)+td_val(pu,False,True) + "</tr>")
-    html_wow.append(f"<tr style='background-color: white;'><td style='text-align:center; font-weight:900; color:#1e3a8a; border-right:2px solid #94a3b8;'>{trend_labels[ti]} (조회 기준)</td>" + td_val(ta,is_tgt=True)+td_val(ts,is_tgt=True)+td_val(te,is_tgt=True)+td_val(tc,is_tgt=True)+td_val(tw,is_tgt=True,bg='#f1f5f9')+td_val(tm,is_tgt=True,bg='#f1f5f9')+td_val(tr,True,is_tgt=True)+td_val(tu,False,True,is_tgt=True) + "</tr>")
-    html_wow.append(f"<tr style='background-color: #fef2f2;'><td style='text-align:center; font-weight:900; color:#b91c1c; border-right:2px solid #94a3b8;'>선택 주차 간 증감</td>" + td_cell(ta,pa)+td_cell(ts,ps)+td_cell(te,pe)+td_cell(tc,pc)+td_cell(tw,pw)+td_cell(tm,pm)+td_cell(tr,pr,is_rate=True)+td_cell(tu,pu,is_unit=True) + "</tr></tbody></table>")
+    html_wow.append(f"<tr style='background-color: #f8fafc;'><td style='text-align:center; font-weight:900; border-right:2px solid #94a3b8;'>{sel_prev}<br><span style='font-size:11px; color:#64748b;'>(비교 대상)</span></td>" + td_val(pa)+td_val(ps)+td_val(pe)+td_val(pc)+td_val(pw,bg='#f1f5f9')+td_val(pm,bg='#f1f5f9')+td_val(pr,True)+td_val(pu,False,True) + "</tr>")
+    html_wow.append(f"<tr style='background-color: white;'><td style='text-align:center; font-weight:900; color:#1e3a8a; border-right:2px solid #94a3b8;'>{sel_curr}<br><span style='font-size:11px; color:#64748b;'>(조회 기준)</span></td>" + td_val(ta,is_tgt=True)+td_val(ts,is_tgt=True)+td_val(te,is_tgt=True)+td_val(tc,is_tgt=True)+td_val(tw,is_tgt=True,bg='#f1f5f9')+td_val(tm,is_tgt=True,bg='#f1f5f9')+td_val(tr,True,is_tgt=True)+td_val(tu,False,True,is_tgt=True) + "</tr>")
+    html_wow.append(f"<tr style='background-color: #fef2f2;'><td style='text-align:center; font-weight:900; color:#b91c1c; border-right:2px solid #94a3b8;'>지표 간 증감</td>" + td_cell(ta,pa)+td_cell(ts,ps)+td_cell(te,pe)+td_cell(tc,pc)+td_cell(tw,pw)+td_cell(tm,pm)+td_cell(tr,pr,is_rate=True)+td_cell(tu,pu,is_unit=True) + "</tr></tbody></table>")
     
     st.markdown("".join(html_wow), unsafe_allow_html=True)
     st.markdown("---")
