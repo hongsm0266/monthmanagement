@@ -17,12 +17,12 @@ import calendar
 st.set_page_config(page_title="충청호남팀 영업사원 주차별 VDT 목표 관리", layout="wide")
 SHEET_URL = "https://docs.google.com/spreadsheets/d/1yZdc4BL5CHLwBQ2QGp8zD5_ov7LDKsEcnrONdQvDyHI/edit?gid=1748736055#gid=1748736055"
 
-if 'init_v32' not in st.session_state:
+if 'init_v33' not in st.session_state:
     st.session_state.update({'view_target': "충청호남팀 전체", 'hc_selector': "✨ 인원별 상세 실적 (선택 시 우선 적용)", 
                              'view_mode': "주간 추이 (최근 8주)", 't_amt': True, 't_sales': False, 't_next': False,
                              't_avg': False, 't_wd': False, 't_we': False, 't_walk': False, 't_move': False,
                              't_est': False, 't_cnt': False, 't_rate': False, 't_unit': False, 
-                             'wow_prev': None, 'wow_curr': None, 'init_v32': True})
+                             'wow_prev': None, 'wow_curr': None, 'init_v33': True})
 
 toggle_keys = ['t_amt', 't_sales', 't_next', 't_avg', 't_wd', 't_we', 't_walk', 't_move', 't_est', 't_cnt', 't_rate', 't_unit']
 EXCLUDED_HCS = ["장재형", "강지인", "신재민"]
@@ -56,13 +56,13 @@ st.markdown("""
     .vdt-table-container::-webkit-scrollbar { width: 14px; height: 14px; }
     .vdt-table-container::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 8px; }
     .vdt-table-container::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 8px; border: 3px solid #f1f5f9; }
-    .vdt-table { width: 100%; border-collapse: collapse; font-size: 12px; white-space: nowrap; }
+    .vdt-table { width: 100%; border-collapse: collapse; font-size: 11px; white-space: nowrap; }
     .vdt-table thead th { height: 34px; position: sticky; z-index: 10; }
     .vdt-table thead tr:nth-child(1) th { top: 0; }
     .vdt-table thead tr:nth-child(2) th { top: 33px; }
     .vdt-table thead tr:nth-child(3) th { top: 66px; }
-    .vdt-table th { background-color: #0f172a; color: white; padding: 8px 10px; text-align: center; border: 1px solid #334155; font-weight: 600; }
-    .vdt-table td { padding: 6px 10px; text-align: right; border: 1px solid #e2e8f0; }
+    .vdt-table th { background-color: #0f172a; color: white; padding: 6px 8px; text-align: center; border: 1px solid #334155; font-weight: 700; }
+    .vdt-table td { padding: 4px 8px; text-align: right; border: 1px solid #e2e8f0; }
     .title-box { background: linear-gradient(90deg, #1e3a8a 0%, #3b82f6 100%); color: white; padding: 12px; border-radius: 8px; margin-bottom: 12px; }
     h1, h3, h4 { font-weight: 900 !important; margin: 0; }
     h1 { font-size: 14px !important; color: white !important; }
@@ -113,7 +113,6 @@ for i in range(7, -1, -1):
     w_end = w_start + timedelta(days=6)
     iso_week = w_start.isocalendar()[1]
     trend_ranges.append((w_start, w_end))
-    # 🚀 시각적 분리를 위한 주차 기호 추가
     trend_labels.append(f"▪️ {iso_week}주 ({w_start.strftime('%m.%d')}~{w_end.strftime('%m.%d')})")
 
 def get_trend_week_idx(m, d, y=current_date.year):
@@ -249,7 +248,6 @@ def load_vdt_data():
         if not max_date: max_date = datetime(current_date.year, current_date.month, current_date.day)
         
         sorted_months = sorted(list(dynamic_months))
-        # 🚀 시각적 분리를 위한 월 마감 기호 추가
         month_labels = [f"📊 [월마감] {y%100}년 {m}월" for y, m in sorted_months]
         
         max_y, max_m, max_d = max_date.year, max_date.month, max_date.day
@@ -257,7 +255,6 @@ def load_vdt_data():
         prev2_dt = get_prev_month_date(max_date, 2)
         y3, m3 = max_y - 1, max_m
         
-        # 🚀 시각적 분리를 위한 MTD 기호 추가
         mtd_labels = ['🌟 [당일기준] 당월 누적', '🌟 [당일기준] 전월 누적', '🌟 [당일기준] 전전월 누적', '🌟 [당일기준] 전년 누적']
         
         def new_d(): return {'amt':0, 'est':0, 'cnt':0, 'amt_wd':0, 'amt_we':0, 'sales':0, 'next_sales':0, 'amt_move':0}
@@ -430,7 +427,6 @@ def load_vdt_data():
                     elif curr_y == y3 and curr_m == m3: target_lbl = '🌟 [당일기준] 전년 누적'
                     if target_lbl: trend_hc_mtd[hc_name][target_lbl]['amt_move'] += dm
 
-        # 롤업(Roll-up)
         keys_to_sum = ['sales', 'next_sales', 'est', 'cnt', 'amt', 'amt_we', 'amt_wd', 'amt_move']
         for hc in existing_hcs:
             md = hc_to_dealer_master.get(hc, "기타")
@@ -607,12 +603,12 @@ if not df_raw.empty:
         thc = vt.replace("👤 ", "").split(" - ")[1]
         ct, data_key = f"{thc} 님", thc
 
-    # 🚀 1. 브리핑 보드 UI 개조 
+    # 🚀 1. 브리핑 보드 UI
     st.markdown("#### 💡 **주/월 종합지표 비교**")
     all_normal_options = list(reversed(trend_labels)) + list(reversed(month_labels))
     curr_options = ['🌟 [당일기준] 당월 누적'] + all_normal_options
     
-    # 🚀 디폴트 선택값을 '최근 1주일 전(직전 주차)'로 자동 설정!
+    # 🚀 디폴트 선택값을 '최근 1주일 전(직전 주차)'로 자동 설정! (인덱스 1)
     if 'wow_curr' not in st.session_state: 
         default_idx = 1 if len(all_normal_options) > 1 else 0
         st.session_state['wow_curr'] = all_normal_options[default_idx]
@@ -709,112 +705,147 @@ if not df_raw.empty:
             
     def toggle_state(key): st.session_state[key] = not st.session_state[key]
 
-    # 🚀 3. 트렌드 그래프
+    # 🚀 3. 트렌드 그래프 (최근 4주 막대차트 옵션 신설)
     t_c1, t_c2 = st.columns([7, 3])
     with t_c1: st.markdown(f"#### 📈 {ct} 실적 추이 그래프")
     with t_c2:
         st.markdown("<div class='mode-toggle'>", unsafe_allow_html=True)
-        vm = st.radio("보기 기준", ["주간 추이 (최근 8주)", "월간 누적 추이 (자동갱신)"], horizontal=True, label_visibility="collapsed", key='view_mode_selector')
+        vm = st.radio("보기 기준", ["주간 추이 (최근 8주)", "월간 누적 추이 (자동갱신)", "🔥 최근 4주 목표 vs 실적"], horizontal=True, label_visibility="collapsed", key='view_mode_selector')
         st.markdown("</div>", unsafe_allow_html=True)
         
     is_m = "월간" in vm
-    la = month_labels if is_m else trend_labels
     
-    if vt == "충청호남팀 전체": sd = [trend_pack['M' if is_m else 'W']['tot'][l if is_m else trend_labels.index(l)] for l in la]
-    elif vt in ["충청팀 통합", "호남팀 통합"]: sd = [trend_pack['M' if is_m else 'W']['reg'][data_key][l if is_m else trend_labels.index(l)] for l in la]
-    elif "대리점" in vt: sd = [trend_pack['M' if is_m else 'W']['dlr'].get(data_key, {lbl: {'amt':0,'est':0,'cnt':0,'sales':0,'amt_move':0} for lbl in la} if is_m else [{'amt':0,'est':0,'cnt':0,'sales':0,'amt_move':0} for _ in range(8)])[l if is_m else trend_labels.index(l)] for l in la]
-    else: sd = [trend_pack['M' if is_m else 'W']['hc'].get(data_key, {lbl: {'amt':0,'est':0,'cnt':0,'sales':0,'amt_move':0} for lbl in la} if is_m else [{'amt':0,'est':0,'cnt':0,'sales':0,'amt_move':0} for _ in range(8)])[l if is_m else trend_labels.index(l)] for l in la]
-    
-    g_c1, g_c2, g_c3, g_c4 = st.columns([5, 3, 2, 2])
-    with g_c1:
-        st.markdown("<div class='chart-btn-group'>💰 재무 지표</div>", unsafe_allow_html=True)
-        c1, c2, c3, c4 = st.columns(4)
-        with c1: st.button("✅ 계약액" if st.session_state['t_amt'] else "계약액", on_click=toggle_state, args=('t_amt',), use_container_width=True, type="primary" if st.session_state['t_amt'] else "secondary")
-        with c2: st.button("✅ 매출액" if st.session_state['t_sales'] else "매출액", on_click=toggle_state, args=('t_sales',), use_container_width=True, type="primary" if st.session_state['t_sales'] else "secondary")
-        with c3: st.button("✅ 이월매출" if st.session_state['t_next'] else "이월매출", on_click=toggle_state, args=('t_next',), use_container_width=True, type="primary" if st.session_state['t_next'] else "secondary")
-        with c4: st.button("✅ 평균(계약)" if st.session_state['t_avg'] else "평균(계약)", on_click=toggle_state, args=('t_avg',), use_container_width=True, type="primary" if st.session_state['t_avg'] else "secondary")
-    with g_c2:
-        st.markdown("<div class='chart-btn-group'>🏢 분류 지표 (계약액)</div>", unsafe_allow_html=True)
-        c1, c2, c3, c4 = st.columns(4)
-        with c1: st.button("✅ 주중" if st.session_state['t_wd'] else "주중", on_click=toggle_state, args=('t_wd',), use_container_width=True, type="primary" if st.session_state['t_wd'] else "secondary")
-        with c2: st.button("✅ 주말" if st.session_state['t_we'] else "주말", on_click=toggle_state, args=('t_we',), use_container_width=True, type="primary" if st.session_state['t_we'] else "secondary")
-        with c3: st.button("✅ 워크인" if st.session_state['t_walk'] else "워크인", on_click=toggle_state, args=('t_walk',), use_container_width=True, type="primary" if st.session_state['t_walk'] else "secondary")
-        with c4: st.button("✅ 입주" if st.session_state['t_move'] else "입주", on_click=toggle_state, args=('t_move',), use_container_width=True, type="primary" if st.session_state['t_move'] else "secondary")
-    with g_c3:
-        st.markdown("<div class='chart-btn-group'>📝 건수 지표</div>", unsafe_allow_html=True)
-        c1, c2 = st.columns(2)
-        with c1: st.button("✅ 견적건" if st.session_state['t_est'] else "견적건", on_click=toggle_state, args=('t_est',), use_container_width=True, type="primary" if st.session_state['t_est'] else "secondary")
-        with c2: st.button("✅ 계약건" if st.session_state['t_cnt'] else "계약건", on_click=toggle_state, args=('t_cnt',), use_container_width=True, type="primary" if st.session_state['t_cnt'] else "secondary")
-    with g_c4:
-        st.markdown("<div class='chart-btn-group'>📊 효율 지표</div>", unsafe_allow_html=True)
-        c1, c2 = st.columns(2)
-        with c1: st.button("✅ 계약률" if st.session_state['t_rate'] else "계약률", on_click=toggle_state, args=('t_rate',), use_container_width=True, type="primary" if st.session_state['t_rate'] else "secondary")
-        with c2: st.button("✅ 객단가" if st.session_state['t_unit'] else "객단가", on_click=toggle_state, args=('t_unit',), use_container_width=True, type="primary" if st.session_state['t_unit'] else "secondary")
-    
-    y_a = [(w.get('amt', 0)/100000) for w in sd]
-    y_s = [(w.get('sales', 0)/100000) for w in sd]
-    y_n = [(w.get('next_sales', 0)/100000) for w in sd]
-    y_av = [sum(y_a)/len(y_a) if y_a else 0] * len(y_a)
-    y_wd = [(w.get('amt_wd', 0)/100000) for w in sd]
-    y_we = [(w.get('amt_we', 0)/100000) for w in sd]
-    y_m = [(w.get('amt_move', 0)/100000) for w in sd]
-    y_wk = [a - m for a, m in zip(y_a, y_m)]
-    
-    ym_txt, yw_txt = [], []
-    for w, m, a in zip(y_wk, y_m, y_a):
-        if a > 0:
-            ym_txt.append(f"<b>{m:.2f}억</b><br><span style='font-size:11px'>({(m/a*100):.0f}%)</span>")
-            yw_txt.append(f"<b>{w:.2f}억</b><br><span style='font-size:11px'>({(w/a*100):.0f}%)</span>")
-        else:
-            ym_txt.append(f"<b>{m:.2f}억</b>")
-            yw_txt.append(f"<b>{w:.2f}억</b>")
-    
-    y_e = [w.get('est', 0) for w in sd]
-    y_c = [w.get('cnt', 0) for w in sd]
-    y_r = [(c/e*100) if e>0 else 0 for e, c in zip(y_e, y_c)]
-    y_u = [(a*100000/(c*10)) if c>0 else 0 for a, c in zip(y_a, y_c)] 
-            
-    if any([st.session_state[k] for k in toggle_keys]):
+    # 🔥 [최근 4주 막대그래프 모드]
+    if "최근 4주" in vm:
+        last_4_keys = week_keys_list[-4:] if len(week_keys_list) >= 4 else week_keys_list
+        t_amts, a_amts, t_cnts, a_cnts = [], [], [], []
+        
+        search_key = "🌟 총계" if "전체" in vt else ("합계" if "통합" in vt or "대리점" in vt else data_key)
+        
+        for wk in last_4_keys:
+            if "전체" in vt: row_data = final_df[final_df[('기본정보', 'HC명', 'HC명')] == search_key]
+            elif "통합" in vt: 
+                # 상권은 데이터에서 합계를 구해야 함
+                d_list = REGION_MAP["충청상권" if "충청" in vt else "호남상권"]
+                row_data = final_df[(final_df[('기본정보', '대리점', '대리점')].isin(d_list)) & (final_df[('기본정보', 'HC명', 'HC명')] == "합계")].sum(numeric_only=True).to_frame().T
+            elif "대리점" in vt: row_data = final_df[(final_df[('기본정보', '대리점', '대리점')] == data_key) & (final_df[('기본정보', 'HC명', 'HC명')] == "합계")]
+            else: row_data = final_df[final_df[('기본정보', 'HC명', 'HC명')] == search_key]
+
+            if not row_data.empty:
+                t_amts.append(row_data[(wk, '계약액(천)', '목표')].values[0] / 100000.0)
+                a_amts.append(row_data[(wk, '계약액(천)', 'ACT')].values[0] / 100000.0)
+                t_cnts.append(row_data[(wk, '계약건', '목표')].values[0])
+                a_cnts.append(row_data[(wk, '계약건', 'ACT')].values[0])
+            else:
+                t_amts.append(0); a_amts.append(0); t_cnts.append(0); a_cnts.append(0)
+
         fig = go.Figure()
-        ms = [10] * (len(la)-1) + [20]
-        
-        if st.session_state['t_amt']: fig.add_trace(go.Scatter(x=la, y=y_a, mode='lines+markers+text', name='계약액', text=[f"<b>{v:.2f}억</b>" for v in y_a], textposition='top center', textfont=dict(size=15, color='black'), line=dict(color='#0f172a', width=4), marker=dict(size=ms, color=['#0f172a'] * (len(la)-1) + ['#dc2626'], line=dict(width=2, color='white'))))
-        if st.session_state['t_sales']: fig.add_trace(go.Scatter(x=la, y=y_s, mode='lines+markers+text', name='매출액', text=[f"<b>{v:.2f}억</b>" for v in y_s], textposition='bottom right', textfont=dict(size=15, color='#0d9488'), line=dict(color='#14b8a6', width=3), marker=dict(size=ms, line=dict(width=2, color='white'))))
-        if st.session_state['t_next']: fig.add_trace(go.Scatter(x=la, y=y_n, mode='lines+markers+text', name='이월매출', text=[f"<b>{v:.2f}억</b>" for v in y_n], textposition='top left', textfont=dict(size=15, color='#d97706'), line=dict(color='#f59e0b', width=3), marker=dict(size=ms, line=dict(width=2, color='white'))))
-        
-        if st.session_state['t_avg']: 
-            avg_txt = [""] * len(la)
-            mid_idx = len(la) // 2
-            avg_txt[mid_idx] = f"<b>평균 {y_av[-1]:.2f}억</b>"
-            fig.add_trace(go.Scatter(x=la, y=y_av, mode='lines+text', name='평균선', text=avg_txt, textposition='top center', textfont=dict(size=18, color='#0f172a'), line=dict(color='#94a3b8', width=2, dash='dash')))
-            
-        if st.session_state['t_wd']: fig.add_trace(go.Scatter(x=la, y=y_wd, mode='lines+markers+text', name='주중', text=[f"<b>{v:.2f}억</b>" for v in y_wd], textposition='bottom center', textfont=dict(size=15, color='#0ea5e9'), line=dict(color='#0ea5e9', width=3), marker=dict(size=ms, line=dict(width=2, color='white'))))
-        if st.session_state['t_we']: fig.add_trace(go.Scatter(x=la, y=y_we, mode='lines+markers+text', name='주말', text=[f"<b>{v:.2f}억</b>" for v in y_we], textposition='top right', textfont=dict(size=15, color='#ef4444'), line=dict(color='#ef4444', width=3), marker=dict(size=ms, line=dict(width=2, color='white'))))
-        if st.session_state['t_walk']: fig.add_trace(go.Scatter(x=la, y=y_wk, mode='lines+markers+text', name='워크인', text=yw_txt, textposition='top left', textfont=dict(size=15, color='#f97316'), line=dict(color='#f97316', width=3, dash='dot')))
-        if st.session_state['t_move']: fig.add_trace(go.Scatter(x=la, y=y_m, mode='lines+markers+text', name='입주', text=ym_txt, textposition='bottom right', textfont=dict(size=15, color='#a855f7'), line=dict(color='#a855f7', width=3, dash='dot')))
-        if st.session_state['t_est']: fig.add_trace(go.Scatter(x=la, y=y_e, mode='lines+markers+text', name='견적건', text=[f"<b>{v:,.0f}건</b>" for v in y_e], textposition='top center', textfont=dict(size=15, color='#4338ca'), line=dict(color='#4338ca', width=3), marker=dict(size=ms, line=dict(width=2, color='white')), yaxis='y2'))
-        if st.session_state['t_cnt']: fig.add_trace(go.Scatter(x=la, y=y_c, mode='lines+markers+text', name='계약건', text=[f"<b>{v:,.0f}건</b>" for v in y_c], textposition='bottom center', textfont=dict(size=15, color='#10b981'), line=dict(color='#10b981', width=3), marker=dict(size=ms, line=dict(width=2, color='white')), yaxis='y2'))
-        if st.session_state['t_rate']: fig.add_trace(go.Scatter(x=la, y=y_r, mode='lines+markers+text', name='계약률', text=[f"<b>{v:.1f}%</b>" for v in y_r], textposition='top right', textfont=dict(size=15, color='#ca8a04'), line=dict(color='#ca8a04', width=3), marker=dict(size=ms, line=dict(width=2, color='white')), yaxis='y3'))
-        if st.session_state['t_unit']: fig.add_trace(go.Scatter(x=la, y=y_u, mode='lines+markers+text', name='객단가', text=[f"<b>{int(v):,}만</b>" for v in y_u], textposition='bottom left', textfont=dict(size=15, color='#ec4899'), line=dict(color='#ec4899', width=3), marker=dict(size=ms, line=dict(width=2, color='white')), yaxis='y4'))
-            
-        fig.update_layout(
-            height=450, margin=dict(l=20, r=20, t=60, b=20), plot_bgcolor='white', 
-            legend=dict(orientation="h", yanchor="bottom", y=1.05, xanchor="right", x=1), 
-            annotations=[dict(xref='paper', yref='paper', x=0, y=1.1, xanchor='left', yanchor='bottom', text='<b>금액 (억)</b>', font=dict(size=13, color='#1e3a8a'), showarrow=False)], 
-            yaxis=dict(title="", tickformat=".1f", ticksuffix="억", dtick=0.5, gridcolor='#f1f5f9'), 
-            yaxis2=dict(title=dict(text="<b>건수 (건)</b>", font=dict(size=13, color='#ea580c')), overlaying='y', side='right', showgrid=False), 
-            yaxis3=dict(overlaying='y', visible=False), 
-            yaxis4=dict(overlaying='y', visible=False)
-        )
-        fig.update_xaxes(showgrid=True, gridcolor='#f1f5f9', tickfont=dict(size=12, color='black'))
+        fig.add_trace(go.Bar(name='목표 계약액', x=last_4_keys, y=t_amts, marker_color='#94a3b8', text=[f"{v:.1f}억" for v in t_amts], textposition='auto'))
+        fig.add_trace(go.Bar(name='실제 계약액', x=last_4_keys, y=a_amts, marker_color='#2563eb', text=[f"<b>{v:.1f}억</b>" for v in a_amts], textposition='auto'))
+        fig.update_layout(barmode='group', height=450, margin=dict(l=20, r=20, t=60, b=20), plot_bgcolor='white', legend=dict(orientation="h", yanchor="bottom", y=1.05, xanchor="right", x=1))
+        fig.update_yaxes(title="금액 (억)", gridcolor='#f1f5f9')
         st.plotly_chart(fig, use_container_width=True)
-    else: st.info("👆 위 세부 지표 버튼을 클릭하시면 실시간 꺾은선 그래프가 나타납니다.")
+        
+    else:
+        # 기존 라인 그래프 모드
+        la = month_labels if is_m else trend_labels
+        
+        if vt == "충청호남팀 전체": sd = [trend_pack['M' if is_m else 'W']['tot'][l if is_m else trend_labels.index(l)] for l in la]
+        elif vt in ["충청팀 통합", "호남팀 통합"]: sd = [trend_pack['M' if is_m else 'W']['reg'][data_key][l if is_m else trend_labels.index(l)] for l in la]
+        elif "대리점" in vt: sd = [trend_pack['M' if is_m else 'W']['dlr'].get(data_key, {lbl: {'amt':0,'est':0,'cnt':0,'sales':0,'amt_move':0} for lbl in la} if is_m else [{'amt':0,'est':0,'cnt':0,'sales':0,'amt_move':0} for _ in range(8)])[l if is_m else trend_labels.index(l)] for l in la]
+        else: sd = [trend_pack['M' if is_m else 'W']['hc'].get(data_key, {lbl: {'amt':0,'est':0,'cnt':0,'sales':0,'amt_move':0} for lbl in la} if is_m else [{'amt':0,'est':0,'cnt':0,'sales':0,'amt_move':0} for _ in range(8)])[l if is_m else trend_labels.index(l)] for l in la]
+        
+        g_c1, g_c2, g_c3, g_c4 = st.columns([5, 3, 2, 2])
+        with g_c1:
+            st.markdown("<div class='chart-btn-group'>💰 재무 지표</div>", unsafe_allow_html=True)
+            c1, c2, c3, c4 = st.columns(4)
+            with c1: st.button("✅ 계약액" if st.session_state['t_amt'] else "계약액", on_click=toggle_state, args=('t_amt',), use_container_width=True, type="primary" if st.session_state['t_amt'] else "secondary")
+            with c2: st.button("✅ 매출액" if st.session_state['t_sales'] else "매출액", on_click=toggle_state, args=('t_sales',), use_container_width=True, type="primary" if st.session_state['t_sales'] else "secondary")
+            with c3: st.button("✅ 이월매출" if st.session_state['t_next'] else "이월매출", on_click=toggle_state, args=('t_next',), use_container_width=True, type="primary" if st.session_state['t_next'] else "secondary")
+            with c4: st.button("✅ 평균(계약)" if st.session_state['t_avg'] else "평균(계약)", on_click=toggle_state, args=('t_avg',), use_container_width=True, type="primary" if st.session_state['t_avg'] else "secondary")
+        with g_c2:
+            st.markdown("<div class='chart-btn-group'>🏢 분류 지표 (계약액)</div>", unsafe_allow_html=True)
+            c1, c2, c3, c4 = st.columns(4)
+            with c1: st.button("✅ 주중" if st.session_state['t_wd'] else "주중", on_click=toggle_state, args=('t_wd',), use_container_width=True, type="primary" if st.session_state['t_wd'] else "secondary")
+            with c2: st.button("✅ 주말" if st.session_state['t_we'] else "주말", on_click=toggle_state, args=('t_we',), use_container_width=True, type="primary" if st.session_state['t_we'] else "secondary")
+            with c3: st.button("✅ 워크인" if st.session_state['t_walk'] else "워크인", on_click=toggle_state, args=('t_walk',), use_container_width=True, type="primary" if st.session_state['t_walk'] else "secondary")
+            with c4: st.button("✅ 입주" if st.session_state['t_move'] else "입주", on_click=toggle_state, args=('t_move',), use_container_width=True, type="primary" if st.session_state['t_move'] else "secondary")
+        with g_c3:
+            st.markdown("<div class='chart-btn-group'>📝 건수 지표</div>", unsafe_allow_html=True)
+            c1, c2 = st.columns(2)
+            with c1: st.button("✅ 견적건" if st.session_state['t_est'] else "견적건", on_click=toggle_state, args=('t_est',), use_container_width=True, type="primary" if st.session_state['t_est'] else "secondary")
+            with c2: st.button("✅ 계약건" if st.session_state['t_cnt'] else "계약건", on_click=toggle_state, args=('t_cnt',), use_container_width=True, type="primary" if st.session_state['t_cnt'] else "secondary")
+        with g_c4:
+            st.markdown("<div class='chart-btn-group'>📊 효율 지표</div>", unsafe_allow_html=True)
+            c1, c2 = st.columns(2)
+            with c1: st.button("✅ 계약률" if st.session_state['t_rate'] else "계약률", on_click=toggle_state, args=('t_rate',), use_container_width=True, type="primary" if st.session_state['t_rate'] else "secondary")
+            with c2: st.button("✅ 객단가" if st.session_state['t_unit'] else "객단가", on_click=toggle_state, args=('t_unit',), use_container_width=True, type="primary" if st.session_state['t_unit'] else "secondary")
+        
+        y_a = [(w.get('amt', 0)/100000) for w in sd]
+        y_s = [(w.get('sales', 0)/100000) for w in sd]
+        y_n = [(w.get('next_sales', 0)/100000) for w in sd]
+        y_av = [sum(y_a)/len(y_a) if y_a else 0] * len(y_a)
+        y_wd = [(w.get('amt_wd', 0)/100000) for w in sd]
+        y_we = [(w.get('amt_we', 0)/100000) for w in sd]
+        y_m = [(w.get('amt_move', 0)/100000) for w in sd]
+        y_wk = [a - m for a, m in zip(y_a, y_m)]
+        
+        ym_txt, yw_txt = [], []
+        for w, m, a in zip(y_wk, y_m, y_a):
+            if a > 0:
+                ym_txt.append(f"<b>{m:.2f}억</b><br><span style='font-size:11px'>({(m/a*100):.0f}%)</span>")
+                yw_txt.append(f"<b>{w:.2f}억</b><br><span style='font-size:11px'>({(w/a*100):.0f}%)</span>")
+            else:
+                ym_txt.append(f"<b>{m:.2f}억</b>")
+                yw_txt.append(f"<b>{w:.2f}억</b>")
+        
+        y_e = [w.get('est', 0) for w in sd]
+        y_c = [w.get('cnt', 0) for w in sd]
+        y_r = [(c/e*100) if e>0 else 0 for e, c in zip(y_e, y_c)]
+        y_u = [(a*100000/(c*10)) if c>0 else 0 for a, c in zip(y_a, y_c)] 
+                
+        if any([st.session_state[k] for k in toggle_keys]):
+            fig = go.Figure()
+            ms = [10] * (len(la)-1) + [20]
+            
+            if st.session_state['t_amt']: fig.add_trace(go.Scatter(x=la, y=y_a, mode='lines+markers+text', name='계약액', text=[f"<b>{v:.2f}억</b>" for v in y_a], textposition='top center', textfont=dict(size=15, color='black'), line=dict(color='#0f172a', width=4), marker=dict(size=ms, color=['#0f172a'] * (len(la)-1) + ['#dc2626'], line=dict(width=2, color='white'))))
+            if st.session_state['t_sales']: fig.add_trace(go.Scatter(x=la, y=y_s, mode='lines+markers+text', name='매출액', text=[f"<b>{v:.2f}억</b>" for v in y_s], textposition='bottom right', textfont=dict(size=15, color='#0d9488'), line=dict(color='#14b8a6', width=3), marker=dict(size=ms, line=dict(width=2, color='white'))))
+            if st.session_state['t_next']: fig.add_trace(go.Scatter(x=la, y=y_n, mode='lines+markers+text', name='이월매출', text=[f"<b>{v:.2f}억</b>" for v in y_n], textposition='top left', textfont=dict(size=15, color='#d97706'), line=dict(color='#f59e0b', width=3), marker=dict(size=ms, line=dict(width=2, color='white'))))
+            
+            if st.session_state['t_avg']: 
+                avg_txt = [""] * len(la)
+                mid_idx = len(la) // 2
+                avg_txt[mid_idx] = f"<b>평균 {y_av[-1]:.2f}억</b>"
+                fig.add_trace(go.Scatter(x=la, y=y_av, mode='lines+text', name='평균선', text=avg_txt, textposition='top center', textfont=dict(size=18, color='#0f172a'), line=dict(color='#94a3b8', width=2, dash='dash')))
+                
+            if st.session_state['t_wd']: fig.add_trace(go.Scatter(x=la, y=y_wd, mode='lines+markers+text', name='주중', text=[f"<b>{v:.2f}억</b>" for v in y_wd], textposition='bottom center', textfont=dict(size=15, color='#0ea5e9'), line=dict(color='#0ea5e9', width=3), marker=dict(size=ms, line=dict(width=2, color='white'))))
+            if st.session_state['t_we']: fig.add_trace(go.Scatter(x=la, y=y_we, mode='lines+markers+text', name='주말', text=[f"<b>{v:.2f}억</b>" for v in y_we], textposition='top right', textfont=dict(size=15, color='#ef4444'), line=dict(color='#ef4444', width=3), marker=dict(size=ms, line=dict(width=2, color='white'))))
+            if st.session_state['t_walk']: fig.add_trace(go.Scatter(x=la, y=y_wk, mode='lines+markers+text', name='워크인', text=yw_txt, textposition='top left', textfont=dict(size=15, color='#f97316'), line=dict(color='#f97316', width=3, dash='dot')))
+            if st.session_state['t_move']: fig.add_trace(go.Scatter(x=la, y=y_m, mode='lines+markers+text', name='입주', text=ym_txt, textposition='bottom right', textfont=dict(size=15, color='#a855f7'), line=dict(color='#a855f7', width=3, dash='dot')))
+            if st.session_state['t_est']: fig.add_trace(go.Scatter(x=la, y=y_e, mode='lines+markers+text', name='견적건', text=[f"<b>{v:,.0f}건</b>" for v in y_e], textposition='top center', textfont=dict(size=15, color='#4338ca'), line=dict(color='#4338ca', width=3), marker=dict(size=ms, line=dict(width=2, color='white')), yaxis='y2'))
+            if st.session_state['t_cnt']: fig.add_trace(go.Scatter(x=la, y=y_c, mode='lines+markers+text', name='계약건', text=[f"<b>{v:,.0f}건</b>" for v in y_c], textposition='bottom center', textfont=dict(size=15, color='#10b981'), line=dict(color='#10b981', width=3), marker=dict(size=ms, line=dict(width=2, color='white')), yaxis='y2'))
+            if st.session_state['t_rate']: fig.add_trace(go.Scatter(x=la, y=y_r, mode='lines+markers+text', name='계약률', text=[f"<b>{v:.1f}%</b>" for v in y_r], textposition='top right', textfont=dict(size=15, color='#ca8a04'), line=dict(color='#ca8a04', width=3), marker=dict(size=ms, line=dict(width=2, color='white')), yaxis='y3'))
+            if st.session_state['t_unit']: fig.add_trace(go.Scatter(x=la, y=y_u, mode='lines+markers+text', name='객단가', text=[f"<b>{int(v):,}만</b>" for v in y_u], textposition='bottom left', textfont=dict(size=15, color='#ec4899'), line=dict(color='#ec4899', width=3), marker=dict(size=ms, line=dict(width=2, color='white')), yaxis='y4'))
+                
+            fig.update_layout(
+                height=450, margin=dict(l=20, r=20, t=60, b=20), plot_bgcolor='white', 
+                legend=dict(orientation="h", yanchor="bottom", y=1.05, xanchor="right", x=1), 
+                annotations=[dict(xref='paper', yref='paper', x=0, y=1.1, xanchor='left', yanchor='bottom', text='<b>금액 (억)</b>', font=dict(size=13, color='#1e3a8a'), showarrow=False)], 
+                yaxis=dict(title="", tickformat=".1f", ticksuffix="억", dtick=0.5, gridcolor='#f1f5f9'), 
+                yaxis2=dict(title=dict(text="<b>건수 (건)</b>", font=dict(size=13, color='#ea580c')), overlaying='y', side='right', showgrid=False), 
+                yaxis3=dict(overlaying='y', visible=False), 
+                yaxis4=dict(overlaying='y', visible=False)
+            )
+            fig.update_xaxes(showgrid=True, gridcolor='#f1f5f9', tickfont=dict(size=12, color='black'))
+            st.plotly_chart(fig, use_container_width=True)
+        else: st.info("👆 위 세부 지표 버튼을 클릭하시면 실시간 그래프가 나타납니다.")
+        
     st.markdown("---")
 
     # 🚀 4. 하단 전체 상세 표 출력 (UI 대개조: 스페셜 요약 카드 & 다중 탭)
     tdr = date_headers.get(CURRENT_TABLE_WEEK, "")
     
-    # 4-1. 👤 특정 인원 선택 시 '스페셜 요약 카드' 팝업 출력
+    # 4-1. 👤 인원 선택 시 '스페셜 요약 카드'
     if "님" in ct:
         r_data = final_df[final_df[('기본정보', 'HC명', 'HC명')] == data_key]
         if not r_data.empty:
@@ -825,15 +856,15 @@ if not df_raw.empty:
             st.markdown(f"""
             <div style='display:flex; gap:15px; margin-bottom:20px;'>
                 <div style='flex:1; background:white; padding:15px; border-radius:10px; border:2px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);'>
-                    <div style='font-size:13px; color:#64748b; font-weight:bold;'>🎯 당월 계약 목표 (천원)</div>
+                    <div style='font-size:13px; color:#64748b; font-weight:bold;'>🎯 당월 계약액 목표 (천원)</div>
                     <div style='font-size:22px; font-weight:900; color:#0f172a;'>{t_amt:,.0f}</div>
                 </div>
                 <div style='flex:1; background:white; padding:15px; border-radius:10px; border:2px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);'>
-                    <div style='font-size:13px; color:#64748b; font-weight:bold;'>🏆 현재 계약액 (천원)</div>
+                    <div style='font-size:13px; color:#64748b; font-weight:bold;'>🏆 현재 계약액 달성 (천원)</div>
                     <div style='font-size:22px; font-weight:900; color:#1d4ed8;'>{a_amt:,.0f}</div>
                 </div>
                 <div style='flex:1; background:white; padding:15px; border-radius:10px; border:2px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);'>
-                    <div style='font-size:13px; color:#64748b; font-weight:bold;'>🔥 목표 달성율</div>
+                    <div style='font-size:13px; color:#64748b; font-weight:bold;'>🔥 목표 달성율 (%)</div>
                     <div style='font-size:22px; font-weight:900; color:{'#047857' if pct_amt>=100 else ('#ef4444' if pct_amt<50 else '#ea580c')};'>{pct_amt:,.0f}%</div>
                     <div style='width:100%; background-color:#e2e8f0; height:6px; border-radius:3px; margin-top:5px;'>
                         <div style='width:{min(pct_amt, 100)}%; background-color:{'#10b981' if pct_amt>=100 else ('#ef4444' if pct_amt<50 else '#f97316')}; height:100%; border-radius:3px;'></div>
@@ -846,16 +877,19 @@ if not df_raw.empty:
     
     uds = [d for d in final_df[('기본정보', '대리점', '대리점')].unique() if d not in ["🌟 총계", "충청상권", "호남상권"]]
     dcs = {d: ['#f8fafc', '#ffffff'][i%2] for i, d in enumerate(uds)}
-    cws, cls = [80,90,70,70,70,70,70,70,55,55,55,55,55,55], [0,80,170,240,310,380,450,520,590,645,700,755,810,865]
     
-    # 4-2. 탭 UI 분리 (핵심 요약 뷰 / 상세 뷰)
-    tab1, tab2 = st.tabs(["📊 핵심 요약 뷰 (달성률 하이라이트)", "📆 주차별 상세 뷰 (전체 내역)"])
+    # 🚀 열 너비 다이어트!
+    cws_s = [70, 75, 55, 55, 55, 55, 55, 50, 45, 45, 45, 45, 45, 45]
+    cls_s = [sum(cws_s[:i]) for i in range(len(cws_s))]
+    
+    # 4-2. 탭 UI 분리
+    tab1, tab2 = st.tabs(["📊 핵심 요약 뷰 (게이지 바 적용)", "📆 주차별 상세 뷰 (필터 기능 포함)"])
 
-    # --- 탭 1: 핵심 요약 뷰 (달성률 게이지 바 적용) ---
+    # --- 탭 1: 핵심 요약 뷰 ---
     with tab1:
         hl_sum = ["<div class='vdt-table-container'><table class='vdt-table'><thead><tr>"]
-        hl_sum.append(f"<th rowspan='3' style='position:sticky; top:0; left:0; z-index:20; background-color:#0f172a; min-width:{cws[0]}px; max-width:{cws[0]}px; border-right:1px solid #cbd5e1;'>대리점</th>")
-        hl_sum.append(f"<th rowspan='3' style='position:sticky; top:0; left:{cls[1]}px; z-index:20; background-color:#0f172a; min-width:{cws[1]}px; max-width:{cws[1]}px; border-right:2px solid #94a3b8;'>HC명</th>")
+        hl_sum.append(f"<th rowspan='3' style='position:sticky; top:0; left:0; z-index:20; background-color:#0f172a; min-width:{cws_s[0]}px; max-width:{cws_s[0]}px; border-right:1px solid #cbd5e1;'>대리점</th>")
+        hl_sum.append(f"<th rowspan='3' style='position:sticky; top:0; left:{cls_s[1]}px; z-index:20; background-color:#0f172a; min-width:{cws_s[1]}px; max-width:{cws_s[1]}px; border-right:2px solid #94a3b8;'>HC명</th>")
         
         h1_list_sum = []
         for c in final_df.columns[2:14]:
@@ -863,19 +897,19 @@ if not df_raw.empty:
                 
         for h1 in h1_list_sum:
             sp = "position:sticky; top:0; background-color:#064e3b; color:#a7f3d0; border-top:2px solid #047857;"
-            if h1 == '🎯 당월매출': hl_sum.append(f"<th colspan='3' style='{sp} left:{cls[2]}px; z-index:15; border-right:3px solid #1e293b;'>{h1}</th>")
-            elif "🌟 당월 합계" in h1: hl_sum.append(f"<th colspan='9' style='{sp} left:{cls[5]}px; z-index:15; border-right:4px solid #94a3b8;'>{h1}</th>")
+            if h1 == '🎯 당월매출': hl_sum.append(f"<th colspan='3' style='{sp} left:{cls_s[2]}px; z-index:15; border-right:3px solid #1e293b;'>{h1}</th>")
+            elif "🌟 당월 합계" in h1: hl_sum.append(f"<th colspan='9' style='{sp} left:{cls_s[5]}px; z-index:15; border-right:4px solid #94a3b8;'>{h1}</th>")
         hl_sum.append("</tr><tr>")
         
         for h1 in h1_list_sum:
             sp = "position:sticky; top:33px; background-color:#065f46; color:#a7f3d0;"
-            if h1 == '🎯 당월매출': hl_sum.append(f"<th colspan='3' style='{sp} left:{cls[2]}px; z-index:15; border-right:3px solid #1e293b;'>인별매출(천)</th>")
-            elif "🌟 당월 합계" in h1: hl_sum.append(f"<th colspan='3' style='{sp} left:{cls[5]}px; z-index:15;'>계약액(천)</th><th colspan='3' style='{sp} left:{cls[8]}px; z-index:15;'>견적건</th><th colspan='3' style='{sp} left:{cls[11]}px; z-index:15; border-right:4px solid #94a3b8;'>계약건</th>")
+            if h1 == '🎯 당월매출': hl_sum.append(f"<th colspan='3' style='{sp} left:{cls_s[2]}px; z-index:15; border-right:3px solid #1e293b;'>인별매출(천)</th>")
+            elif "🌟 당월 합계" in h1: hl_sum.append(f"<th colspan='3' style='{sp} left:{cls_s[5]}px; z-index:15;'>계약액(천)</th><th colspan='3' style='{sp} left:{cls_s[8]}px; z-index:15;'>견적건</th><th colspan='3' style='{sp} left:{cls_s[11]}px; z-index:15; border-right:4px solid #94a3b8;'>계약건</th>")
         hl_sum.append("</tr><tr>")
         
         for i, c in enumerate(final_df.columns[2:14]):
             ai = i + 2
-            sp = f"position:sticky; top:66px; background-color:#047857; color:#a7f3d0; left:{cls[ai]}px; z-index:15; min-width:{cws[ai]}px; max-width:{cws[ai]}px;"
+            sp = f"position:sticky; top:66px; background-color:#047857; color:#a7f3d0; left:{cls_s[ai]}px; z-index:15; min-width:{cws_s[ai]}px; max-width:{cws_s[ai]}px;"
             if c[0]=='🎯 당월매출' and c[2]=='달성율(%)': sp += " border-right:3px solid #1e293b;"
             if "🌟 당월 합계" in c[0] and c[1]=='계약건' and c[2]=='달성율(%)': sp += " border-right:4px solid #94a3b8;"
             hl_sum.append(f"<th style='{sp}'>{c[2]}</th>")
@@ -884,28 +918,34 @@ if not df_raw.empty:
         for _, r in final_df.iterrows():
             d, hc = r[('기본정보', '대리점', '대리점')], r[('기본정보', 'HC명', 'HC명')]
             bg, rb = ("#e2e8f0", "style='background-color:#e2e8f0; font-weight:bold;'") if hc in ["합계","상권합계"] else (("#cbd5e1", "style='background-color:#cbd5e1; font-weight:bold;'") if "🌟" in str(hc) else (dcs.get(d, '#ffffff'), f"style='background-color:{dcs.get(d, '#ffffff')};'"))
-            hl_sum.append(f"<tr {rb}><td class='text-center' style='position:sticky; left:0; z-index:6; background-color:{bg}; min-width:{cws[0]}px; max-width:{cws[0]}px; border-right:1px solid #cbd5e1;'>{d}</td>")
-            hl_sum.append(f"<td class='text-center' style='position:sticky; left:{cls[1]}px; z-index:6; background-color:{bg}; min-width:{cws[1]}px; max-width:{cws[1]}px; border-right:2px solid #94a3b8;'>{hc}</td>")
+            hl_sum.append(f"<tr {rb}><td class='text-center' style='position:sticky; left:0; z-index:6; background-color:{bg}; min-width:{cws_s[0]}px; max-width:{cws_s[0]}px; border-right:1px solid #cbd5e1;'>{d}</td>")
+            hl_sum.append(f"<td class='text-center' style='position:sticky; left:{cls_s[1]}px; z-index:6; background-color:{bg}; min-width:{cws_s[1]}px; max-width:{cws_s[1]}px; border-right:2px solid #94a3b8;'>{hc}</td>")
             
             for i, v in enumerate(r[2:14]):
                 ai, c = i + 2, final_df.columns[i + 2]
                 
-                # 🚀 달성율(%) 데이터 게이지 바 디자인 적용
-                if c[2] == '달성율(%)' and hc not in ["합계","상권합계"] and "🌟" not in str(hc):
+                # 🚀 대리점 합계 줄은 '보라색/금색' 계열 게이지 바 적용
+                if c[2] == '달성율(%)':
                     pct = min(max(v, 0), 100)
-                    if v >= 100: bar_col = "rgba(16, 185, 129, 0.4)" # 초록
-                    elif v < 50: bar_col = "rgba(239, 68, 68, 0.4)" # 빨강
-                    else: bar_col = "rgba(59, 130, 246, 0.2)" # 파랑
+                    if hc in ["합계","상권합계"] or "🌟" in str(hc):
+                        if v >= 100: bar_col = "rgba(139, 92, 246, 0.4)" # 보라
+                        elif v < 50: bar_col = "rgba(244, 63, 94, 0.4)" # 빨강
+                        else: bar_col = "rgba(168, 85, 247, 0.2)" # 연한 보라
+                    else:
+                        if v >= 100: bar_col = "rgba(16, 185, 129, 0.4)" # 초록
+                        elif v < 50: bar_col = "rgba(239, 68, 68, 0.4)" # 빨강
+                        else: bar_col = "rgba(59, 130, 246, 0.2)" # 파랑
                     sp = f"background: linear-gradient(90deg, {bar_col} {pct}%, {bg} {pct}%);"
                 else:
                     sp = f"background-color:{bg};"
                     
-                sp += f" position:sticky; left:{cls[ai]}px; z-index:5; min-width:{cws[ai]}px; max-width:{cws[ai]}px;"
+                sp += f" position:sticky; left:{cls_s[ai]}px; z-index:5; min-width:{cws_s[ai]}px; max-width:{cws_s[ai]}px;"
                 if c[0]=='🎯 당월매출' and c[2]=='달성율(%)': sp += " border-right:3px solid #1e293b;"
                 if "🌟 당월 합계" in c[0] and c[1]=='계약건' and c[2]=='달성율(%)': sp += " border-right:4px solid #94a3b8;"
                 
                 if c[2] == '달성율(%)':
                     t_c = '#047857' if v>=100 else ('#b91c1c' if v<50 and v>0 else '#1d4ed8')
+                    if hc in ["합계","상권합계"] or "🌟" in str(hc): t_c = '#4c1d95' if v>=100 else ('#9f1239' if v<50 and v>0 else '#4338ca')
                     vs = f"<span style='color:{t_c}; font-weight:900;'>{v:.0f}%</span>" if v>0 else "0%"
                 else:
                     vs = f"{v:,.0f}"
@@ -914,8 +954,14 @@ if not df_raw.empty:
         hl_sum.append("</tbody></table></div>")
         st.markdown("".join(hl_sum), unsafe_allow_html=True)
 
-    # --- 탭 2: 기존 주차별 상세 뷰 ---
+    # --- 탭 2: 주차별 상세 뷰 (필터) ---
     with tab2:
+        st.markdown("<div style='margin-bottom:10px; font-weight:bold; color:#475569;'>🔎 확인하고 싶은 주차를 선택하세요 (기본: 전체보기)</div>", unsafe_allow_html=True)
+        wk_filter = st.radio("주차별 필터", ["전체 보기"] + week_keys_list, horizontal=True, label_visibility="collapsed")
+        
+        cws = [80,90,70,70,70,70,70,70,55,55,55,55,55,55]
+        cls = [sum(cws[:i]) for i in range(len(cws))]
+        
         hl = ["<div class='vdt-table-container'><table class='vdt-table'><thead><tr>"]
         hl.append(f"<th rowspan='3' style='position:sticky; top:0; left:0; z-index:20; background-color:#0f172a; min-width:{cws[0]}px; max-width:{cws[0]}px; border-right:1px solid #cbd5e1;'>대리점</th>")
         hl.append(f"<th rowspan='3' style='position:sticky; top:0; left:{cls[1]}px; z-index:20; background-color:#0f172a; min-width:{cws[1]}px; max-width:{cws[1]}px; border-right:2px solid #94a3b8;'>HC명</th>")
@@ -925,6 +971,8 @@ if not df_raw.empty:
             if c[0] not in h1_list: h1_list.append(c[0])
                 
         for h1 in h1_list:
+            if h1 not in ['🎯 당월매출', '🌟 당월 합계'] and wk_filter != "전체 보기" and wk_filter not in h1: continue
+                
             ic, im = CURRENT_TABLE_WEEK in h1, "당월" in h1
             sp = "position:sticky; top:0; " + ("background-color:#1e3a8a; border:3px solid #60a5fa;" if ic else ("background-color:#064e3b; color:#a7f3d0; border-top:2px solid #047857;" if im else "background-color:#0f172a;"))
             if h1 == '🎯 당월매출': hl.append(f"<th colspan='3' style='{sp} left:{cls[2]}px; z-index:15; border-right:3px solid #1e293b;'>{h1}</th>")
@@ -933,6 +981,8 @@ if not df_raw.empty:
         hl.append("</tr><tr>")
         
         for h1 in h1_list:
+            if h1 not in ['🎯 당월매출', '🌟 당월 합계'] and wk_filter != "전체 보기" and wk_filter not in h1: continue
+                
             ic, im = CURRENT_TABLE_WEEK in h1, "당월" in h1
             sp = "position:sticky; top:33px; " + ("background-color:#1e40af; border-left:3px solid #60a5fa; border-right:3px solid #60a5fa;" if ic else ("background-color:#065f46; color:#a7f3d0;" if im else "background-color:#0f172a;"))
             if h1 == '🎯 당월매출': hl.append(f"<th colspan='3' style='{sp} left:{cls[2]}px; z-index:15; border-right:3px solid #1e293b;'>인별매출(천)</th>")
@@ -941,6 +991,8 @@ if not df_raw.empty:
         hl.append("</tr><tr>")
         
         for i, c in enumerate(final_df.columns[2:]):
+            if c[0] not in ['🎯 당월매출', '🌟 당월 합계'] and wk_filter != "전체 보기" and wk_filter not in c[0]: continue
+                
             ai = i + 2
             ic, im = CURRENT_TABLE_WEEK in c[0], "당월" in c[0]
             sp = "position:sticky; top:66px; " + ("background-color:#1d4ed8; border-bottom:3px solid #60a5fa;" + ("border-left:3px solid #60a5fa;" if c[1]=='계약액(천)' and c[2]=='목표' else "") + ("border-right:3px solid #60a5fa;" if c[1]=='계약건' and c[2]=='달성율(%)' else "") if ic else ("background-color:#047857; color:#a7f3d0;" if im else "background-color:#0f172a;"))
@@ -957,7 +1009,10 @@ if not df_raw.empty:
             hl.append(f"<td class='text-center' style='position:sticky; left:{cls[1]}px; z-index:6; background-color:{bg}; min-width:{cws[1]}px; max-width:{cws[1]}px; border-right:2px solid #94a3b8;'>{hc}</td>")
             
             for i, v in enumerate(r[2:]):
-                ai, c = i + 2, final_df.columns[i + 2]
+                c = final_df.columns[i + 2]
+                if c[0] not in ['🎯 당월매출', '🌟 당월 합계'] and wk_filter != "전체 보기" and wk_filter not in c[0]: continue
+                    
+                ai = i + 2
                 ic, im = CURRENT_TABLE_WEEK in c[0], "당월" in c[0]
                 sp = "background-color:rgba(37,99,235,0.12);" + ("border-left:3px solid #3b82f6;" if c[1]=='계약액(천)' and c[2]=='목표' else "") + ("border-right:3px solid #3b82f6;" if c[1]=='계약건' and c[2]=='달성율(%)' else "") if ic else ("background-color:" + ({'#f8fafc':'#e4f1ef', '#e2e8f0':'#d1dbda', '#cbd5e1':'#bcc7c7'}.get(bg, '#ebf6f2') if ai<=13 else "rgba(5,150,105,0.08)") + ";" if im else f"background-color:{bg};")
                 sp += f" position:sticky; left:{cls[ai]}px; z-index:5; min-width:{cws[ai]}px; max-width:{cws[ai]}px;" if ai<=13 else ""
@@ -968,4 +1023,5 @@ if not df_raw.empty:
                 hl.append(f"<td style='{sp}'>{vs}</td>")
             hl.append("</tr>")
         hl.append("</tbody></table></div>")
+        
         st.markdown("".join(hl), unsafe_allow_html=True)
