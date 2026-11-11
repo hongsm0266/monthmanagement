@@ -923,25 +923,23 @@ if not df_raw.empty:
             d, hc = r[('기본정보', '대리점', '대리점')], r[('기본정보', 'HC명', 'HC명')]
             bg, rb = ("#e2e8f0", "style='background-color:#e2e8f0;'") if hc in ["합계","상권합계"] else (("#cbd5e1", "style='background-color:#cbd5e1;'") if "🌟" in str(hc) else (dcs.get(d, '#ffffff'), f"style='background-color:{dcs.get(d, '#ffffff')};'"))
             
-            # 🚀 행 Hover 시 폰트 굵기 적용을 위해 inline 스타일 대신 class/CSS 상속 유도
             hl_sum.append(f"<tr {rb}><td class='text-center' style='position:sticky; left:0; z-index:6; min-width:{cws_s[0]}px; max-width:{cws_s[0]}px; border-right:1px solid #cbd5e1;'>{d}</td>")
             hl_sum.append(f"<td class='text-center' style='position:sticky; left:{cls_s[1]}px; z-index:6; min-width:{cws_s[1]}px; max-width:{cws_s[1]}px; border-right:2px solid #94a3b8;'>{hc}</td>")
             
             for i, v in enumerate(r[2:14]):
                 ai, c = i + 2, final_df.columns[i + 2]
                 
-                # 🚀 대리점 합계 줄은 '보라색/금색' 계열 게이지 바 + (실적/목표) 텍스트 오버레이
+                # 🚀 위치(iloc) 기반 안전한 데이터 추출
                 if c[2] == '달성율(%)':
                     pct = min(max(v, 0), 100)
-                    act_val = r[i+1] # 바로 이전 인덱스가 ACT
-                    tgt_val = r[i]   # 그 이전 인덱스가 목표
+                    act_val = r.iloc[ai - 1] # 바로 이전 칸이 ACT
+                    tgt_val = r.iloc[ai - 2] # 그 이전 칸이 목표
                     
                     if hc in ["합계","상권합계"] or "🌟" in str(hc):
                         if v >= 100: bar_col = "rgba(139, 92, 246, 0.5)" # 보라
                         elif v < 50: bar_col = "rgba(244, 63, 94, 0.4)" # 빨강
                         else: bar_col = "rgba(168, 85, 247, 0.3)" # 연한 보라
                         
-                        # 막대바 위에 텍스트로 [실적 / 목표] 표시
                         txt_display = f"<span style='font-size:10px; color:#475569;'>{act_val:,.0f}/{tgt_val:,.0f}</span> <span style='color:#4c1d95; font-weight:900; margin-left:4px;'>{v:.0f}%</span>" if v>0 else "0%"
                         
                     else:
