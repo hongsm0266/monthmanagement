@@ -17,13 +17,18 @@ import calendar
 st.set_page_config(page_title="충청호남팀 영업사원 주차별 VDT 목표 관리", layout="wide")
 SHEET_URL = "https://docs.google.com/spreadsheets/d/1yZdc4BL5CHLwBQ2QGp8zD5_ov7LDKsEcnrONdQvDyHI/edit?gid=1748736055#gid=1748736055"
 
-if 'init_v41' not in st.session_state:
-    st.session_state.update({'view_target': "충청호남팀 전체", 'hc_selector': "✨ 인원별 상세 실적 (선택 시 우선 적용)", 
-                             'view_mode': "주간 추이 (최근 8주)", 't_amt': True, 't_sales': False, 't_next': False,
-                             't_avg': False, 't_wd': False, 't_we': False, 't_walk': False, 't_move': False,
-                             't_est': False, 't_cnt': False, 't_rate': False, 't_unit': False, 
-                             't_onl': False, 't_can': False,
-                             'wow_prev': None, 'wow_curr': None, 'init_v41': True})
+# 🚀 1. Session State 방어형 초기화 (KeyError 완벽 차단)
+default_states = {
+    'view_target': "충청호남팀 전체", 'hc_selector': "✨ 인원별 상세 실적 (선택 시 우선 적용)", 
+    'view_mode': "주간 추이 (최근 8주)", 't_amt': True, 't_sales': False, 't_next': False,
+    't_avg': False, 't_wd': False, 't_we': False, 't_walk': False, 't_move': False,
+    't_est': False, 't_cnt': False, 't_rate': False, 't_unit': False, 
+    't_onl': False, 't_can': False,
+    'wow_prev': None, 'wow_curr': None
+}
+for key, value in default_states.items():
+    if key not in st.session_state:
+        st.session_state[key] = value
 
 toggle_keys = ['t_amt', 't_sales', 't_next', 't_avg', 't_wd', 't_we', 't_walk', 't_move', 't_est', 't_cnt', 't_rate', 't_unit', 't_onl', 't_can']
 
@@ -453,7 +458,6 @@ def load_vdt_data():
                     elif curr_y == y3 and curr_m == m3: target_lbl = '🌟 [당일기준] 전년 누적'
                     if target_lbl: trend_hc_mtd[hc_name][target_lbl]['amt_move'] += dm
 
-            # 🚀 V41 점별일보 전용 파서 (Z열, AL열, AM열 정밀 추출)
             elif curr_mode == "점별" and len(row) > 3:
                 raw_hc = safe_get(row, 1)
                 if not raw_hc: raw_hc = safe_get(row, 3)
@@ -470,9 +474,9 @@ def load_vdt_data():
                 md = hc_to_dealer_master.get(hc_name)
                 if not md or md not in valid_dealers: continue
                 
-                t_online_raw = safe_get(row, 25) # Z열
-                t_cancel_raw1 = safe_get(row, 37) # AL열
-                t_cancel_raw2 = safe_get(row, 38) # AM열
+                t_online_raw = safe_get(row, 25) 
+                t_cancel_raw1 = safe_get(row, 37) 
+                t_cancel_raw2 = safe_get(row, 38) 
                 
                 has_online = bool(t_online_raw)
                 has_cancel = bool(t_cancel_raw1) or bool(t_cancel_raw2)
@@ -750,8 +754,9 @@ if not df_raw.empty:
     pr, tr = (pc/pe*100) if pe>0 else 0, (tc/te*100) if te>0 else 0
     pu, tu = (pa/(pc*10)) if pc>0 else 0, (ta/(tc*10)) if tc>0 else 0
     
-    po_pct = f" <span style='font-size:11px; color:#64748b;'>({po/ps*100:.0f}%)</span>" if ps > 0 else " <span style='font-size:11px; color:#64748b;'>(0%)</span>"
-    to_pct = f" <span style='font-size:11px; color:#64748b;'>({to/ts*100:.0f}%)</span>" if ts > 0 else " <span style='font-size:11px; color:#64748b;'>(0%)</span>"
+    # 🚀 2. 온라인 매출 비중 텍스트 가독성 강화 (진하게, 크기업, 파란색 적용)
+    po_pct = f" <span style='font-size:12px; font-weight:900; color:#0284c7;'>({po/ps*100:.0f}%)</span>" if ps > 0 else " <span style='font-size:12px; font-weight:900; color:#64748b;'>(0%)</span>"
+    to_pct = f" <span style='font-size:12px; font-weight:900; color:#0284c7;'>({to/ts*100:.0f}%)</span>" if ts > 0 else " <span style='font-size:12px; font-weight:900; color:#64748b;'>(0%)</span>"
 
     html_wow = [
         '<table class="wow-table" style="width: 100%; border: 2px solid #94a3b8; border-radius: 8px; overflow: hidden; margin-top: 5px;">',
@@ -887,7 +892,7 @@ if not df_raw.empty:
                 yw_txt.append(f"<b>{w:.2f}억</b>")
                 
             if s > 0:
-                y_onl_txt.append(f"<b>{o:.2f}억</b><br><span style='font-size:11px'>({(o/s*100):.0f}%)</span>")
+                y_onl_txt.append(f"<b>{o:.2f}억</b><br><span style='font-size:12px; font-weight:900;'>({(o/s*100):.0f}%)</span>")
             else:
                 y_onl_txt.append(f"<b>{o:.2f}억</b>")
         
