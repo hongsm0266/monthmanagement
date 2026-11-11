@@ -561,6 +561,25 @@ def process_vdt_data(all_targets, all_daily_data, selected_date):
                     rdm[md]['amt'] += d_val['amt']; rdm[md]['est'] += d_val['est']; rdm[md]['cnt'] += d_val['cnt']
             curr += timedelta(days=1)
 
+    # 🚀 복구된 핵심 코드: 대리점 목표 분배 & 개인별 가중치 할당 로직
+    dealer_active_hcs, dealer_sales_sum_active = {}, {}
+    for d, hc, tgt in hc_info_raw:
+        hc_c = clean_str(hc)
+        if hc_c not in EXCLUDED_HCS:
+            if d not in dealer_active_hcs: dealer_active_hcs[d] = []
+            dealer_active_hcs[d].append(hc_c)
+            
+    for d, hc, tgt in hc_info_raw:
+        al = dealer_active_hcs.get(d, [])
+        if not al or clean_str(hc) in al: dealer_sales_sum_active[d] = dealer_sales_sum_active.get(d, 0.0) + tgt
+
+    final_hc_sales_tgt, targets = {}, {}
+    for d, hc, tgt in hc_info_raw:
+        hc_c = clean_str(hc)
+        wt = (tgt / dealer_sales_sum_active.get(d, 1.0)) if hc_c not in EXCLUDED_HCS and dealer_sales_sum_active.get(d, 0) > 0 else 0.0
+        final_hc_sales_tgt[hc_c] = dealer_sales_sum.get(d, 0.0) * wt
+        targets[hc_c] = {wk: {'amt': dealer_targets.get(d, {}).get(wk, {}).get('amt', 0) * wt, 'est': dealer_targets.get(d, {}).get(wk, {}).get('est', 0) * wt, 'cnt': dealer_targets.get(d, {}).get(wk, {}).get('cnt', 0) * wt} for wk in week_keys}
+
     col_tuples = [('기본정보', '대리점', '대리점'), ('기본정보', 'HC명', 'HC명'), ('🎯 당월매출', '인별매출(천)', '목표'), ('🎯 당월매출', '인별매출(천)', 'ACT'), ('🎯 당월매출', '인별매출(천)', '달성율(%)'), ('🌟 당월 합계', '계약액(천)', '목표'), ('🌟 당월 합계', '계약액(천)', 'ACT'), ('🌟 당월 합계', '계약액(천)', '달성율(%)'), ('🌟 당월 합계', '견적건', '목표'), ('🌟 당월 합계', '견적건', 'ACT'), ('🌟 당월 합계', '견적건', '달성율(%)'), ('🌟 당월 합계', '계약건', '목표'), ('🌟 당월 합계', '계약건', 'ACT'), ('🌟 당월 합계', '계약건', '달성율(%)')]
     for wk in week_keys:
         wl = f"{wk} ({date_headers.get(wk, '')})"
