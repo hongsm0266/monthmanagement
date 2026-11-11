@@ -43,7 +43,6 @@ def init_connection():
         return None
 
 client = init_connection()
-
 current_date = datetime.now()
 current_month = current_date.month
 
@@ -51,35 +50,27 @@ st.markdown(f"""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&display=swap');
     html, body, [class*="css"], [class*="st-"], th, td {{ font-family: 'Noto Sans KR', sans-serif !important; }}
-    
     div[data-testid="stTabs"] button {{ font-size: 15px !important; font-weight: 700 !important; color: #94a3b8 !important; }}
     div[data-testid="stTabs"] button[aria-selected="true"] {{ color: #1d4ed8 !important; font-weight: 900 !important; border-bottom: 3px solid #1d4ed8 !important; }}
-
     div[data-testid="stSelectbox"] div[data-baseweb="select"] > div {{ border: 2px solid #1e293b !important; background-color: #ffffff !important; color: #0f172a !important; font-weight: 900 !important; }}
     div[data-testid="stSelectbox"] div[data-baseweb="select"] * {{ color: #0f172a !important; font-weight: 900 !important; }}
-
     .vdt-table-container {{ width: 100%; max-height: 65vh; overflow: auto; border: 1px solid #cbd5e1; border-radius: 8px; margin-top: 10px; }}
     .vdt-table-container::-webkit-scrollbar {{ width: 14px; height: 14px; }}
     .vdt-table-container::-webkit-scrollbar-track {{ background: #f1f5f9; border-radius: 8px; }}
     .vdt-table-container::-webkit-scrollbar-thumb {{ background: #94a3b8; border-radius: 8px; border: 3px solid #f1f5f9; }}
-    
     .vdt-table {{ width: 100%; border-collapse: collapse; font-size: 13px; white-space: nowrap; }}
-    
     .vdt-table tbody tr:hover {{ background-color: #dbeafe !important; font-weight: 900 !important; transition: all 0.1s ease-in-out; }}
     .vdt-table tbody tr:hover td {{ background-color: transparent !important; color: #0f172a !important; }}
-    
     .vdt-table thead th {{ height: 34px; position: sticky; z-index: 10; }}
     .vdt-table thead tr:nth-child(1) th {{ top: 0; }}
     .vdt-table thead tr:nth-child(2) th {{ top: 33px; }}
     .vdt-table thead tr:nth-child(3) th {{ top: 66px; }}
     .vdt-table th {{ background-color: #0f172a; color: white; padding: 6px 8px; text-align: center; border: 1px solid #334155; font-weight: 700; }}
     .vdt-table td {{ padding: 4px 8px; text-align: right; border: 1px solid #e2e8f0; }}
-    
     .title-box {{ background: linear-gradient(90deg, #1e3a8a 0%, #3b82f6 100%); color: white; padding: 12px 15px; border-radius: 8px; margin-bottom: 12px; }}
     h1, h3, h4 {{ font-weight: 900 !important; margin: 0; }}
     h1 {{ font-size: 16px !important; color: white !important; display:flex; align-items:center; }}
     h4 {{ font-size: 14px !important; color: #1e293b !important; }}
-    
     .wow-table {{ width: 100%; border-collapse: collapse; font-size: 14px; margin-bottom: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }}
     .wow-table th {{ background-color: #1e293b; color: white; padding: 8px; text-align: center; border: 1px solid #334155; font-weight: 900; font-size: 13px;}}
     .wow-table td {{ padding: 8px; text-align: right; border: 1px solid #cbd5e1; background-color: white; font-size: 14px; font-weight: 700;}}
@@ -589,10 +580,6 @@ def process_vdt_data(all_targets, all_daily_data, selected_date):
     ctw = date_to_target_week.get((eff_selected_date.month, eff_selected_date.day), week_keys[-1] if week_keys else '1주차')
     return df, date_headers, hc_to_dealer_master, rdm, rdw, week_keys, tp, ctw, month_labels, mtd_labels
 
-# ====================================================================================
-# 메인 렌더링 호출 (Main Render)
-# ====================================================================================
-
 if all_daily_data:
     df_raw, date_headers, hc_to_dealer_master, rdm, rdw, week_keys_list, trend_pack, CURRENT_TABLE_WEEK, month_labels, mtd_labels = process_vdt_data(all_targets, all_daily_data, selected_date)
 
@@ -772,11 +759,14 @@ if all_daily_data:
             '<th style="padding: 10px;">💰 총 계약액<br>(천원)</th><th style="padding: 10px;">💰 총 매출액<br>(천원)</th><th style="padding: 10px;">💻 온라인매출<br>(천원)</th>',
             '<th style="padding: 10px;">📝 견적건<br>(건)</th><th style="padding: 10px;">🤝 계약건<br>(건)</th>',
             '<th style="padding: 10px; background-color:#334155;">🚶 워크인 계약액<br>(천원)</th><th style="padding: 10px; background-color:#334155;">🏠 입주 계약액<br>(천원)</th>',
-            '<th style="padding: 10px;">📊 계약률<br>(%)</th><th style="padding: 10px;">💸 객단가<br>(만원)</th><th style="padding: 10px;">📉 총 취소액<br>(천원)</th></tr></thead><tbody>'
+            '<th style="padding: 10px;">📊 계약률<br>(%)</th><th style="padding: 10px;">💸 객단가<br>(만원)</th><th style="padding: 10px;">📉 총 취소액<br>(천원)</th></tr></thead><tbody>',
+            f"<tr style='background-color: #f8fafc;'><td style='text-align:center; font-weight:900; border-right:2px solid #94a3b8; color:#64748b;'>{sel_prev}</td>",
+            td_val(pa), disp_ps, disp_po, td_val(pe), td_val(pc), td_val(pw,bg='#f1f5f9'), td_val(pm,bg='#f1f5f9'), td_val(pr,True), td_val(pu,False,True), td_val(p_can), "</tr>",
+            f"<tr style='background-color: white;'><td style='text-align:center; font-weight:900; color:#1e3a8a; border-right:2px solid #94a3b8;'>{sel_curr}</td>",
+            td_val(ta,is_tgt=True), disp_ts, disp_to, td_val(te,is_tgt=True), td_val(tc,is_tgt=True), td_val(tw,is_tgt=True,bg='#f1f5f9'), td_val(tm,is_tgt=True,bg='#f1f5f9'), td_val(tr,True,is_tgt=True), td_val(tu,False,True,is_tgt=True), td_val(t_can,is_tgt=True), "</tr>",
+            f"<tr style='background-color: #fef2f2;'><td style='text-align:center; font-weight:900; color:#b91c1c; border-right:2px solid #94a3b8;'>지표 간 증감</td>",
+            td_cell(ta,pa), disp_diff_s, disp_diff_o, td_cell(te,pe), td_cell(tc,pc), td_cell(tw,pw), td_cell(tm,pm), td_cell(tr,pr,is_rate=True), td_cell(tu,pu,is_unit=True), td_cell(t_can,p_can), "</tr></tbody></table>"
         ]
-        html_wow.append(f"<tr style='background-color: #f8fafc;'><td style='text-align:center; font-weight:900; border-right:2px solid #94a3b8; color:#64748b;'>{sel_prev}</td>" + td_val(pa)+disp_ps+disp_po+td_val(pe)+td_val(pc)+td_val(pw,bg='#f1f5f9')+td_val(pm,bg='#f1f5f9')+td_val(pr,True)+td_val(pu,False,True)+td_val(p_can) + "</tr>")
-        html_wow.append(f"<tr style='background-color: white;'><td style='text-align:center; font-weight:900; color:#1e3a8a; border-right:2px solid #94a3b8;'>{sel_curr}</td>" + td_val(ta,is_tgt=True)+disp_ts+disp_to+td_val(te,is_tgt=True)+td_val(tc,is_tgt=True)+td_val(tw,is_tgt=True,bg='#f1f5f9')+td_val(tm,is_tgt=True,bg='#f1f5f9')+td_val(tr,True,is_tgt=True)+td_val(tu,False,True,is_tgt=True)+td_val(t_can,is_tgt=True) + "</tr>")
-        html_wow.append(f"<tr style='background-color: #fef2f2;'><td style='text-align:center; font-weight:900; color:#b91c1c; border-right:2px solid #94a3b8;'>지표 간 증감</td>" + td_cell(ta,pa)+disp_diff_s+disp_diff_o+td_cell(te,pe)+td_cell(tc,pc)+td_cell(tw,pw)+td_cell(tm,pm)+td_cell(tr,pr,is_rate=True)+td_cell(tu,pu,is_unit=True)+td_cell(t_can,p_can) + "</tr></tbody></table>")
         
         st.markdown("".join(html_wow), unsafe_allow_html=True)
         st.markdown("---")
@@ -793,7 +783,7 @@ if all_daily_data:
         with c_o[6]: st.button("충주" if vt != "충주 대리점" else "✅ 충주", type=btn_type("충주 대리점"), on_click=set_view, args=("충주 대리점",), use_container_width=True)
         with c_o[7]: st.markdown("<div style='text-align:center; padding-top:5px; color:#cbd5e1; font-weight:bold; font-size:16px;'>|</div>", unsafe_allow_html=True)
         with c_o[8]: st.button("I 호남통합" if vt != "호남팀 통합" else "✅ 호남통합", type=btn_type("호남팀 통합"), on_click=set_view, args=("호남팀 통합",), use_container_width=True)
-        with c_o[9]: st.button("광양" if vt != "광양 대리점" else "✅ 광양", type=btn_type("광양 대리점"), on_click=set_view, args=("광양 대리점",), use_container_width=True)
+        with c_o[9]: st.button("광양" if vt != "광양 대리점" else "광양", type=btn_type("광양 대리점"), on_click=set_view, args=("광양 대리점",), use_container_width=True)
         with c_o[10]: st.button("익산" if vt != "익산 대리점" else "✅ 익산", type=btn_type("익산 대리점"), on_click=set_view, args=("익산 대리점",), use_container_width=True)
         with c_o[11]: st.button("여수" if vt != "여수 대리점" else "✅ 여수", type=btn_type("여수 대리점"), on_click=set_view, args=("여수 대리점",), use_container_width=True)
         with c_o[12]:
@@ -957,10 +947,12 @@ if all_daily_data:
                 a_amt = r_data[('🌟 당월 합계', '계약액(천)', 'ACT')].values[0]
                 pct_amt = r_data[('🌟 당월 합계', '계약액(천)', '달성율(%)')].values[0]
                 
-                # 🚀 SyntaxError 원천 차단 (트리플 쿼트 내 복잡한 중괄호 로직을 문자열 결합으로 변경)
+                # 🚀 SyntaxError 방지: 핸드폰 에디터 줄바꿈에도 끄떡없는 리스트 조인 방식 채택
                 text_color = '#047857' if pct_amt >= 100 else ('#ef4444' if pct_amt < 50 else '#ea580c')
                 bar_color = '#10b981' if pct_amt >= 100 else ('#ef4444' if pct_amt < 50 else '#f97316')
                 
-                html_card = (
-                    "<div style='display:flex; gap:15px; margin-bottom:20px;'>"
-                    "<div style='flex:1; background:white; padding:15px; border-radius:10px; border
+                html_card = "".join([
+                    "<div style='display:flex; gap:15px; margin-bottom:20px;'>",
+                    "<div style='flex:1; background:white; padding:15px; border-radius:10px; border:2px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);'>",
+                    "<div style='font-size:13px; color:#64748b; font-weight:bold;'>🎯 당월 계약액 목표 (천원)</div>",
+                    f"<div style=
