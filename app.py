@@ -17,12 +17,12 @@ import calendar
 st.set_page_config(page_title="충청호남팀 영업사원 주차별 VDT 목표 관리", layout="wide")
 SHEET_URL = "https://docs.google.com/spreadsheets/d/1yZdc4BL5CHLwBQ2QGp8zD5_ov7LDKsEcnrONdQvDyHI/edit?gid=1748736055#gid=1748736055"
 
-if 'init_v40' not in st.session_state:
+if 'init_v41' not in st.session_state:
     st.session_state.update({'view_target': "충청호남팀 전체", 'hc_selector': "✨ 인원별 상세 실적 (선택 시 우선 적용)", 
                              'view_mode': "주간 추이 (최근 8주)", 't_amt': True, 't_sales': False, 't_next': False,
                              't_avg': False, 't_wd': False, 't_we': False, 't_walk': False, 't_move': False,
                              't_est': False, 't_cnt': False, 't_rate': False, 't_unit': False, 
-                             'wow_prev': None, 'wow_curr': None, 'init_v40': True})
+                             'wow_prev': None, 'wow_curr': None, 'init_v41': True})
 
 toggle_keys = ['t_amt', 't_sales', 't_next', 't_avg', 't_wd', 't_we', 't_walk', 't_move', 't_est', 't_cnt', 't_rate', 't_unit']
 
@@ -750,8 +750,10 @@ if not df_raw.empty:
             else: row_data = final_df[final_df[('기본정보', 'HC명', 'HC명')] == search_key]
 
             if not row_data.empty:
-                t_amts.append(row_data[(wk, '계약액(천)', '목표')].values[0] / 100000.0)
-                a_amts.append(row_data[(wk, '계약액(천)', 'ACT')].values[0] / 100000.0)
+                # 🚀 수정: 데이터프레임 열 이름과 완벽하게 매칭되도록 날짜 포함한 정확한 컬럼명 사용 (KeyError 해결)
+                exact_col_name = f"{wk} ({date_headers.get(wk, '')})"
+                t_amts.append(row_data[(exact_col_name, '계약액(천)', '목표')].values[0] / 100000.0)
+                a_amts.append(row_data[(exact_col_name, '계약액(천)', 'ACT')].values[0] / 100000.0)
             else:
                 t_amts.append(0); a_amts.append(0)
 
@@ -989,7 +991,6 @@ if not df_raw.empty:
         
         hl = ["<div class='vdt-table-container'><table class='vdt-table'><thead><tr>"]
         
-        # 🚀 에러 방지용 방어막 설치 (ai 인덱스 초과 시 기본 너비 설정)
         w_css = f"min-width:{cws[0]}px; max-width:{cws[0]}px;"
         hl.append(f"<th rowspan='3' style='position:sticky; top:0; left:0; z-index:20; background-color:#0f172a; border-right:1px solid #cbd5e1; {w_css}'>대리점</th>")
         w_css = f"min-width:{cws[1]}px; max-width:{cws[1]}px;"
@@ -1026,7 +1027,6 @@ if not df_raw.empty:
             ic, im = CURRENT_TABLE_WEEK in c[0], "당월" in c[0]
             sp = "position:sticky; top:66px; " + ("background-color:#1d4ed8; border-bottom:3px solid #60a5fa;" + ("border-left:3px solid #60a5fa;" if c[1]=='계약액(천)' and c[2]=='목표' else "") + ("border-right:3px solid #60a5fa;" if c[1]=='계약건' and c[2]=='달성율(%)' else "") if ic else ("background-color:#047857; color:#a7f3d0;" if im else "background-color:#0f172a;"))
             
-            # 🚀 안전 방어막 14번째 칸부터는 50px로 자동 고정!
             if ai <= 13:
                 w_css = f"min-width:{cws[ai]}px; max-width:{cws[ai]}px;"
                 sp += f" left:{cls[ai]}px; z-index:15; {w_css}"
@@ -1055,7 +1055,6 @@ if not df_raw.empty:
                 ic, im = CURRENT_TABLE_WEEK in c[0], "당월" in c[0]
                 sp = ("border-left:3px solid #3b82f6;" if c[1]=='계약액(천)' and c[2]=='목표' else "") + ("border-right:3px solid #3b82f6;" if c[1]=='계약건' and c[2]=='달성율(%)' else "") if ic else ""
                 
-                # 스마트 조건부 서식 적용 (특정 주차 전용 게이지 바)
                 if wk_filter != "전체 보기" and c[2] == '달성율(%)' and c[0] not in ['🎯 당월매출', '🌟 당월 합계']:
                     pct = min(max(v, 0), 100)
                     act_val = r.iloc[ai - 1] 
@@ -1082,7 +1081,6 @@ if not df_raw.empty:
                     else:
                         vs = f"{v:,.0f}"
 
-                # 🚀 안전 방어막 적용
                 if ai <= 13:
                     w_css = f"min-width:{cws[ai]}px; max-width:{cws[ai]}px;"
                     sp += f" position:sticky; left:{cls[ai]}px; z-index:5; {w_css}" 
