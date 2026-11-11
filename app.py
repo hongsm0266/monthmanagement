@@ -17,12 +17,12 @@ import calendar
 st.set_page_config(page_title="충청호남팀 영업사원 주차별 VDT 목표 관리", layout="wide")
 SHEET_URL = "https://docs.google.com/spreadsheets/d/1yZdc4BL5CHLwBQ2QGp8zD5_ov7LDKsEcnrONdQvDyHI/edit?gid=1748736055#gid=1748736055"
 
-if 'init_v33' not in st.session_state:
+if 'init_v34' not in st.session_state:
     st.session_state.update({'view_target': "충청호남팀 전체", 'hc_selector': "✨ 인원별 상세 실적 (선택 시 우선 적용)", 
                              'view_mode': "주간 추이 (최근 8주)", 't_amt': True, 't_sales': False, 't_next': False,
                              't_avg': False, 't_wd': False, 't_we': False, 't_walk': False, 't_move': False,
                              't_est': False, 't_cnt': False, 't_rate': False, 't_unit': False, 
-                             'wow_prev': None, 'wow_curr': None, 'init_v33': True})
+                             'wow_prev': None, 'wow_curr': None, 'init_v34': True})
 
 toggle_keys = ['t_amt', 't_sales', 't_next', 't_avg', 't_wd', 't_we', 't_walk', 't_move', 't_est', 't_cnt', 't_rate', 't_unit']
 EXCLUDED_HCS = ["장재형", "강지인", "신재민"]
@@ -44,25 +44,34 @@ st.markdown("""
     @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&display=swap');
     html, body, [class*="css"], [class*="st-"], th, td { font-family: 'Noto Sans KR', sans-serif !important; }
     
-    div[data-testid="stSelectbox"] div[data-baseweb="select"] > div {
-        border: 2px solid #1e293b !important;
-        background-color: #ffffff !important;
-        color: #0f172a !important;
-        font-weight: 900 !important;
-    }
+    div[data-testid="stSelectbox"] div[data-baseweb="select"] > div { border: 2px solid #1e293b !important; background-color: #ffffff !important; color: #0f172a !important; font-weight: 900 !important; }
     div[data-testid="stSelectbox"] div[data-baseweb="select"] * { color: #0f172a !important; font-weight: 900 !important; }
 
     .vdt-table-container { width: 100%; max-height: 65vh; overflow: auto; border: 1px solid #cbd5e1; border-radius: 8px; margin-top: 10px; }
     .vdt-table-container::-webkit-scrollbar { width: 14px; height: 14px; }
     .vdt-table-container::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 8px; }
     .vdt-table-container::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 8px; border: 3px solid #f1f5f9; }
+    
     .vdt-table { width: 100%; border-collapse: collapse; font-size: 11px; white-space: nowrap; }
+    
+    /* 🚀 마우스 호버 효과 (강력한 음영 & 글씨 진하게) */
+    .vdt-table tbody tr:hover {
+        background-color: #dbeafe !important;
+        font-weight: 900 !important;
+        transition: all 0.1s ease-in-out;
+    }
+    .vdt-table tbody tr:hover td {
+        background-color: transparent !important;
+        color: #0f172a !important;
+    }
+    
     .vdt-table thead th { height: 34px; position: sticky; z-index: 10; }
     .vdt-table thead tr:nth-child(1) th { top: 0; }
     .vdt-table thead tr:nth-child(2) th { top: 33px; }
     .vdt-table thead tr:nth-child(3) th { top: 66px; }
     .vdt-table th { background-color: #0f172a; color: white; padding: 6px 8px; text-align: center; border: 1px solid #334155; font-weight: 700; }
     .vdt-table td { padding: 4px 8px; text-align: right; border: 1px solid #e2e8f0; }
+    
     .title-box { background: linear-gradient(90deg, #1e3a8a 0%, #3b82f6 100%); color: white; padding: 12px; border-radius: 8px; margin-bottom: 12px; }
     h1, h3, h4 { font-weight: 900 !important; margin: 0; }
     h1 { font-size: 14px !important; color: white !important; }
@@ -608,7 +617,6 @@ if not df_raw.empty:
     all_normal_options = list(reversed(trend_labels)) + list(reversed(month_labels))
     curr_options = ['🌟 [당일기준] 당월 누적'] + all_normal_options
     
-    # 🚀 디폴트 선택값을 '최근 1주일 전(직전 주차)'로 자동 설정! (인덱스 1)
     if 'wow_curr' not in st.session_state: 
         default_idx = 1 if len(all_normal_options) > 1 else 0
         st.session_state['wow_curr'] = all_normal_options[default_idx]
@@ -705,7 +713,7 @@ if not df_raw.empty:
             
     def toggle_state(key): st.session_state[key] = not st.session_state[key]
 
-    # 🚀 3. 트렌드 그래프 (최근 4주 막대차트 옵션 신설)
+    # 🚀 3. 트렌드 그래프
     t_c1, t_c2 = st.columns([7, 3])
     with t_c1: st.markdown(f"#### 📈 {ct} 실적 추이 그래프")
     with t_c2:
@@ -715,7 +723,6 @@ if not df_raw.empty:
         
     is_m = "월간" in vm
     
-    # 🔥 [최근 4주 막대그래프 모드]
     if "최근 4주" in vm:
         last_4_keys = week_keys_list[-4:] if len(week_keys_list) >= 4 else week_keys_list
         t_amts, a_amts, t_cnts, a_cnts = [], [], [], []
@@ -725,7 +732,6 @@ if not df_raw.empty:
         for wk in last_4_keys:
             if "전체" in vt: row_data = final_df[final_df[('기본정보', 'HC명', 'HC명')] == search_key]
             elif "통합" in vt: 
-                # 상권은 데이터에서 합계를 구해야 함
                 d_list = REGION_MAP["충청상권" if "충청" in vt else "호남상권"]
                 row_data = final_df[(final_df[('기본정보', '대리점', '대리점')].isin(d_list)) & (final_df[('기본정보', 'HC명', 'HC명')] == "합계")].sum(numeric_only=True).to_frame().T
             elif "대리점" in vt: row_data = final_df[(final_df[('기본정보', '대리점', '대리점')] == data_key) & (final_df[('기본정보', 'HC명', 'HC명')] == "합계")]
@@ -747,7 +753,6 @@ if not df_raw.empty:
         st.plotly_chart(fig, use_container_width=True)
         
     else:
-        # 기존 라인 그래프 모드
         la = month_labels if is_m else trend_labels
         
         if vt == "충청호남팀 전체": sd = [trend_pack['M' if is_m else 'W']['tot'][l if is_m else trend_labels.index(l)] for l in la]
@@ -838,11 +843,11 @@ if not df_raw.empty:
             )
             fig.update_xaxes(showgrid=True, gridcolor='#f1f5f9', tickfont=dict(size=12, color='black'))
             st.plotly_chart(fig, use_container_width=True)
-        else: st.info("👆 위 세부 지표 버튼을 클릭하시면 실시간 그래프가 나타납니다.")
+        else: st.info("👆 위 세부 지표 버튼을 클릭하시면 실시간 꺾은선 그래프가 나타납니다.")
         
     st.markdown("---")
 
-    # 🚀 4. 하단 전체 상세 표 출력 (UI 대개조: 스페셜 요약 카드 & 다중 탭)
+    # 🚀 4. 하단 전체 상세 표 출력
     tdr = date_headers.get(CURRENT_TABLE_WEEK, "")
     
     # 4-1. 👤 인원 선택 시 '스페셜 요약 카드'
@@ -878,12 +883,11 @@ if not df_raw.empty:
     uds = [d for d in final_df[('기본정보', '대리점', '대리점')].unique() if d not in ["🌟 총계", "충청상권", "호남상권"]]
     dcs = {d: ['#f8fafc', '#ffffff'][i%2] for i, d in enumerate(uds)}
     
-    # 🚀 열 너비 다이어트!
-    cws_s = [70, 75, 55, 55, 55, 55, 55, 50, 45, 45, 45, 45, 45, 45]
+    # 🚀 열 너비 최적화 축소
+    cws_s = [50, 65, 50, 50, 50, 50, 50, 50, 40, 40, 40, 40, 40, 40]
     cls_s = [sum(cws_s[:i]) for i in range(len(cws_s))]
     
-    # 4-2. 탭 UI 분리
-    tab1, tab2 = st.tabs(["📊 핵심 요약 뷰 (게이지 바 적용)", "📆 주차별 상세 뷰 (필터 기능 포함)"])
+    tab1, tab2 = st.tabs(["📊 핵심 요약 뷰 (달성률 게이지)", "📆 주차별 상세 뷰 (필터 조회)"])
 
     # --- 탭 1: 핵심 요약 뷰 ---
     with tab1:
@@ -917,39 +921,47 @@ if not df_raw.empty:
         
         for _, r in final_df.iterrows():
             d, hc = r[('기본정보', '대리점', '대리점')], r[('기본정보', 'HC명', 'HC명')]
-            bg, rb = ("#e2e8f0", "style='background-color:#e2e8f0; font-weight:bold;'") if hc in ["합계","상권합계"] else (("#cbd5e1", "style='background-color:#cbd5e1; font-weight:bold;'") if "🌟" in str(hc) else (dcs.get(d, '#ffffff'), f"style='background-color:{dcs.get(d, '#ffffff')};'"))
-            hl_sum.append(f"<tr {rb}><td class='text-center' style='position:sticky; left:0; z-index:6; background-color:{bg}; min-width:{cws_s[0]}px; max-width:{cws_s[0]}px; border-right:1px solid #cbd5e1;'>{d}</td>")
-            hl_sum.append(f"<td class='text-center' style='position:sticky; left:{cls_s[1]}px; z-index:6; background-color:{bg}; min-width:{cws_s[1]}px; max-width:{cws_s[1]}px; border-right:2px solid #94a3b8;'>{hc}</td>")
+            bg, rb = ("#e2e8f0", "style='background-color:#e2e8f0;'") if hc in ["합계","상권합계"] else (("#cbd5e1", "style='background-color:#cbd5e1;'") if "🌟" in str(hc) else (dcs.get(d, '#ffffff'), f"style='background-color:{dcs.get(d, '#ffffff')};'"))
+            
+            # 🚀 행 Hover 시 폰트 굵기 적용을 위해 inline 스타일 대신 class/CSS 상속 유도
+            hl_sum.append(f"<tr {rb}><td class='text-center' style='position:sticky; left:0; z-index:6; min-width:{cws_s[0]}px; max-width:{cws_s[0]}px; border-right:1px solid #cbd5e1;'>{d}</td>")
+            hl_sum.append(f"<td class='text-center' style='position:sticky; left:{cls_s[1]}px; z-index:6; min-width:{cws_s[1]}px; max-width:{cws_s[1]}px; border-right:2px solid #94a3b8;'>{hc}</td>")
             
             for i, v in enumerate(r[2:14]):
                 ai, c = i + 2, final_df.columns[i + 2]
                 
-                # 🚀 대리점 합계 줄은 '보라색/금색' 계열 게이지 바 적용
+                # 🚀 대리점 합계 줄은 '보라색/금색' 계열 게이지 바 + (실적/목표) 텍스트 오버레이
                 if c[2] == '달성율(%)':
                     pct = min(max(v, 0), 100)
+                    act_val = r[i+1] # 바로 이전 인덱스가 ACT
+                    tgt_val = r[i]   # 그 이전 인덱스가 목표
+                    
                     if hc in ["합계","상권합계"] or "🌟" in str(hc):
-                        if v >= 100: bar_col = "rgba(139, 92, 246, 0.4)" # 보라
+                        if v >= 100: bar_col = "rgba(139, 92, 246, 0.5)" # 보라
                         elif v < 50: bar_col = "rgba(244, 63, 94, 0.4)" # 빨강
-                        else: bar_col = "rgba(168, 85, 247, 0.2)" # 연한 보라
+                        else: bar_col = "rgba(168, 85, 247, 0.3)" # 연한 보라
+                        
+                        # 막대바 위에 텍스트로 [실적 / 목표] 표시
+                        txt_display = f"<span style='font-size:10px; color:#475569;'>{act_val:,.0f}/{tgt_val:,.0f}</span> <span style='color:#4c1d95; font-weight:900; margin-left:4px;'>{v:.0f}%</span>" if v>0 else "0%"
+                        
                     else:
                         if v >= 100: bar_col = "rgba(16, 185, 129, 0.4)" # 초록
                         elif v < 50: bar_col = "rgba(239, 68, 68, 0.4)" # 빨강
                         else: bar_col = "rgba(59, 130, 246, 0.2)" # 파랑
-                    sp = f"background: linear-gradient(90deg, {bar_col} {pct}%, {bg} {pct}%);"
+                        
+                        t_c = '#047857' if v>=100 else ('#b91c1c' if v<50 and v>0 else '#1d4ed8')
+                        txt_display = f"<span style='color:{t_c}; font-weight:900;'>{v:.0f}%</span>" if v>0 else "0%"
+                        
+                    sp = f"background: linear-gradient(90deg, {bar_col} {pct}%, transparent {pct}%);"
                 else:
-                    sp = f"background-color:{bg};"
+                    sp = ""
+                    txt_display = f"{v:,.0f}"
                     
                 sp += f" position:sticky; left:{cls_s[ai]}px; z-index:5; min-width:{cws_s[ai]}px; max-width:{cws_s[ai]}px;"
                 if c[0]=='🎯 당월매출' and c[2]=='달성율(%)': sp += " border-right:3px solid #1e293b;"
                 if "🌟 당월 합계" in c[0] and c[1]=='계약건' and c[2]=='달성율(%)': sp += " border-right:4px solid #94a3b8;"
                 
-                if c[2] == '달성율(%)':
-                    t_c = '#047857' if v>=100 else ('#b91c1c' if v<50 and v>0 else '#1d4ed8')
-                    if hc in ["합계","상권합계"] or "🌟" in str(hc): t_c = '#4c1d95' if v>=100 else ('#9f1239' if v<50 and v>0 else '#4338ca')
-                    vs = f"<span style='color:{t_c}; font-weight:900;'>{v:.0f}%</span>" if v>0 else "0%"
-                else:
-                    vs = f"{v:,.0f}"
-                hl_sum.append(f"<td style='{sp}'>{vs}</td>")
+                hl_sum.append(f"<td style='{sp}'>{txt_display}</td>")
             hl_sum.append("</tr>")
         hl_sum.append("</tbody></table></div>")
         st.markdown("".join(hl_sum), unsafe_allow_html=True)
@@ -959,7 +971,7 @@ if not df_raw.empty:
         st.markdown("<div style='margin-bottom:10px; font-weight:bold; color:#475569;'>🔎 확인하고 싶은 주차를 선택하세요 (기본: 전체보기)</div>", unsafe_allow_html=True)
         wk_filter = st.radio("주차별 필터", ["전체 보기"] + week_keys_list, horizontal=True, label_visibility="collapsed")
         
-        cws = [80,90,70,70,70,70,70,70,55,55,55,55,55,55]
+        cws = [60,75,55,55,55,55,55,55,45,45,45,45,45,45]
         cls = [sum(cws[:i]) for i in range(len(cws))]
         
         hl = ["<div class='vdt-table-container'><table class='vdt-table'><thead><tr>"]
@@ -996,7 +1008,7 @@ if not df_raw.empty:
             ai = i + 2
             ic, im = CURRENT_TABLE_WEEK in c[0], "당월" in c[0]
             sp = "position:sticky; top:66px; " + ("background-color:#1d4ed8; border-bottom:3px solid #60a5fa;" + ("border-left:3px solid #60a5fa;" if c[1]=='계약액(천)' and c[2]=='목표' else "") + ("border-right:3px solid #60a5fa;" if c[1]=='계약건' and c[2]=='달성율(%)' else "") if ic else ("background-color:#047857; color:#a7f3d0;" if im else "background-color:#0f172a;"))
-            sp += f" left:{cls[ai]}px; z-index:15; min-width:{cws[ai]}px; max-width:{cws[ai]}px;" if ai<=13 else " z-index:10; min-width:60px;"
+            sp += f" left:{cls[ai]}px; z-index:15; min-width:{cws[ai]}px; max-width:{cws[ai]}px;" if ai<=13 else " z-index:10; min-width:50px;"
             if c[0]=='🎯 당월매출' and c[2]=='달성율(%)': sp += " border-right:3px solid #1e293b;"
             if "🌟 당월 합계" in c[0] and c[1]=='계약건' and c[2]=='달성율(%)': sp += " border-right:4px solid #94a3b8;"
             hl.append(f"<th style='{sp}'>{c[2]}</th>")
@@ -1004,9 +1016,9 @@ if not df_raw.empty:
         
         for _, r in final_df.iterrows():
             d, hc = r[('기본정보', '대리점', '대리점')], r[('기본정보', 'HC명', 'HC명')]
-            bg, rb = ("#e2e8f0", "style='background-color:#e2e8f0; font-weight:bold;'") if hc in ["합계","상권합계"] else (("#cbd5e1", "style='background-color:#cbd5e1; font-weight:bold;'") if "🌟" in str(hc) else (dcs.get(d, '#ffffff'), f"style='background-color:{dcs.get(d, '#ffffff')};'"))
-            hl.append(f"<tr {rb}><td class='text-center' style='position:sticky; left:0; z-index:6; background-color:{bg}; min-width:{cws[0]}px; max-width:{cws[0]}px; border-right:1px solid #cbd5e1;'>{d}</td>")
-            hl.append(f"<td class='text-center' style='position:sticky; left:{cls[1]}px; z-index:6; background-color:{bg}; min-width:{cws[1]}px; max-width:{cws[1]}px; border-right:2px solid #94a3b8;'>{hc}</td>")
+            bg, rb = ("#e2e8f0", "style='background-color:#e2e8f0;'") if hc in ["합계","상권합계"] else (("#cbd5e1", "style='background-color:#cbd5e1;'") if "🌟" in str(hc) else (dcs.get(d, '#ffffff'), f"style='background-color:{dcs.get(d, '#ffffff')};'"))
+            hl.append(f"<tr {rb}><td class='text-center' style='position:sticky; left:0; z-index:6; min-width:{cws[0]}px; max-width:{cws[0]}px; border-right:1px solid #cbd5e1;'>{d}</td>")
+            hl.append(f"<td class='text-center' style='position:sticky; left:{cls[1]}px; z-index:6; min-width:{cws[1]}px; max-width:{cws[1]}px; border-right:2px solid #94a3b8;'>{hc}</td>")
             
             for i, v in enumerate(r[2:]):
                 c = final_df.columns[i + 2]
@@ -1014,7 +1026,7 @@ if not df_raw.empty:
                     
                 ai = i + 2
                 ic, im = CURRENT_TABLE_WEEK in c[0], "당월" in c[0]
-                sp = "background-color:rgba(37,99,235,0.12);" + ("border-left:3px solid #3b82f6;" if c[1]=='계약액(천)' and c[2]=='목표' else "") + ("border-right:3px solid #3b82f6;" if c[1]=='계약건' and c[2]=='달성율(%)' else "") if ic else ("background-color:" + ({'#f8fafc':'#e4f1ef', '#e2e8f0':'#d1dbda', '#cbd5e1':'#bcc7c7'}.get(bg, '#ebf6f2') if ai<=13 else "rgba(5,150,105,0.08)") + ";" if im else f"background-color:{bg};")
+                sp = ("border-left:3px solid #3b82f6;" if c[1]=='계약액(천)' and c[2]=='목표' else "") + ("border-right:3px solid #3b82f6;" if c[1]=='계약건' and c[2]=='달성율(%)' else "") if ic else ""
                 sp += f" position:sticky; left:{cls[ai]}px; z-index:5; min-width:{cws[ai]}px; max-width:{cws[ai]}px;" if ai<=13 else ""
                 if c[0]=='🎯 당월매출' and c[2]=='달성율(%)': sp += " border-right:3px solid #1e293b;"
                 if "🌟 당월 합계" in c[0] and c[1]=='계약건' and c[2]=='달성율(%)': sp += " border-right:4px solid #94a3b8;"
