@@ -17,12 +17,12 @@ import calendar
 st.set_page_config(page_title="충청호남팀 영업사원 주차별 VDT 목표 관리", layout="wide")
 SHEET_URL = "https://docs.google.com/spreadsheets/d/1yZdc4BL5CHLwBQ2QGp8zD5_ov7LDKsEcnrONdQvDyHI/edit?gid=1748736055#gid=1748736055"
 
-if 'init_v39' not in st.session_state:
+if 'init_v40' not in st.session_state:
     st.session_state.update({'view_target': "충청호남팀 전체", 'hc_selector': "✨ 인원별 상세 실적 (선택 시 우선 적용)", 
                              'view_mode': "주간 추이 (최근 8주)", 't_amt': True, 't_sales': False, 't_next': False,
                              't_avg': False, 't_wd': False, 't_we': False, 't_walk': False, 't_move': False,
                              't_est': False, 't_cnt': False, 't_rate': False, 't_unit': False, 
-                             'wow_prev': None, 'wow_curr': None, 'init_v39': True})
+                             'wow_prev': None, 'wow_curr': None, 'init_v40': True})
 
 toggle_keys = ['t_amt', 't_sales', 't_next', 't_avg', 't_wd', 't_we', 't_walk', 't_move', 't_est', 't_cnt', 't_rate', 't_unit']
 
@@ -900,8 +900,11 @@ if not df_raw.empty:
 
     with tab1:
         hl_sum = ["<div class='vdt-table-container'><table class='vdt-table'><thead><tr>"]
-        hl_sum.append(f"<th rowspan='3' style='position:sticky; top:0; left:0; z-index:20; background-color:#0f172a; min-width:{cws_s[0]}px; max-width:{cws_s[0]}px; border-right:1px solid #cbd5e1;'>대리점</th>")
-        hl_sum.append(f"<th rowspan='3' style='position:sticky; top:0; left:{cls_s[1]}px; z-index:20; background-color:#0f172a; min-width:{cws_s[1]}px; max-width:{cws_s[1]}px; border-right:2px solid #94a3b8;'>HC명</th>")
+        
+        w_css = f"min-width:{cws_s[0]}px; max-width:{cws_s[0]}px;"
+        hl_sum.append(f"<th rowspan='3' style='position:sticky; top:0; left:0; z-index:20; background-color:#0f172a; border-right:1px solid #cbd5e1; {w_css}'>대리점</th>")
+        w_css = f"min-width:{cws_s[1]}px; max-width:{cws_s[1]}px;"
+        hl_sum.append(f"<th rowspan='3' style='position:sticky; top:0; left:{cls_s[1]}px; z-index:20; background-color:#0f172a; border-right:2px solid #94a3b8; {w_css}'>HC명</th>")
         
         h1_list_sum = []
         for c in final_df.columns[2:14]:
@@ -921,7 +924,8 @@ if not df_raw.empty:
         
         for i, c in enumerate(final_df.columns[2:14]):
             ai = i + 2
-            sp = f"position:sticky; top:66px; background-color:#047857; color:#a7f3d0; left:{cls_s[ai]}px; z-index:15; min-width:{cws_s[ai]}px; max-width:{cws_s[ai]}px;"
+            w_css = f"min-width:{cws_s[ai]}px; max-width:{cws_s[ai]}px;"
+            sp = f"position:sticky; top:66px; background-color:#047857; color:#a7f3d0; left:{cls_s[ai]}px; z-index:15; {w_css}"
             if c[0]=='🎯 당월매출' and c[2]=='달성율(%)': sp += " border-right:3px solid #1e293b;"
             if "🌟 당월 합계" in c[0] and c[1]=='계약건' and c[2]=='달성율(%)': sp += " border-right:4px solid #94a3b8;"
             hl_sum.append(f"<th style='{sp}'>{c[2]}</th>")
@@ -931,8 +935,10 @@ if not df_raw.empty:
             d, hc = r[('기본정보', '대리점', '대리점')], r[('기본정보', 'HC명', 'HC명')]
             bg, rb = ("#e2e8f0", "style='background-color:#e2e8f0;'") if hc in ["합계","상권합계"] else (("#cbd5e1", "style='background-color:#cbd5e1;'") if "🌟" in str(hc) else (dcs.get(d, '#ffffff'), f"style='background-color:{dcs.get(d, '#ffffff')};'"))
             
-            hl_sum.append(f"<tr {rb}><td class='text-center' style='position:sticky; left:0; z-index:6; min-width:{cws_s[0]}px; max-width:{cws_s[0]}px; border-right:1px solid #cbd5e1;'>{d}</td>")
-            hl_sum.append(f"<td class='text-center' style='position:sticky; left:{cls_s[1]}px; z-index:6; min-width:{cws_s[1]}px; max-width:{cws_s[1]}px; border-right:2px solid #94a3b8;'>{hc}</td>")
+            w_css = f"min-width:{cws_s[0]}px; max-width:{cws_s[0]}px;"
+            hl_sum.append(f"<tr {rb}><td class='text-center' style='position:sticky; left:0; z-index:6; border-right:1px solid #cbd5e1; {w_css}'>{d}</td>")
+            w_css = f"min-width:{cws_s[1]}px; max-width:{cws_s[1]}px;"
+            hl_sum.append(f"<td class='text-center' style='position:sticky; left:{cls_s[1]}px; z-index:6; border-right:2px solid #94a3b8; {w_css}'>{hc}</td>")
             
             for i, v in enumerate(r[2:14]):
                 ai, c = i + 2, final_df.columns[i + 2]
@@ -961,7 +967,8 @@ if not df_raw.empty:
                     sp = ""
                     txt_display = f"{v:,.0f}"
                     
-                sp += f" position:sticky; left:{cls_s[ai]}px; z-index:5; min-width:{cws_s[ai]}px; max-width:{cws_s[ai]}px;"
+                w_css = f"min-width:{cws_s[ai]}px; max-width:{cws_s[ai]}px;"
+                sp += f" position:sticky; left:{cls_s[ai]}px; z-index:5; {w_css}"
                 if c[0]=='🎯 당월매출' and c[2]=='달성율(%)': sp += " border-right:3px solid #1e293b;"
                 if "🌟 당월 합계" in c[0] and c[1]=='계약건' and c[2]=='달성율(%)': sp += " border-right:4px solid #94a3b8;"
                 
@@ -981,8 +988,11 @@ if not df_raw.empty:
         cls = [sum(cws[:i]) for i in range(len(cws))]
         
         hl = ["<div class='vdt-table-container'><table class='vdt-table'><thead><tr>"]
-        hl.append(f"<th rowspan='3' style='position:sticky; top:0; left:0; z-index:20; background-color:#0f172a; min-width:{cws[0]}px; max-width:{cws[0]}px; border-right:1px solid #cbd5e1;'>대리점</th>")
-        hl.append(f"<th rowspan='3' style='position:sticky; top:0; left:{cls[1]}px; z-index:20; background-color:#0f172a; min-width:{cws[1]}px; max-width:{cws[1]}px; border-right:2px solid #94a3b8;'>HC명</th>")
+        
+        w_css = f"min-width:{cws[0]}px; max-width:{cws[0]}px;"
+        hl.append(f"<th rowspan='3' style='position:sticky; top:0; left:0; z-index:20; background-color:#0f172a; border-right:1px solid #cbd5e1; {w_css}'>대리점</th>")
+        w_css = f"min-width:{cws[1]}px; max-width:{cws[1]}px;"
+        hl.append(f"<th rowspan='3' style='position:sticky; top:0; left:{cls[1]}px; z-index:20; background-color:#0f172a; border-right:2px solid #94a3b8; {w_css}'>HC명</th>")
         
         h1_list = []
         for c in final_df.columns[2:]:
@@ -1014,4 +1024,71 @@ if not df_raw.empty:
             ai = i + 2
             ic, im = CURRENT_TABLE_WEEK in c[0], "당월" in c[0]
             sp = "position:sticky; top:66px; " + ("background-color:#1d4ed8; border-bottom:3px solid #60a5fa;" + ("border-left:3px solid #60a5fa;" if c[1]=='계약액(천)' and c[2]=='목표' else "") + ("border-right:3px solid #60a5fa;" if c[1]=='계약건' and c[2]=='달성율(%)' else "") if ic else ("background-color:#047857; color:#a7f3d0;" if im else "background-color:#0f172a;"))
-            sp += f" left:{cls[ai]}px; z-index:15; min-width:{cws[ai]}px; max-
+            
+            w_css = f"min-width:{cws[ai]}px; max-width:{cws[ai]}px;"
+            if ai <= 13:
+                sp += f" left:{cls[ai]}px; z-index:15; {w_css}"
+            else:
+                sp += " z-index:10; min-width:50px;"
+                
+            if c[0]=='🎯 당월매출' and c[2]=='달성율(%)': sp += " border-right:3px solid #1e293b;"
+            if "🌟 당월 합계" in c[0] and c[1]=='계약건' and c[2]=='달성율(%)': sp += " border-right:4px solid #94a3b8;"
+            hl.append(f"<th style='{sp}'>{c[2]}</th>")
+        hl.append("</tr></thead><tbody>")
+        
+        for _, r in final_df.iterrows():
+            d, hc = r[('기본정보', '대리점', '대리점')], r[('기본정보', 'HC명', 'HC명')]
+            bg, rb = ("#e2e8f0", "style='background-color:#e2e8f0;'") if hc in ["합계","상권합계"] else (("#cbd5e1", "style='background-color:#cbd5e1;'") if "🌟" in str(hc) else (dcs.get(d, '#ffffff'), f"style='background-color:{dcs.get(d, '#ffffff')};'"))
+            
+            w_css = f"min-width:{cws[0]}px; max-width:{cws[0]}px;"
+            hl.append(f"<tr {rb}><td class='text-center' style='position:sticky; left:0; z-index:6; border-right:1px solid #cbd5e1; {w_css}'>{d}</td>")
+            w_css = f"min-width:{cws[1]}px; max-width:{cws[1]}px;"
+            hl.append(f"<td class='text-center' style='position:sticky; left:{cls[1]}px; z-index:6; border-right:2px solid #94a3b8; {w_css}'>{hc}</td>")
+            
+            for i, v in enumerate(r[2:]):
+                c = final_df.columns[i + 2]
+                if c[0] not in ['🎯 당월매출', '🌟 당월 합계'] and wk_filter != "전체 보기" and wk_filter != c[0]: continue
+                    
+                ai = i + 2
+                ic, im = CURRENT_TABLE_WEEK in c[0], "당월" in c[0]
+                sp = ("border-left:3px solid #3b82f6;" if c[1]=='계약액(천)' and c[2]=='목표' else "") + ("border-right:3px solid #3b82f6;" if c[1]=='계약건' and c[2]=='달성율(%)' else "") if ic else ""
+                
+                # 🚀 스마트 조건부 서식 적용 
+                if wk_filter != "전체 보기" and c[2] == '달성율(%)' and c[0] not in ['🎯 당월매출', '🌟 당월 합계']:
+                    pct = min(max(v, 0), 100)
+                    act_val = r.iloc[ai - 1] 
+                    tgt_val = r.iloc[ai - 2]
+                    
+                    if hc in ["합계","상권합계"] or "🌟" in str(hc):
+                        if v >= 100: bar_col = "rgba(139, 92, 246, 0.85)"
+                        elif v < 50: bar_col = "rgba(225, 29, 72, 0.8)"
+                        else: bar_col = "rgba(168, 85, 247, 0.75)"
+                    else:
+                        if v >= 100: bar_col = "rgba(5, 150, 105, 0.85)"
+                        elif v < 50: bar_col = "rgba(220, 38, 38, 0.8)"
+                        else: bar_col = "rgba(37, 99, 235, 0.75)"
+                        
+                    if v > 0:
+                        vs = f"<span style='font-size:11px; color:#0f172a; font-weight:900;'>{act_val:,.0f} / {tgt_val:,.0f}</span> <span style='color:#000000; font-weight:900; margin-left:4px; font-size:13px;'>{v:.0f}%</span>"
+                    else:
+                        vs = f"<span style='font-size:12px; color:#0f172a; font-weight:900;'>0%</span>"
+                        
+                    sp += f" background: linear-gradient(90deg, {bar_col} {pct}%, transparent {pct}%);"
+                else:
+                    if c[2] == '달성율(%)':
+                        vs = f"<span style='color:{'#047857' if im else '#1d4ed8'}; font-weight:900;'>{v:.0f}%</span>" if v>=100 else (f"<span style='font-weight:600;'>{v:.0f}%</span>" if v>0 else "0%")
+                    else:
+                        vs = f"{v:,.0f}"
+
+                if ai <= 13:
+                    w_css = f"min-width:{cws[ai]}px; max-width:{cws[ai]}px;"
+                    sp += f" position:sticky; left:{cls[ai]}px; z-index:5; {w_css}" 
+                    
+                if c[0]=='🎯 당월매출' and c[2]=='달성율(%)': sp += " border-right:3px solid #1e293b;"
+                if "🌟 당월 합계" in c[0] and c[1]=='계약건' and c[2]=='달성율(%)': sp += " border-right:4px solid #94a3b8;"
+                
+                hl.append(f"<td style='{sp}'>{vs}</td>")
+            hl.append("</tr>")
+        hl.append("</tbody></table></div>")
+        
+        st.markdown("".join(hl), unsafe_allow_html=True)
