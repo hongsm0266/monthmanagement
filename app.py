@@ -16,12 +16,12 @@ import time
 st.set_page_config(page_title="충청호남팀 영업사원 주차별 VDT 목표 관리", layout="wide")
 SHEET_URL = "https://docs.google.com/spreadsheets/d/1yZdc4BL5CHLwBQ2QGp8zD5_ov7LDKsEcnrONdQvDyHI/edit?gid=1748736055#gid=1748736055"
 
-if 'init_v20' not in st.session_state:
+if 'init_v22' not in st.session_state:
     st.session_state.update({'view_target': "충청호남팀 전체", 'hc_selector': "✨ 인원별 상세 실적 (선택 시 우선 적용)", 
                              'view_mode': "주간 추이 (최근 8주)", 't_amt': True, 't_sales': False, 't_next': False,
                              't_avg': False, 't_wd': False, 't_we': False, 't_walk': False, 't_move': False,
                              't_est': False, 't_cnt': False, 't_rate': False, 't_unit': False, 
-                             'wow_prev': None, 'wow_curr': None, 'init_v20': True})
+                             'wow_prev': None, 'wow_curr': None, 'init_v22': True})
 
 toggle_keys = ['t_amt', 't_sales', 't_next', 't_avg', 't_wd', 't_we', 't_walk', 't_move', 't_est', 't_cnt', 't_rate', 't_unit']
 EXCLUDED_HCS = ["장재형", "강지인", "신재민"]
@@ -64,7 +64,6 @@ st.markdown("""
     .wow-up { color: #dc2626; font-weight: 900; }
     .wow-down { color: #2563eb; font-weight: 900; }
     .wow-same { color: #64748b; font-weight: 600; }
-    .wow-highlight { background-color: #fef2f2 !important; font-weight: 900; }
     div.stButton > button { background: #f8fafc !important; color: #020617 !important; font-size: 12px !important; font-weight: 900 !important; border-radius: 6px !important; padding: 4px 6px !important; border: 1px solid #94a3b8 !important; height: auto !important; min-height: 32px; border-bottom: 2px solid #64748b !important; transition: all 0.1s ease !important; }
     div.stButton > button[kind="primary"] { background: linear-gradient(180deg, #fee2e2 0%, #fecaca 100%) !important; color: #991b1b !important; border: 1px solid #f87171 !important; border-bottom: 2px solid #ef4444 !important; }
     #org-buttons + div[data-testid="stHorizontalBlock"] > div:nth-child(1) button { background-color: #faf5ff !important; border-color: #e9d5ff !important; color: #9333ea !important; border-bottom: 2px solid #d8b4fe !important; }
@@ -74,7 +73,6 @@ st.markdown("""
     #org-buttons + div[data-testid="stHorizontalBlock"] > div:nth-child(9) button { background-color: #f0fdf4 !important; border-color: #bbf7d0 !important; color: #16a34a !important; border-bottom: 2px solid #86efac !important; }
     #org-buttons + div[data-testid="stHorizontalBlock"] > div:nth-child(9) button[kind="primary"] { background: linear-gradient(180deg, #dcfce7 0%, #bbf7d0 100%) !important; color: #052e16 !important; border-bottom: 2px solid #16a34a !important; }
     .chart-btn-group { font-size: 11px; font-weight: 800; color: #475569; background: #e2e8f0; border-radius: 4px; padding: 2px 0; text-align: center; margin-bottom: 4px; border: 1px solid #cbd5e1;}
-    .mode-toggle { font-size: 14px; font-weight: 900; color: #0f172a; display:flex; align-items:center; gap:10px;}
 </style>
 """, unsafe_allow_html=True)
 
@@ -239,10 +237,11 @@ def load_vdt_data():
         wk_info, tr_idx, mo_idx, is_we = None, -1, -1, False
 
         for r_idx, row in enumerate(all_daily_data):
-            row_header = clean_str("".join([safe_get(row, i) for i in range(min(3, len(row)))]))
+            # 🚀 날짜 및 이정표 파싱 로직 초강력 보강! (연도 무시하고 정확히 달/일 추출)
+            row_header = clean_str("".join([safe_get(row, i) for i in range(min(5, len(row)))]))
             
-            if "일반일보" in row_header or "입주일보" in row_header:
-                date_match = re.search(r'(\d+)[월/.-]\s*(\d+)', row_header)
+            if "일반" in row_header or "입주" in row_header:
+                date_match = re.search(r'(?:20\d{2}[년/.-]\s*)?([01]?\d)[월/.-]\s*([0-3]?\d)일?', row_header)
                 if date_match:
                     curr_m, curr_d = int(date_match.group(1)), int(date_match.group(2))
                     wk_info = date_to_target_week.get((curr_m, curr_d))
@@ -251,8 +250,8 @@ def load_vdt_data():
                     try: is_we = datetime(current_date.year, curr_m, curr_d).weekday() >= 5
                     except: is_we = False
                     
-                if "일반일보" in row_header: curr_mode = "일반"
-                elif "입주일보" in row_header: curr_mode = "입주"
+                if "일반" in row_header: curr_mode = "일반"
+                elif "입주" in row_header: curr_mode = "입주"
                 continue
                 
             if curr_mode == "일반" and len(row) > 3:
@@ -325,16 +324,14 @@ def load_vdt_data():
                         
                 if t_sales > 0: latest_sales_dict[hc_name] = t_sales
 
-            # 🚀 입주 일보 스캔: /1000 이중 적용 완전 제거! 천 원 단위 원본 그대로 스캔
             elif curr_mode == "입주" and len(row) > 3:
                 hc_name = clean_str(safe_get(row, 1)) 
                 if not hc_name: hc_name = clean_str(safe_get(row, 3))
-                if not hc_name or any(x in hc_name for x in ['합계', '소계', '총계', '목표', '대리점', '계']): continue
                 
+                if not hc_name or any(x in hc_name for x in ['합계', '소계', '총계', '목표', '대리점', '계']): continue
                 dc = hc_name.replace("팀", "").replace("대리점", "").strip()
                 if dc in valid_dealers or dc in ["충청상권", "호남상권", "세종2"]: continue
                 
-                # 🚀 여기에 있던 / 1000.0 을 없앴습니다. 시트의 천원 단위 숫자를 그대로 유지합니다!
                 m_m, m_r = clean_val(safe_get(row, 12)), clean_val(safe_get(row, 17))
                 dm = m_m + m_r
                 md = hc_to_dealer_master.get(hc_name)
@@ -462,7 +459,6 @@ def calc_subtotals(df, rdm, rdw):
     rr.append(pd.Series(gt))
     return pd.DataFrame(rr)
 
-# 🚀 데이터를 가져올 때 스피너를 바깥으로 빼서 화면 에러를 원천 차단합니다!
 with st.spinner("🚀 최신 일보 데이터를 초고속으로 스캔하고 있습니다..."):
     df_raw, date_headers, hc_to_dealer_master, rdm, rdw, week_keys_list, trend_pack, CURRENT_TABLE_WEEK = load_vdt_data()
 
@@ -507,7 +503,7 @@ if not df_raw.empty:
         thc = vt.replace("👤 ", "").split(" - ")[1]
         ct, data_key = f"{thc} 님", thc
 
-    # 🚀 1. 브리핑 보드 (주/월 통합 자유 비교 모드)
+    # 🚀 1. 브리핑 보드
     st.markdown("#### 💡 **주/월 종합지표 비교**")
     all_options = list(reversed(trend_labels)) + list(reversed(month_labels))
     
