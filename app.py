@@ -17,14 +17,15 @@ import calendar
 st.set_page_config(page_title="충청호남팀 영업사원 주차별 VDT 목표 관리", layout="wide")
 SHEET_URL = "https://docs.google.com/spreadsheets/d/1yZdc4BL5CHLwBQ2QGp8zD5_ov7LDKsEcnrONdQvDyHI/edit?gid=1748736055#gid=1748736055"
 
-if 'init_v38' not in st.session_state:
+if 'init_v39' not in st.session_state:
     st.session_state.update({'view_target': "충청호남팀 전체", 'hc_selector': "✨ 인원별 상세 실적 (선택 시 우선 적용)", 
                              'view_mode': "주간 추이 (최근 8주)", 't_amt': True, 't_sales': False, 't_next': False,
                              't_avg': False, 't_wd': False, 't_we': False, 't_walk': False, 't_move': False,
                              't_est': False, 't_cnt': False, 't_rate': False, 't_unit': False, 
-                             'wow_prev': None, 'wow_curr': None, 'init_v38': True})
+                             'wow_prev': None, 'wow_curr': None, 'init_v39': True})
 
 toggle_keys = ['t_amt', 't_sales', 't_next', 't_avg', 't_wd', 't_we', 't_walk', 't_move', 't_est', 't_cnt', 't_rate', 't_unit']
+
 EXCLUDED_HCS = ["장재형", "강지인"]
 
 @st.cache_resource
@@ -1013,60 +1014,4 @@ if not df_raw.empty:
             ai = i + 2
             ic, im = CURRENT_TABLE_WEEK in c[0], "당월" in c[0]
             sp = "position:sticky; top:66px; " + ("background-color:#1d4ed8; border-bottom:3px solid #60a5fa;" + ("border-left:3px solid #60a5fa;" if c[1]=='계약액(천)' and c[2]=='목표' else "") + ("border-right:3px solid #60a5fa;" if c[1]=='계약건' and c[2]=='달성율(%)' else "") if ic else ("background-color:#047857; color:#a7f3d0;" if im else "background-color:#0f172a;"))
-            sp += f" left:{cls[ai]}px; z-index:15; min-width:{cws[ai]}px; max-width:{cws[ai]}px;" if ai<=13 else " z-index:10; min-width:50px;"
-            if c[0]=='🎯 당월매출' and c[2]=='달성율(%)': sp += " border-right:3px solid #1e293b;"
-            if "🌟 당월 합계" in c[0] and c[1]=='계약건' and c[2]=='달성율(%)': sp += " border-right:4px solid #94a3b8;"
-            hl.append(f"<th style='{sp}'>{c[2]}</th>")
-        hl.append("</tr></thead><tbody>")
-        
-        for _, r in final_df.iterrows():
-            d, hc = r[('기본정보', '대리점', '대리점')], r[('기본정보', 'HC명', 'HC명')]
-            bg, rb = ("#e2e8f0", "style='background-color:#e2e8f0;'") if hc in ["합계","상권합계"] else (("#cbd5e1", "style='background-color:#cbd5e1;'") if "🌟" in str(hc) else (dcs.get(d, '#ffffff'), f"style='background-color:{dcs.get(d, '#ffffff')};'"))
-            hl.append(f"<tr {rb}><td class='text-center' style='position:sticky; left:0; z-index:6; min-width:{cws[0]}px; max-width:{cws[0]}px; border-right:1px solid #cbd5e1;'>{d}</td>")
-            hl.append(f"<td class='text-center' style='position:sticky; left:{cls[1]}px; z-index:6; min-width:{cws[1]}px; max-width:{cws[1]}px; border-right:2px solid #94a3b8;'>{hc}</td>")
-            
-            for i, v in enumerate(r[2:]):
-                c = final_df.columns[i + 2]
-                if c[0] not in ['🎯 당월매출', '🌟 당월 합계'] and wk_filter != "전체 보기" and wk_filter != c[0]: continue
-                    
-                ai = i + 2
-                ic, im = CURRENT_TABLE_WEEK in c[0], "당월" in c[0]
-                sp = ("border-left:3px solid #3b82f6;" if c[1]=='계약액(천)' and c[2]=='목표' else "") + ("border-right:3px solid #3b82f6;" if c[1]=='계약건' and c[2]=='달성율(%)' else "") if ic else ""
-                
-                # 🚀 스마트 조건부 서식 (특정 주차 선택 시 게이지 바 자동 발동)
-                if wk_filter != "전체 보기" and c[2] == '달성율(%)':
-                    pct = min(max(v, 0), 100)
-                    act_val = r.iloc[ai - 1] 
-                    tgt_val = r.iloc[ai - 2]
-                    
-                    if hc in ["합계","상권합계"] or "🌟" in str(hc):
-                        if v >= 100: bar_col = "rgba(139, 92, 246, 0.85)"
-                        elif v < 50: bar_col = "rgba(225, 29, 72, 0.8)"
-                        else: bar_col = "rgba(168, 85, 247, 0.75)"
-                    else:
-                        if v >= 100: bar_col = "rgba(5, 150, 105, 0.85)"
-                        elif v < 50: bar_col = "rgba(220, 38, 38, 0.8)"
-                        else: bar_col = "rgba(37, 99, 235, 0.75)"
-                        
-                    if v > 0:
-                        vs = f"<span style='font-size:11px; color:#0f172a; font-weight:900;'>{act_val:,.0f} / {tgt_val:,.0f}</span> <span style='color:#000000; font-weight:900; margin-left:4px; font-size:13px;'>{v:.0f}%</span>"
-                    else:
-                        vs = f"<span style='font-size:12px; color:#0f172a; font-weight:900;'>0%</span>"
-                        
-                    sp += f" background: linear-gradient(90deg, {bar_col} {pct}%, transparent {pct}%);"
-                else:
-                    # 전체 보기 시 기존 심플 텍스트 유지
-                    if c[2] == '달성율(%)':
-                        vs = f"<span style='color:{'#047857' if im else '#1d4ed8'}; font-weight:900;'>{v:.0f}%</span>" if v>=100 else (f"<span style='font-weight:600;'>{v:.0f}%</span>" if v>0 else "0%")
-                    else:
-                        vs = f"{v:,.0f}"
-
-                sp += f" position:sticky; left:{cls[ai]}px; z-index:5; min-width:{cws[ai]}px; max-width:{cws[ai]}px;" if ai<=13 else ""
-                if c[0]=='🎯 당월매출' and c[2]=='달성율(%)': sp += " border-right:3px solid #1e293b;"
-                if "🌟 당월 합계" in c[0] and c[1]=='계약건' and c[2]=='달성율(%)': sp += " border-right:4px solid #94a3b8;"
-                
-                hl.append(f"<td style='{sp}'>{vs}</td>")
-            hl.append("</tr>")
-        hl.append("</tbody></table></div>")
-        
-        st.markdown("".join(hl), unsafe_allow_html=True)
+            sp += f" left:{cls[ai]}px; z-index:15; min-width:{cws[ai]}px; max-
