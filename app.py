@@ -16,12 +16,12 @@ import time
 st.set_page_config(page_title="충청호남팀 영업사원 주차별 VDT 목표 관리", layout="wide")
 SHEET_URL = "https://docs.google.com/spreadsheets/d/1yZdc4BL5CHLwBQ2QGp8zD5_ov7LDKsEcnrONdQvDyHI/edit?gid=1748736055#gid=1748736055"
 
-if 'init_v24' not in st.session_state:
+if 'init_v25' not in st.session_state:
     st.session_state.update({'view_target': "충청호남팀 전체", 'hc_selector': "✨ 인원별 상세 실적 (선택 시 우선 적용)", 
                              'view_mode': "주간 추이 (최근 8주)", 't_amt': True, 't_sales': False, 't_next': False,
                              't_avg': False, 't_wd': False, 't_we': False, 't_walk': False, 't_move': False,
                              't_est': False, 't_cnt': False, 't_rate': False, 't_unit': False, 
-                             'wow_prev': None, 'wow_curr': None, 'init_v24': True})
+                             'wow_prev': None, 'wow_curr': None, 'init_v25': True})
 
 toggle_keys = ['t_amt', 't_sales', 't_next', 't_avg', 't_wd', 't_we', 't_walk', 't_move', 't_est', 't_cnt', 't_rate', 't_unit']
 EXCLUDED_HCS = ["장재형", "강지인", "신재민"]
@@ -87,7 +87,7 @@ def clean_val(v):
     if not v or pd.isna(v): return 0.0
     v_str = str(v).replace('%', '').replace(',', '').replace('원', '').replace('건', '').strip()
     m = 100000000 if '억' in v_str else (10000 if '만' in v_str else 1)
-    v_str = re.sub(r'[^\d\.-]', '', v_str)
+    v_str = re.sub(r'[^\d\.-]', '', v_str) # 마이너스 기호 그대로 보존
     return float(v_str) * m if v_str else 0.0
 
 def get_mapped_dealer(raw_d):
@@ -265,8 +265,9 @@ def load_vdt_data():
                 hc_name = clean_str(raw_hc.split('(')[0]) 
                 hc_name = re.sub(r'\d+', '', hc_name) 
                 
-                # 🚀 '계' 민석 보호: 합계, 총계, 소계, 목표, 비고 등 명확한 키워드만 스킵
-                if '합계' in hc_name or '총계' in hc_name or '소계' in hc_name or hc_name in ['목표', '사번', '비고', '계']: continue
+                # 🚀 수정 3: 일반일보 INT, 한밭, 위탁 등 필터링 강화
+                if not hc_name or '합계' in hc_name or '총계' in hc_name or '소계' in hc_name or 'INT' in hc_name or '한밭' in hc_name or '위탁' in hc_name or hc_name in ['목표', '사번', '비고', '계', '대리점']: continue
+                
                 dc = hc_name.replace("팀", "").replace("대리점", "").strip()
                 if dc in valid_dealers or dc in ["충청상권", "호남상권", "세종2"]: continue
                 if not hc_name: continue 
@@ -333,8 +334,9 @@ def load_vdt_data():
                 hc_name = clean_str(raw_hc.split('(')[0]) 
                 hc_name = re.sub(r'\d+', '', hc_name) 
                 
-                # 🚀 '계' 민석 보호
-                if not hc_name or '합계' in hc_name or '총계' in hc_name or '소계' in hc_name or hc_name in ['목표', '대리점', '계']: continue
+                # 🚀 수정 3: 입주일보 INT, 한밭, 위탁 등 필터링 강화
+                if not hc_name or '합계' in hc_name or '총계' in hc_name or '소계' in hc_name or 'INT' in hc_name or '한밭' in hc_name or '위탁' in hc_name or hc_name in ['목표', '대리점', '계', '사번', '비고']: continue
+                
                 dc = hc_name.replace("팀", "").replace("대리점", "").strip()
                 if dc in valid_dealers or dc in ["충청상권", "호남상권", "세종2"]: continue
                 
