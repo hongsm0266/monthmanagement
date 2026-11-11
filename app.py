@@ -17,16 +17,14 @@ import calendar
 st.set_page_config(page_title="충청호남팀 영업사원 주차별 VDT 목표 관리", layout="wide")
 SHEET_URL = "https://docs.google.com/spreadsheets/d/1yZdc4BL5CHLwBQ2QGp8zD5_ov7LDKsEcnrONdQvDyHI/edit?gid=1748736055#gid=1748736055"
 
-if 'init_v37' not in st.session_state:
+if 'init_v38' not in st.session_state:
     st.session_state.update({'view_target': "충청호남팀 전체", 'hc_selector': "✨ 인원별 상세 실적 (선택 시 우선 적용)", 
                              'view_mode': "주간 추이 (최근 8주)", 't_amt': True, 't_sales': False, 't_next': False,
                              't_avg': False, 't_wd': False, 't_we': False, 't_walk': False, 't_move': False,
                              't_est': False, 't_cnt': False, 't_rate': False, 't_unit': False, 
-                             'wow_prev': None, 'wow_curr': None, 'init_v37': True})
+                             'wow_prev': None, 'wow_curr': None, 'init_v38': True})
 
 toggle_keys = ['t_amt', 't_sales', 't_next', 't_avg', 't_wd', 't_we', 't_walk', 't_move', 't_est', 't_cnt', 't_rate', 't_unit']
-
-# 🚀 수정 1: 신재민 님 제외 명단에서 삭제 (부활)
 EXCLUDED_HCS = ["장재형", "강지인"]
 
 @st.cache_resource
@@ -897,7 +895,7 @@ if not df_raw.empty:
     cws_s = [50, 70, 55, 55, 55, 55, 55, 55, 45, 45, 45, 45, 45, 45]
     cls_s = [sum(cws_s[:i]) for i in range(len(cws_s))]
     
-    tab1, tab2 = st.tabs(["📊 핵심 요약 뷰 (달성률 게이지)", "📆 주차별 상세 뷰 (필터 조회)"])
+    tab1, tab2 = st.tabs(["📊 핵심 요약 뷰 (달성률 게이지 적용)", "📆 주차별 상세 뷰 (필터 조회 기능)"])
 
     with tab1:
         hl_sum = ["<div class='vdt-table-container'><table class='vdt-table'><thead><tr>"]
@@ -952,7 +950,6 @@ if not df_raw.empty:
                         elif v < 50: bar_col = "rgba(220, 38, 38, 0.8)"
                         else: bar_col = "rgba(37, 99, 235, 0.75)"
                         
-                    # 🚀 수정 2: 흰색 텍스트를 진한 검정색(0f172a, #000000)으로 변경 (가독성 폭발)
                     if v > 0:
                         txt_display = f"<span style='font-size:11px; color:#0f172a; font-weight:900;'>{act_val:,.0f} / {tgt_val:,.0f}</span> <span style='color:#000000; font-weight:900; margin-left:4px; font-size:13px;'>{v:.0f}%</span>"
                     else:
@@ -1035,11 +1032,39 @@ if not df_raw.empty:
                 ai = i + 2
                 ic, im = CURRENT_TABLE_WEEK in c[0], "당월" in c[0]
                 sp = ("border-left:3px solid #3b82f6;" if c[1]=='계약액(천)' and c[2]=='목표' else "") + ("border-right:3px solid #3b82f6;" if c[1]=='계약건' and c[2]=='달성율(%)' else "") if ic else ""
+                
+                # 🚀 스마트 조건부 서식 (특정 주차 선택 시 게이지 바 자동 발동)
+                if wk_filter != "전체 보기" and c[2] == '달성율(%)':
+                    pct = min(max(v, 0), 100)
+                    act_val = r.iloc[ai - 1] 
+                    tgt_val = r.iloc[ai - 2]
+                    
+                    if hc in ["합계","상권합계"] or "🌟" in str(hc):
+                        if v >= 100: bar_col = "rgba(139, 92, 246, 0.85)"
+                        elif v < 50: bar_col = "rgba(225, 29, 72, 0.8)"
+                        else: bar_col = "rgba(168, 85, 247, 0.75)"
+                    else:
+                        if v >= 100: bar_col = "rgba(5, 150, 105, 0.85)"
+                        elif v < 50: bar_col = "rgba(220, 38, 38, 0.8)"
+                        else: bar_col = "rgba(37, 99, 235, 0.75)"
+                        
+                    if v > 0:
+                        vs = f"<span style='font-size:11px; color:#0f172a; font-weight:900;'>{act_val:,.0f} / {tgt_val:,.0f}</span> <span style='color:#000000; font-weight:900; margin-left:4px; font-size:13px;'>{v:.0f}%</span>"
+                    else:
+                        vs = f"<span style='font-size:12px; color:#0f172a; font-weight:900;'>0%</span>"
+                        
+                    sp += f" background: linear-gradient(90deg, {bar_col} {pct}%, transparent {pct}%);"
+                else:
+                    # 전체 보기 시 기존 심플 텍스트 유지
+                    if c[2] == '달성율(%)':
+                        vs = f"<span style='color:{'#047857' if im else '#1d4ed8'}; font-weight:900;'>{v:.0f}%</span>" if v>=100 else (f"<span style='font-weight:600;'>{v:.0f}%</span>" if v>0 else "0%")
+                    else:
+                        vs = f"{v:,.0f}"
+
                 sp += f" position:sticky; left:{cls[ai]}px; z-index:5; min-width:{cws[ai]}px; max-width:{cws[ai]}px;" if ai<=13 else ""
                 if c[0]=='🎯 당월매출' and c[2]=='달성율(%)': sp += " border-right:3px solid #1e293b;"
                 if "🌟 당월 합계" in c[0] and c[1]=='계약건' and c[2]=='달성율(%)': sp += " border-right:4px solid #94a3b8;"
                 
-                vs = f"<span style='color:{'#047857' if im else '#1d4ed8'}; font-weight:900;'>{v:.0f}%</span>" if c[2]=='달성율(%)' and v>=100 else (f"<span style='font-weight:600;'>{v:.0f}%</span>" if c[2]=='달성율(%)' and v>0 else (f"{v:.0f}%" if c[2]=='달성율(%)' else f"{v:,.0f}"))
                 hl.append(f"<td style='{sp}'>{vs}</td>")
             hl.append("</tr>")
         hl.append("</tbody></table></div>")
