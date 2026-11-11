@@ -1,5 +1,4 @@
 import socket
-# 🚀 구글 서버 데이터 가져오는 제한 시간을 15초 -> 60초로 대폭 늘려 타임아웃 튕김 방지!
 socket.setdefaulttimeout(60.0) 
 
 import streamlit as st
@@ -18,12 +17,12 @@ import calendar
 st.set_page_config(page_title="충청호남팀 영업사원 주차별 VDT 목표 관리", layout="wide")
 SHEET_URL = "https://docs.google.com/spreadsheets/d/1yZdc4BL5CHLwBQ2QGp8zD5_ov7LDKsEcnrONdQvDyHI/edit?gid=1748736055#gid=1748736055"
 
-if 'init_v30' not in st.session_state:
+if 'init_v31' not in st.session_state:
     st.session_state.update({'view_target': "충청호남팀 전체", 'hc_selector': "✨ 인원별 상세 실적 (선택 시 우선 적용)", 
                              'view_mode': "주간 추이 (최근 8주)", 't_amt': True, 't_sales': False, 't_next': False,
                              't_avg': False, 't_wd': False, 't_we': False, 't_walk': False, 't_move': False,
                              't_est': False, 't_cnt': False, 't_rate': False, 't_unit': False, 
-                             'wow_prev': None, 'wow_curr': None, 'init_v30': True})
+                             'wow_prev': None, 'wow_curr': None, 'init_v31': True})
 
 toggle_keys = ['t_amt', 't_sales', 't_next', 't_avg', 't_wd', 't_we', 't_walk', 't_move', 't_est', 't_cnt', 't_rate', 't_unit']
 EXCLUDED_HCS = ["장재형", "강지인", "신재민"]
@@ -231,6 +230,7 @@ def load_vdt_data():
             
         all_daily_data = safe_api_call(daily_ws.get_all_values)
         
+        # 🚀 1. 1차 스캔: 동적 월 마감 리스트 및 MTD 최신 기준일(max_date) 추출
         dynamic_months = set()
         max_date = None
         for row in all_daily_data:
@@ -251,10 +251,11 @@ def load_vdt_data():
         sorted_months = sorted(list(dynamic_months))
         month_labels = [f"{y%100}년 {m}월 마감" for y, m in sorted_months]
         
-        my, mm, md = max_date.year, max_date.month, max_date.day
+        # 🚀 변수명 분리 (md 변수 충돌 완전 해결!)
+        max_y, max_m, max_d = max_date.year, max_date.month, max_date.day
         prev1_dt = get_prev_month_date(max_date, 1)
         prev2_dt = get_prev_month_date(max_date, 2)
-        y3, m3 = my - 1, mm
+        y3, m3 = max_y - 1, max_m
         
         mtd_labels = ['당일기준 월누적', '전월 동일자 누적', '전전월 동일자 누적', '전년 동일자 누적']
         
@@ -316,10 +317,8 @@ def load_vdt_data():
                 hc_name = clean_str(raw_hc.split('(')[0]) 
                 hc_name = re.sub(r'\d+', '', hc_name) 
                 
-                # 🚀 강력한 더블카운팅 방지 (계민석 보호 완료)
-                skip_kw = ['합계', '소계', '총계', '목표', '사번', '비고', '대리점', 'INT', '한밭', '위탁']
+                skip_kw = ['합계', '소계', '총계', '목표', '사번', '비고', '계', '대리점', 'INT', '한밭', '위탁']
                 if not hc_name or any(x in hc_name for x in skip_kw) or hc_name == '계': continue
-                
                 dc = hc_name.replace("팀", "").replace("대리점", "").strip()
                 if dc in valid_dealers or dc in ["충청상권", "호남상권", "세종2"]: continue
                 
@@ -383,9 +382,10 @@ def load_vdt_data():
                     if is_we: trend_hc_m[hc_name][m_label]['amt_we'] += t_amt
                     else: trend_hc_m[hc_name][m_label]['amt_wd'] += t_amt
 
-                if curr_d <= md:
+                # 🚀 당일 기준 월누적 (MTD) 집계
+                if curr_d <= max_d:
                     target_lbl = None
-                    if curr_y == my and curr_m == mm: target_lbl = '당일기준 월누적'
+                    if curr_y == max_y and curr_m == max_m: target_lbl = '당일기준 월누적'
                     elif curr_y == prev1_dt.year and curr_m == prev1_dt.month: target_lbl = '전월 동일자 누적'
                     elif curr_y == prev2_dt.year and curr_m == prev2_dt.month: target_lbl = '전전월 동일자 누적'
                     elif curr_y == y3 and curr_m == m3: target_lbl = '전년 동일자 누적'
@@ -423,9 +423,9 @@ def load_vdt_data():
                 if tr_idx != -1: trend_hc_w[hc_name][tr_idx]['amt_move'] += dm
                 if m_label in trend_hc_m[hc_name]: trend_hc_m[hc_name][m_label]['amt_move'] += dm
                 
-                if curr_d <= md:
+                if curr_d <= max_d:
                     target_lbl = None
-                    if curr_y == my and curr_m == mm: target_lbl = '당일기준 월누적'
+                    if curr_y == max_y and curr_m == max_m: target_lbl = '당일기준 월누적'
                     elif curr_y == prev1_dt.year and curr_m == prev1_dt.month: target_lbl = '전월 동일자 누적'
                     elif curr_y == prev2_dt.year and curr_m == prev2_dt.month: target_lbl = '전전월 동일자 누적'
                     elif curr_y == y3 and curr_m == m3: target_lbl = '전년 동일자 누적'
@@ -505,12 +505,11 @@ def load_vdt_data():
                 for lbl in mtd_labels:
                     for k in keys_to_sum: trend_reg_mtd[reg][lbl][k] += dmtd[lbl][k]
 
-        ctw = date_to_target_week.get((curr_m if curr_m != -1 else current_date.month, curr_d if curr_d != -1 else current_date.day), week_keys[-1] if week_keys else '1주차')
+        ctw = date_to_target_week.get((current_date.month, current_date.day), week_keys[-1] if week_keys else '1주차')
         tp = {'W': {'hc': trend_hc_w, 'dlr': trend_dlr_w, 'tot': trend_tot_w, 'reg': trend_reg_w}, 'M': {'hc': trend_hc_m, 'dlr': trend_dlr_m, 'tot': trend_tot_m, 'reg': trend_reg_m}, 'MTD': {'hc': trend_hc_mtd, 'dlr': trend_dlr_mtd, 'tot': trend_tot_mtd, 'reg': trend_reg_mtd}}
         
         return df, date_headers, hc_to_dealer_master, rdm, rdw, week_keys, tp, ctw, month_labels, mtd_labels
 
-    # 🚀 에러 발생 시 숨기지 않고 빨간 화면으로 원인을 띄워줍니다!
     except Exception as e:
         st.error("🚨 앗! 데이터를 분석하는 중 에러가 발생했습니다. 아래 에러 내용을 복사해서 전달해주세요!")
         st.code(traceback.format_exc(), language="python")
@@ -609,7 +608,7 @@ if not df_raw.empty:
         thc = vt.replace("👤 ", "").split(" - ")[1]
         ct, data_key = f"{thc} 님", thc
 
-    # 🚀 1. 브리핑 보드 UI
+    # 🚀 1. 브리핑 보드 UI 개조 (당일기준 MTD 비교 모드 신설)
     st.markdown("#### 💡 **주/월 종합지표 비교**")
     all_normal_options = list(reversed(trend_labels)) + list(reversed(month_labels))
     curr_options = ['당일기준 월누적'] + all_normal_options
