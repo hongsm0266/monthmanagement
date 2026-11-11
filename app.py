@@ -17,12 +17,12 @@ import calendar
 st.set_page_config(page_title="충청호남팀 영업사원 주차별 VDT 목표 관리", layout="wide")
 SHEET_URL = "https://docs.google.com/spreadsheets/d/1yZdc4BL5CHLwBQ2QGp8zD5_ov7LDKsEcnrONdQvDyHI/edit?gid=1748736055#gid=1748736055"
 
-if 'init_v31' not in st.session_state:
+if 'init_v32' not in st.session_state:
     st.session_state.update({'view_target': "충청호남팀 전체", 'hc_selector': "✨ 인원별 상세 실적 (선택 시 우선 적용)", 
                              'view_mode': "주간 추이 (최근 8주)", 't_amt': True, 't_sales': False, 't_next': False,
                              't_avg': False, 't_wd': False, 't_we': False, 't_walk': False, 't_move': False,
                              't_est': False, 't_cnt': False, 't_rate': False, 't_unit': False, 
-                             'wow_prev': None, 'wow_curr': None, 'init_v31': True})
+                             'wow_prev': None, 'wow_curr': None, 'init_v32': True})
 
 toggle_keys = ['t_amt', 't_sales', 't_next', 't_avg', 't_wd', 't_we', 't_walk', 't_move', 't_est', 't_cnt', 't_rate', 't_unit']
 EXCLUDED_HCS = ["장재형", "강지인", "신재민"]
@@ -113,7 +113,8 @@ for i in range(7, -1, -1):
     w_end = w_start + timedelta(days=6)
     iso_week = w_start.isocalendar()[1]
     trend_ranges.append((w_start, w_end))
-    trend_labels.append(f"{iso_week}주 ({w_start.strftime('%m.%d')}~{w_end.strftime('%m.%d')})")
+    # 🚀 시각적 분리를 위한 주차 기호 추가
+    trend_labels.append(f"▪️ {iso_week}주 ({w_start.strftime('%m.%d')}~{w_end.strftime('%m.%d')})")
 
 def get_trend_week_idx(m, d, y=current_date.year):
     try:
@@ -230,7 +231,6 @@ def load_vdt_data():
             
         all_daily_data = safe_api_call(daily_ws.get_all_values)
         
-        # 🚀 1. 1차 스캔: 동적 월 마감 리스트 및 MTD 최신 기준일(max_date) 추출
         dynamic_months = set()
         max_date = None
         for row in all_daily_data:
@@ -249,15 +249,16 @@ def load_vdt_data():
         if not max_date: max_date = datetime(current_date.year, current_date.month, current_date.day)
         
         sorted_months = sorted(list(dynamic_months))
-        month_labels = [f"{y%100}년 {m}월 마감" for y, m in sorted_months]
+        # 🚀 시각적 분리를 위한 월 마감 기호 추가
+        month_labels = [f"📊 [월마감] {y%100}년 {m}월" for y, m in sorted_months]
         
-        # 🚀 변수명 분리 (md 변수 충돌 완전 해결!)
         max_y, max_m, max_d = max_date.year, max_date.month, max_date.day
         prev1_dt = get_prev_month_date(max_date, 1)
         prev2_dt = get_prev_month_date(max_date, 2)
         y3, m3 = max_y - 1, max_m
         
-        mtd_labels = ['당일기준 월누적', '전월 동일자 누적', '전전월 동일자 누적', '전년 동일자 누적']
+        # 🚀 시각적 분리를 위한 MTD 기호 추가
+        mtd_labels = ['🌟 [당일기준] 당월 누적', '🌟 [당일기준] 전월 누적', '🌟 [당일기준] 전전월 누적', '🌟 [당일기준] 전년 누적']
         
         def new_d(): return {'amt':0, 'est':0, 'cnt':0, 'amt_wd':0, 'amt_we':0, 'sales':0, 'next_sales':0, 'amt_move':0}
         
@@ -286,7 +287,6 @@ def load_vdt_data():
         wk_info, tr_idx, is_we = None, -1, False
         m_label = ""
 
-        # 🚀 2. 데이터 통합 집계 스캔
         for r_idx, row in enumerate(all_daily_data):
             row_header = clean_str("".join([safe_get(row, i) for i in range(min(5, len(row)))]))
             
@@ -298,7 +298,7 @@ def load_vdt_data():
                     curr_m, curr_d = int(ms), int(ds)
                     wk_info = date_to_target_week.get((curr_m, curr_d))
                     tr_idx = get_trend_week_idx(curr_m, curr_d, curr_y)
-                    m_label = f"{curr_y%100}년 {curr_m}월 마감"
+                    m_label = f"📊 [월마감] {curr_y%100}년 {curr_m}월"
                     try: is_we = datetime(curr_y, curr_m, curr_d).weekday() >= 5
                     except: is_we = False
                     
@@ -382,13 +382,12 @@ def load_vdt_data():
                     if is_we: trend_hc_m[hc_name][m_label]['amt_we'] += t_amt
                     else: trend_hc_m[hc_name][m_label]['amt_wd'] += t_amt
 
-                # 🚀 당일 기준 월누적 (MTD) 집계
                 if curr_d <= max_d:
                     target_lbl = None
-                    if curr_y == max_y and curr_m == max_m: target_lbl = '당일기준 월누적'
-                    elif curr_y == prev1_dt.year and curr_m == prev1_dt.month: target_lbl = '전월 동일자 누적'
-                    elif curr_y == prev2_dt.year and curr_m == prev2_dt.month: target_lbl = '전전월 동일자 누적'
-                    elif curr_y == y3 and curr_m == m3: target_lbl = '전년 동일자 누적'
+                    if curr_y == max_y and curr_m == max_m: target_lbl = '🌟 [당일기준] 당월 누적'
+                    elif curr_y == prev1_dt.year and curr_m == prev1_dt.month: target_lbl = '🌟 [당일기준] 전월 누적'
+                    elif curr_y == prev2_dt.year and curr_m == prev2_dt.month: target_lbl = '🌟 [당일기준] 전전월 누적'
+                    elif curr_y == y3 and curr_m == m3: target_lbl = '🌟 [당일기준] 전년 누적'
                     
                     if target_lbl:
                         trend_hc_mtd[hc_name][target_lbl]['est'] += t_est
@@ -425,10 +424,10 @@ def load_vdt_data():
                 
                 if curr_d <= max_d:
                     target_lbl = None
-                    if curr_y == max_y and curr_m == max_m: target_lbl = '당일기준 월누적'
-                    elif curr_y == prev1_dt.year and curr_m == prev1_dt.month: target_lbl = '전월 동일자 누적'
-                    elif curr_y == prev2_dt.year and curr_m == prev2_dt.month: target_lbl = '전전월 동일자 누적'
-                    elif curr_y == y3 and curr_m == m3: target_lbl = '전년 동일자 누적'
+                    if curr_y == max_y and curr_m == max_m: target_lbl = '🌟 [당일기준] 당월 누적'
+                    elif curr_y == prev1_dt.year and curr_m == prev1_dt.month: target_lbl = '🌟 [당일기준] 전월 누적'
+                    elif curr_y == prev2_dt.year and curr_m == prev2_dt.month: target_lbl = '🌟 [당일기준] 전전월 누적'
+                    elif curr_y == y3 and curr_m == m3: target_lbl = '🌟 [당일기준] 전년 누적'
                     if target_lbl: trend_hc_mtd[hc_name][target_lbl]['amt_move'] += dm
 
         # 롤업(Roll-up)
@@ -608,12 +607,15 @@ if not df_raw.empty:
         thc = vt.replace("👤 ", "").split(" - ")[1]
         ct, data_key = f"{thc} 님", thc
 
-    # 🚀 1. 브리핑 보드 UI 개조 (당일기준 MTD 비교 모드 신설)
+    # 🚀 1. 브리핑 보드 UI 개조 
     st.markdown("#### 💡 **주/월 종합지표 비교**")
     all_normal_options = list(reversed(trend_labels)) + list(reversed(month_labels))
-    curr_options = ['당일기준 월누적'] + all_normal_options
+    curr_options = ['🌟 [당일기준] 당월 누적'] + all_normal_options
     
-    if 'wow_curr' not in st.session_state: st.session_state['wow_curr'] = all_normal_options[0]
+    # 🚀 디폴트 선택값을 '최근 1주일 전(직전 주차)'로 자동 설정!
+    if 'wow_curr' not in st.session_state: 
+        default_idx = 1 if len(all_normal_options) > 1 else 0
+        st.session_state['wow_curr'] = all_normal_options[default_idx]
         
     c1, c2, c3 = st.columns([2.5, 4.5, 4.5])
     with c1: 
@@ -623,8 +625,8 @@ if not df_raw.empty:
         sel_curr = st.selectbox("조회 기준", options=curr_options, index=curr_options.index(st.session_state.get('wow_curr', all_normal_options[0])) if st.session_state.get('wow_curr') in curr_options else 0, label_visibility="collapsed")
         st.session_state['wow_curr'] = sel_curr
 
-    if sel_curr == '당일기준 월누적':
-        prev_options = ['전월 동일자 누적', '전전월 동일자 누적', '전년 동일자 누적']
+    if sel_curr == '🌟 [당일기준] 당월 누적':
+        prev_options = ['🌟 [당일기준] 전월 누적', '🌟 [당일기준] 전전월 누적', '🌟 [당일기준] 전년 누적']
     else:
         prev_options = all_normal_options
 
@@ -809,65 +811,161 @@ if not df_raw.empty:
     else: st.info("👆 위 세부 지표 버튼을 클릭하시면 실시간 꺾은선 그래프가 나타납니다.")
     st.markdown("---")
 
-    # 🚀 4. 하단 전체 상세 표 출력
+    # 🚀 4. 하단 전체 상세 표 출력 (UI 대개조: 스페셜 요약 카드 & 다중 탭)
     tdr = date_headers.get(CURRENT_TABLE_WEEK, "")
+    
+    # 4-1. 👤 특정 인원 선택 시 '스페셜 요약 카드' 팝업 출력
+    if "님" in ct:
+        r_data = final_df[final_df[('기본정보', 'HC명', 'HC명')] == data_key]
+        if not r_data.empty:
+            t_amt = r_data[('🌟 당월 합계', '계약액(천)', '목표')].values[0]
+            a_amt = r_data[('🌟 당월 합계', '계약액(천)', 'ACT')].values[0]
+            pct_amt = r_data[('🌟 당월 합계', '계약액(천)', '달성율(%)')].values[0]
+            
+            st.markdown(f"""
+            <div style='display:flex; gap:15px; margin-bottom:20px;'>
+                <div style='flex:1; background:white; padding:15px; border-radius:10px; border:2px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);'>
+                    <div style='font-size:13px; color:#64748b; font-weight:bold;'>🎯 당월 계약 목표 (천원)</div>
+                    <div style='font-size:22px; font-weight:900; color:#0f172a;'>{t_amt:,.0f}</div>
+                </div>
+                <div style='flex:1; background:white; padding:15px; border-radius:10px; border:2px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);'>
+                    <div style='font-size:13px; color:#64748b; font-weight:bold;'>🏆 현재 계약액 (천원)</div>
+                    <div style='font-size:22px; font-weight:900; color:#1d4ed8;'>{a_amt:,.0f}</div>
+                </div>
+                <div style='flex:1; background:white; padding:15px; border-radius:10px; border:2px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);'>
+                    <div style='font-size:13px; color:#64748b; font-weight:bold;'>🔥 목표 달성율</div>
+                    <div style='font-size:22px; font-weight:900; color:{'#047857' if pct_amt>=100 else ('#ef4444' if pct_amt<50 else '#ea580c')};'>{pct_amt:,.0f}%</div>
+                    <div style='width:100%; background-color:#e2e8f0; height:6px; border-radius:3px; margin-top:5px;'>
+                        <div style='width:{min(pct_amt, 100)}%; background-color:{'#10b981' if pct_amt>=100 else ('#ef4444' if pct_amt<50 else '#f97316')}; height:100%; border-radius:3px;'></div>
+                    </div>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+
     st.markdown(f"<div style='background-color: #f8fafc; padding: 15px; border-left: 5px solid #3b82f6; border-radius: 5px; margin-bottom: 20px;'><h4 style='margin:0; color: #1e3a8a;'>📌 {current_month}월 {CURRENT_TABLE_WEEK} {tdr} 전체 VDT 현황 표</h4></div>", unsafe_allow_html=True)
     
     uds = [d for d in final_df[('기본정보', '대리점', '대리점')].unique() if d not in ["🌟 총계", "충청상권", "호남상권"]]
     dcs = {d: ['#f8fafc', '#ffffff'][i%2] for i, d in enumerate(uds)}
     cws, cls = [80,90,70,70,70,70,70,70,55,55,55,55,55,55], [0,80,170,240,310,380,450,520,590,645,700,755,810,865]
     
-    hl = ["<div class='vdt-table-container'><table class='vdt-table'><thead><tr>"]
-    hl.append(f"<th rowspan='3' style='position:sticky; top:0; left:0; z-index:20; background-color:#0f172a; min-width:{cws[0]}px; max-width:{cws[0]}px; border-right:1px solid #cbd5e1;'>대리점</th>")
-    hl.append(f"<th rowspan='3' style='position:sticky; top:0; left:{cls[1]}px; z-index:20; background-color:#0f172a; min-width:{cws[1]}px; max-width:{cws[1]}px; border-right:2px solid #94a3b8;'>HC명</th>")
-    
-    h1_list = []
-    for c in final_df.columns[2:]:
-        if c[0] not in h1_list: h1_list.append(c[0])
-            
-    for h1 in h1_list:
-        ic, im = CURRENT_TABLE_WEEK in h1, "당월" in h1
-        sp = "position:sticky; top:0; " + ("background-color:#1e3a8a; border:3px solid #60a5fa;" if ic else ("background-color:#064e3b; color:#a7f3d0; border-top:2px solid #047857;" if im else "background-color:#0f172a;"))
-        if h1 == '🎯 당월매출': hl.append(f"<th colspan='3' style='{sp} left:{cls[2]}px; z-index:15; border-right:3px solid #1e293b;'>{h1}</th>")
-        elif "🌟 당월 합계" in h1: hl.append(f"<th colspan='9' style='{sp} left:{cls[5]}px; z-index:15; border-right:4px solid #94a3b8;'>{h1}</th>")
-        else: hl.append(f"<th colspan='9' style='{sp} z-index:10;'>{h1}</th>")
-    hl.append("</tr><tr>")
-    
-    for h1 in h1_list:
-        ic, im = CURRENT_TABLE_WEEK in h1, "당월" in h1
-        sp = "position:sticky; top:33px; " + ("background-color:#1e40af; border-left:3px solid #60a5fa; border-right:3px solid #60a5fa;" if ic else ("background-color:#065f46; color:#a7f3d0;" if im else "background-color:#0f172a;"))
-        if h1 == '🎯 당월매출': hl.append(f"<th colspan='3' style='{sp} left:{cls[2]}px; z-index:15; border-right:3px solid #1e293b;'>인별매출(천)</th>")
-        elif "🌟 당월 합계" in h1: hl.append(f"<th colspan='3' style='{sp} left:{cls[5]}px; z-index:15;'>계약액(천)</th><th colspan='3' style='{sp} left:{cls[8]}px; z-index:15;'>견적건</th><th colspan='3' style='{sp} left:{cls[11]}px; z-index:15; border-right:4px solid #94a3b8;'>계약건</th>")
-        else: hl.append(f"<th colspan='3' style='{sp} z-index:10;'>계약액(천)</th><th colspan='3' style='{sp} z-index:10;'>견적건</th><th colspan='3' style='{sp} z-index:10;'>계약건</th>")
-    hl.append("</tr><tr>")
-    
-    for i, c in enumerate(final_df.columns[2:]):
-        ai = i + 2
-        ic, im = CURRENT_TABLE_WEEK in c[0], "당월" in c[0]
-        sp = "position:sticky; top:66px; " + ("background-color:#1d4ed8; border-bottom:3px solid #60a5fa;" + ("border-left:3px solid #60a5fa;" if c[1]=='계약액(천)' and c[2]=='목표' else "") + ("border-right:3px solid #60a5fa;" if c[1]=='계약건' and c[2]=='달성율(%)' else "") if ic else ("background-color:#047857; color:#a7f3d0;" if im else "background-color:#0f172a;"))
-        sp += f" left:{cls[ai]}px; z-index:15; min-width:{cws[ai]}px; max-width:{cws[ai]}px;" if ai<=13 else " z-index:10; min-width:60px;"
-        if c[0]=='🎯 당월매출' and c[2]=='달성율(%)': sp += " border-right:3px solid #1e293b;"
-        if "🌟 당월 합계" in c[0] and c[1]=='계약건' and c[2]=='달성율(%)': sp += " border-right:4px solid #94a3b8;"
-        hl.append(f"<th style='{sp}'>{c[2]}</th>")
-    hl.append("</tr></thead><tbody>")
-    
-    for _, r in final_df.iterrows():
-        d, hc = r[('기본정보', '대리점', '대리점')], r[('기본정보', 'HC명', 'HC명')]
-        bg, rb = ("#e2e8f0", "style='background-color:#e2e8f0; font-weight:bold;'") if hc in ["합계","상권합계"] else (("#cbd5e1", "style='background-color:#cbd5e1; font-weight:bold;'") if "🌟" in str(hc) else (dcs.get(d, '#ffffff'), f"style='background-color:{dcs.get(d, '#ffffff')};'"))
-        hl.append(f"<tr {rb}><td class='text-center' style='position:sticky; left:0; z-index:6; background-color:{bg}; min-width:{cws[0]}px; max-width:{cws[0]}px; border-right:1px solid #cbd5e1;'>{d}</td>")
-        hl.append(f"<td class='text-center' style='position:sticky; left:{cls[1]}px; z-index:6; background-color:{bg}; min-width:{cws[1]}px; max-width:{cws[1]}px; border-right:2px solid #94a3b8;'>{hc}</td>")
+    # 4-2. 탭 UI 분리 (핵심 요약 뷰 / 상세 뷰)
+    tab1, tab2 = st.tabs(["📊 핵심 요약 뷰 (달성률 하이라이트)", "📆 주차별 상세 뷰 (전체 내역)"])
+
+    # --- 탭 1: 핵심 요약 뷰 (달성률 게이지 바 적용) ---
+    with tab1:
+        hl_sum = ["<div class='vdt-table-container'><table class='vdt-table'><thead><tr>"]
+        hl_sum.append(f"<th rowspan='3' style='position:sticky; top:0; left:0; z-index:20; background-color:#0f172a; min-width:{cws[0]}px; max-width:{cws[0]}px; border-right:1px solid #cbd5e1;'>대리점</th>")
+        hl_sum.append(f"<th rowspan='3' style='position:sticky; top:0; left:{cls[1]}px; z-index:20; background-color:#0f172a; min-width:{cws[1]}px; max-width:{cws[1]}px; border-right:2px solid #94a3b8;'>HC명</th>")
         
-        for i, v in enumerate(r[2:]):
-            ai, c = i + 2, final_df.columns[i + 2]
-            ic, im = CURRENT_TABLE_WEEK in c[0], "당월" in c[0]
-            sp = "background-color:rgba(37,99,235,0.12);" + ("border-left:3px solid #3b82f6;" if c[1]=='계약액(천)' and c[2]=='목표' else "") + ("border-right:3px solid #3b82f6;" if c[1]=='계약건' and c[2]=='달성율(%)' else "") if ic else ("background-color:" + ({'#f8fafc':'#e4f1ef', '#e2e8f0':'#d1dbda', '#cbd5e1':'#bcc7c7'}.get(bg, '#ebf6f2') if ai<=13 else "rgba(5,150,105,0.08)") + ";" if im else f"background-color:{bg};")
-            sp += f" position:sticky; left:{cls[ai]}px; z-index:5; min-width:{cws[ai]}px; max-width:{cws[ai]}px;" if ai<=13 else ""
+        h1_list_sum = []
+        for c in final_df.columns[2:14]:
+            if c[0] not in h1_list_sum: h1_list_sum.append(c[0])
+                
+        for h1 in h1_list_sum:
+            sp = "position:sticky; top:0; background-color:#064e3b; color:#a7f3d0; border-top:2px solid #047857;"
+            if h1 == '🎯 당월매출': hl_sum.append(f"<th colspan='3' style='{sp} left:{cls[2]}px; z-index:15; border-right:3px solid #1e293b;'>{h1}</th>")
+            elif "🌟 당월 합계" in h1: hl_sum.append(f"<th colspan='9' style='{sp} left:{cls[5]}px; z-index:15; border-right:4px solid #94a3b8;'>{h1}</th>")
+        hl_sum.append("</tr><tr>")
+        
+        for h1 in h1_list_sum:
+            sp = "position:sticky; top:33px; background-color:#065f46; color:#a7f3d0;"
+            if h1 == '🎯 당월매출': hl_sum.append(f"<th colspan='3' style='{sp} left:{cls[2]}px; z-index:15; border-right:3px solid #1e293b;'>인별매출(천)</th>")
+            elif "🌟 당월 합계" in h1: hl_sum.append(f"<th colspan='3' style='{sp} left:{cls[5]}px; z-index:15;'>계약액(천)</th><th colspan='3' style='{sp} left:{cls[8]}px; z-index:15;'>견적건</th><th colspan='3' style='{sp} left:{cls[11]}px; z-index:15; border-right:4px solid #94a3b8;'>계약건</th>")
+        hl_sum.append("</tr><tr>")
+        
+        for i, c in enumerate(final_df.columns[2:14]):
+            ai = i + 2
+            sp = f"position:sticky; top:66px; background-color:#047857; color:#a7f3d0; left:{cls[ai]}px; z-index:15; min-width:{cws[ai]}px; max-width:{cws[ai]}px;"
             if c[0]=='🎯 당월매출' and c[2]=='달성율(%)': sp += " border-right:3px solid #1e293b;"
             if "🌟 당월 합계" in c[0] and c[1]=='계약건' and c[2]=='달성율(%)': sp += " border-right:4px solid #94a3b8;"
+            hl_sum.append(f"<th style='{sp}'>{c[2]}</th>")
+        hl_sum.append("</tr></thead><tbody>")
+        
+        for _, r in final_df.iterrows():
+            d, hc = r[('기본정보', '대리점', '대리점')], r[('기본정보', 'HC명', 'HC명')]
+            bg, rb = ("#e2e8f0", "style='background-color:#e2e8f0; font-weight:bold;'") if hc in ["합계","상권합계"] else (("#cbd5e1", "style='background-color:#cbd5e1; font-weight:bold;'") if "🌟" in str(hc) else (dcs.get(d, '#ffffff'), f"style='background-color:{dcs.get(d, '#ffffff')};'"))
+            hl_sum.append(f"<tr {rb}><td class='text-center' style='position:sticky; left:0; z-index:6; background-color:{bg}; min-width:{cws[0]}px; max-width:{cws[0]}px; border-right:1px solid #cbd5e1;'>{d}</td>")
+            hl_sum.append(f"<td class='text-center' style='position:sticky; left:{cls[1]}px; z-index:6; background-color:{bg}; min-width:{cws[1]}px; max-width:{cws[1]}px; border-right:2px solid #94a3b8;'>{hc}</td>")
             
-            vs = f"<span style='color:{'#047857' if im else '#1d4ed8'}; font-weight:900;'>{v:.0f}%</span>" if c[2]=='달성율(%)' and v>=100 else (f"<span style='font-weight:600;'>{v:.0f}%</span>" if c[2]=='달성율(%)' and v>0 else (f"{v:.0f}%" if c[2]=='달성율(%)' else f"{v:,.0f}"))
-            hl.append(f"<td style='{sp}'>{vs}</td>")
-        hl.append("</tr>")
-    hl.append("</tbody></table></div>")
-    
-    st.markdown("".join(hl), unsafe_allow_html=True)
+            for i, v in enumerate(r[2:14]):
+                ai, c = i + 2, final_df.columns[i + 2]
+                
+                # 🚀 달성율(%) 데이터 게이지 바 디자인 적용
+                if c[2] == '달성율(%)' and hc not in ["합계","상권합계"] and "🌟" not in str(hc):
+                    pct = min(max(v, 0), 100)
+                    if v >= 100: bar_col = "rgba(16, 185, 129, 0.4)" # 초록
+                    elif v < 50: bar_col = "rgba(239, 68, 68, 0.4)" # 빨강
+                    else: bar_col = "rgba(59, 130, 246, 0.2)" # 파랑
+                    sp = f"background: linear-gradient(90deg, {bar_col} {pct}%, {bg} {pct}%);"
+                else:
+                    sp = f"background-color:{bg};"
+                    
+                sp += f" position:sticky; left:{cls[ai]}px; z-index:5; min-width:{cws[ai]}px; max-width:{cws[ai]}px;"
+                if c[0]=='🎯 당월매출' and c[2]=='달성율(%)': sp += " border-right:3px solid #1e293b;"
+                if "🌟 당월 합계" in c[0] and c[1]=='계약건' and c[2]=='달성율(%)': sp += " border-right:4px solid #94a3b8;"
+                
+                if c[2] == '달성율(%)':
+                    t_c = '#047857' if v>=100 else ('#b91c1c' if v<50 and v>0 else '#1d4ed8')
+                    vs = f"<span style='color:{t_c}; font-weight:900;'>{v:.0f}%</span>" if v>0 else "0%"
+                else:
+                    vs = f"{v:,.0f}"
+                hl_sum.append(f"<td style='{sp}'>{vs}</td>")
+            hl_sum.append("</tr>")
+        hl_sum.append("</tbody></table></div>")
+        st.markdown("".join(hl_sum), unsafe_allow_html=True)
+
+    # --- 탭 2: 기존 주차별 상세 뷰 ---
+    with tab2:
+        hl = ["<div class='vdt-table-container'><table class='vdt-table'><thead><tr>"]
+        hl.append(f"<th rowspan='3' style='position:sticky; top:0; left:0; z-index:20; background-color:#0f172a; min-width:{cws[0]}px; max-width:{cws[0]}px; border-right:1px solid #cbd5e1;'>대리점</th>")
+        hl.append(f"<th rowspan='3' style='position:sticky; top:0; left:{cls[1]}px; z-index:20; background-color:#0f172a; min-width:{cws[1]}px; max-width:{cws[1]}px; border-right:2px solid #94a3b8;'>HC명</th>")
+        
+        h1_list = []
+        for c in final_df.columns[2:]:
+            if c[0] not in h1_list: h1_list.append(c[0])
+                
+        for h1 in h1_list:
+            ic, im = CURRENT_TABLE_WEEK in h1, "당월" in h1
+            sp = "position:sticky; top:0; " + ("background-color:#1e3a8a; border:3px solid #60a5fa;" if ic else ("background-color:#064e3b; color:#a7f3d0; border-top:2px solid #047857;" if im else "background-color:#0f172a;"))
+            if h1 == '🎯 당월매출': hl.append(f"<th colspan='3' style='{sp} left:{cls[2]}px; z-index:15; border-right:3px solid #1e293b;'>{h1}</th>")
+            elif "🌟 당월 합계" in h1: hl.append(f"<th colspan='9' style='{sp} left:{cls[5]}px; z-index:15; border-right:4px solid #94a3b8;'>{h1}</th>")
+            else: hl.append(f"<th colspan='9' style='{sp} z-index:10;'>{h1}</th>")
+        hl.append("</tr><tr>")
+        
+        for h1 in h1_list:
+            ic, im = CURRENT_TABLE_WEEK in h1, "당월" in h1
+            sp = "position:sticky; top:33px; " + ("background-color:#1e40af; border-left:3px solid #60a5fa; border-right:3px solid #60a5fa;" if ic else ("background-color:#065f46; color:#a7f3d0;" if im else "background-color:#0f172a;"))
+            if h1 == '🎯 당월매출': hl.append(f"<th colspan='3' style='{sp} left:{cls[2]}px; z-index:15; border-right:3px solid #1e293b;'>인별매출(천)</th>")
+            elif "🌟 당월 합계" in h1: hl.append(f"<th colspan='3' style='{sp} left:{cls[5]}px; z-index:15;'>계약액(천)</th><th colspan='3' style='{sp} left:{cls[8]}px; z-index:15;'>견적건</th><th colspan='3' style='{sp} left:{cls[11]}px; z-index:15; border-right:4px solid #94a3b8;'>계약건</th>")
+            else: hl.append(f"<th colspan='3' style='{sp} z-index:10;'>계약액(천)</th><th colspan='3' style='{sp} z-index:10;'>견적건</th><th colspan='3' style='{sp} z-index:10;'>계약건</th>")
+        hl.append("</tr><tr>")
+        
+        for i, c in enumerate(final_df.columns[2:]):
+            ai = i + 2
+            ic, im = CURRENT_TABLE_WEEK in c[0], "당월" in c[0]
+            sp = "position:sticky; top:66px; " + ("background-color:#1d4ed8; border-bottom:3px solid #60a5fa;" + ("border-left:3px solid #60a5fa;" if c[1]=='계약액(천)' and c[2]=='목표' else "") + ("border-right:3px solid #60a5fa;" if c[1]=='계약건' and c[2]=='달성율(%)' else "") if ic else ("background-color:#047857; color:#a7f3d0;" if im else "background-color:#0f172a;"))
+            sp += f" left:{cls[ai]}px; z-index:15; min-width:{cws[ai]}px; max-width:{cws[ai]}px;" if ai<=13 else " z-index:10; min-width:60px;"
+            if c[0]=='🎯 당월매출' and c[2]=='달성율(%)': sp += " border-right:3px solid #1e293b;"
+            if "🌟 당월 합계" in c[0] and c[1]=='계약건' and c[2]=='달성율(%)': sp += " border-right:4px solid #94a3b8;"
+            hl.append(f"<th style='{sp}'>{c[2]}</th>")
+        hl.append("</tr></thead><tbody>")
+        
+        for _, r in final_df.iterrows():
+            d, hc = r[('기본정보', '대리점', '대리점')], r[('기본정보', 'HC명', 'HC명')]
+            bg, rb = ("#e2e8f0", "style='background-color:#e2e8f0; font-weight:bold;'") if hc in ["합계","상권합계"] else (("#cbd5e1", "style='background-color:#cbd5e1; font-weight:bold;'") if "🌟" in str(hc) else (dcs.get(d, '#ffffff'), f"style='background-color:{dcs.get(d, '#ffffff')};'"))
+            hl.append(f"<tr {rb}><td class='text-center' style='position:sticky; left:0; z-index:6; background-color:{bg}; min-width:{cws[0]}px; max-width:{cws[0]}px; border-right:1px solid #cbd5e1;'>{d}</td>")
+            hl.append(f"<td class='text-center' style='position:sticky; left:{cls[1]}px; z-index:6; background-color:{bg}; min-width:{cws[1]}px; max-width:{cws[1]}px; border-right:2px solid #94a3b8;'>{hc}</td>")
+            
+            for i, v in enumerate(r[2:]):
+                ai, c = i + 2, final_df.columns[i + 2]
+                ic, im = CURRENT_TABLE_WEEK in c[0], "당월" in c[0]
+                sp = "background-color:rgba(37,99,235,0.12);" + ("border-left:3px solid #3b82f6;" if c[1]=='계약액(천)' and c[2]=='목표' else "") + ("border-right:3px solid #3b82f6;" if c[1]=='계약건' and c[2]=='달성율(%)' else "") if ic else ("background-color:" + ({'#f8fafc':'#e4f1ef', '#e2e8f0':'#d1dbda', '#cbd5e1':'#bcc7c7'}.get(bg, '#ebf6f2') if ai<=13 else "rgba(5,150,105,0.08)") + ";" if im else f"background-color:{bg};")
+                sp += f" position:sticky; left:{cls[ai]}px; z-index:5; min-width:{cws[ai]}px; max-width:{cws[ai]}px;" if ai<=13 else ""
+                if c[0]=='🎯 당월매출' and c[2]=='달성율(%)': sp += " border-right:3px solid #1e293b;"
+                if "🌟 당월 합계" in c[0] and c[1]=='계약건' and c[2]=='달성율(%)': sp += " border-right:4px solid #94a3b8;"
+                
+                vs = f"<span style='color:{'#047857' if im else '#1d4ed8'}; font-weight:900;'>{v:.0f}%</span>" if c[2]=='달성율(%)' and v>=100 else (f"<span style='font-weight:600;'>{v:.0f}%</span>" if c[2]=='달성율(%)' and v>0 else (f"{v:.0f}%" if c[2]=='달성율(%)' else f"{v:,.0f}"))
+                hl.append(f"<td style='{sp}'>{vs}</td>")
+            hl.append("</tr>")
+        hl.append("</tbody></table></div>")
+        st.markdown("".join(hl), unsafe_allow_html=True)
