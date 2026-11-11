@@ -783,7 +783,7 @@ if all_daily_data:
         with c_o[6]: st.button("충주" if vt != "충주 대리점" else "✅ 충주", type=btn_type("충주 대리점"), on_click=set_view, args=("충주 대리점",), use_container_width=True)
         with c_o[7]: st.markdown("<div style='text-align:center; padding-top:5px; color:#cbd5e1; font-weight:bold; font-size:16px;'>|</div>", unsafe_allow_html=True)
         with c_o[8]: st.button("I 호남통합" if vt != "호남팀 통합" else "✅ 호남통합", type=btn_type("호남팀 통합"), on_click=set_view, args=("호남팀 통합",), use_container_width=True)
-        with c_o[9]: st.button("광양" if vt != "광양 대리점" else "광양", type=btn_type("광양 대리점"), on_click=set_view, args=("광양 대리점",), use_container_width=True)
+        with c_o[9]: st.button("광양" if vt != "광양 대리점" else "✅ 광양", type=btn_type("광양 대리점"), on_click=set_view, args=("광양 대리점",), use_container_width=True)
         with c_o[10]: st.button("익산" if vt != "익산 대리점" else "✅ 익산", type=btn_type("익산 대리점"), on_click=set_view, args=("익산 대리점",), use_container_width=True)
         with c_o[11]: st.button("여수" if vt != "여수 대리점" else "✅ 여수", type=btn_type("여수 대리점"), on_click=set_view, args=("여수 대리점",), use_container_width=True)
         with c_o[12]:
@@ -947,12 +947,13 @@ if all_daily_data:
                 a_amt = r_data[('🌟 당월 합계', '계약액(천)', 'ACT')].values[0]
                 pct_amt = r_data[('🌟 당월 합계', '계약액(천)', '달성율(%)')].values[0]
                 
-                # 🚀 SyntaxError 방지: 핸드폰 에디터 줄바꿈에도 끄떡없는 리스트 조인 방식 채택
-                text_color = '#047857' if pct_amt >= 100 else ('#ef4444' if pct_amt < 50 else '#ea580c')
-                bar_color = '#10b981' if pct_amt >= 100 else ('#ef4444' if pct_amt < 50 else '#f97316')
+                # 🚀 핸드폰 자동 줄바꿈 테러 방어 (초미세 문자열 조각화 기법)
+                t_c = '#047857' if pct_amt >= 100 else ('#ef4444' if pct_amt < 50 else '#ea580c')
+                b_c = '#10b981' if pct_amt >= 100 else ('#ef4444' if pct_amt < 50 else '#f97316')
+                b_w = min(pct_amt, 100)
                 
-                html_card = "".join([
-                    "<div style='display:flex; gap:15px; margin-bottom:20px;'>",
-                    "<div style='flex:1; background:white; padding:15px; border-radius:10px; border:2px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);'>",
-                    "<div style='font-size:13px; color:#64748b; font-weight:bold;'>🎯 당월 계약액 목표 (천원)</div>",
-                    f"<div style=
+                c1 = "display:flex;gap:15px;margin-bottom:20px;"
+                c2 = "flex:1;background:white;padding:15px;border-radius:10px;border:2px solid #e2e8f0;box-shadow:0 4px 6px -1px rgba(0,0,0,0.05);"
+                c3 = "font-size:13px;color:#64748b;font-weight:bold;"
+                c4 = "font-size:22px;font-weight:900;color:#0f172a;"
+                c5 = "font-size:22px;font-weight:900;color:#1d
