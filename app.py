@@ -989,6 +989,7 @@ if not df_raw.empty:
         
         hl = ["<div class='vdt-table-container'><table class='vdt-table'><thead><tr>"]
         
+        # 🚀 에러 방지용 방어막 설치 (ai 인덱스 초과 시 기본 너비 설정)
         w_css = f"min-width:{cws[0]}px; max-width:{cws[0]}px;"
         hl.append(f"<th rowspan='3' style='position:sticky; top:0; left:0; z-index:20; background-color:#0f172a; border-right:1px solid #cbd5e1; {w_css}'>대리점</th>")
         w_css = f"min-width:{cws[1]}px; max-width:{cws[1]}px;"
@@ -1025,11 +1026,12 @@ if not df_raw.empty:
             ic, im = CURRENT_TABLE_WEEK in c[0], "당월" in c[0]
             sp = "position:sticky; top:66px; " + ("background-color:#1d4ed8; border-bottom:3px solid #60a5fa;" + ("border-left:3px solid #60a5fa;" if c[1]=='계약액(천)' and c[2]=='목표' else "") + ("border-right:3px solid #60a5fa;" if c[1]=='계약건' and c[2]=='달성율(%)' else "") if ic else ("background-color:#047857; color:#a7f3d0;" if im else "background-color:#0f172a;"))
             
-            w_css = f"min-width:{cws[ai]}px; max-width:{cws[ai]}px;"
+            # 🚀 안전 방어막 14번째 칸부터는 50px로 자동 고정!
             if ai <= 13:
+                w_css = f"min-width:{cws[ai]}px; max-width:{cws[ai]}px;"
                 sp += f" left:{cls[ai]}px; z-index:15; {w_css}"
             else:
-                sp += " z-index:10; min-width:50px;"
+                sp += " z-index:10; min-width:50px; max-width:50px;"
                 
             if c[0]=='🎯 당월매출' and c[2]=='달성율(%)': sp += " border-right:3px solid #1e293b;"
             if "🌟 당월 합계" in c[0] and c[1]=='계약건' and c[2]=='달성율(%)': sp += " border-right:4px solid #94a3b8;"
@@ -1053,7 +1055,7 @@ if not df_raw.empty:
                 ic, im = CURRENT_TABLE_WEEK in c[0], "당월" in c[0]
                 sp = ("border-left:3px solid #3b82f6;" if c[1]=='계약액(천)' and c[2]=='목표' else "") + ("border-right:3px solid #3b82f6;" if c[1]=='계약건' and c[2]=='달성율(%)' else "") if ic else ""
                 
-                # 🚀 스마트 조건부 서식 적용 
+                # 스마트 조건부 서식 적용 (특정 주차 전용 게이지 바)
                 if wk_filter != "전체 보기" and c[2] == '달성율(%)' and c[0] not in ['🎯 당월매출', '🌟 당월 합계']:
                     pct = min(max(v, 0), 100)
                     act_val = r.iloc[ai - 1] 
@@ -1080,9 +1082,12 @@ if not df_raw.empty:
                     else:
                         vs = f"{v:,.0f}"
 
+                # 🚀 안전 방어막 적용
                 if ai <= 13:
                     w_css = f"min-width:{cws[ai]}px; max-width:{cws[ai]}px;"
                     sp += f" position:sticky; left:{cls[ai]}px; z-index:5; {w_css}" 
+                else:
+                    sp += " min-width:50px; max-width:50px;"
                     
                 if c[0]=='🎯 당월매출' and c[2]=='달성율(%)': sp += " border-right:3px solid #1e293b;"
                 if "🌟 당월 합계" in c[0] and c[1]=='계약건' and c[2]=='달성율(%)': sp += " border-right:4px solid #94a3b8;"
