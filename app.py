@@ -17,15 +17,17 @@ import calendar
 st.set_page_config(page_title="충청호남팀 영업사원 주차별 VDT 목표 관리", layout="wide")
 SHEET_URL = "https://docs.google.com/spreadsheets/d/1yZdc4BL5CHLwBQ2QGp8zD5_ov7LDKsEcnrONdQvDyHI/edit?gid=1748736055#gid=1748736055"
 
-if 'init_v35' not in st.session_state:
+if 'init_v37' not in st.session_state:
     st.session_state.update({'view_target': "충청호남팀 전체", 'hc_selector': "✨ 인원별 상세 실적 (선택 시 우선 적용)", 
                              'view_mode': "주간 추이 (최근 8주)", 't_amt': True, 't_sales': False, 't_next': False,
                              't_avg': False, 't_wd': False, 't_we': False, 't_walk': False, 't_move': False,
                              't_est': False, 't_cnt': False, 't_rate': False, 't_unit': False, 
-                             'wow_prev': None, 'wow_curr': None, 'init_v35': True})
+                             'wow_prev': None, 'wow_curr': None, 'init_v37': True})
 
 toggle_keys = ['t_amt', 't_sales', 't_next', 't_avg', 't_wd', 't_we', 't_walk', 't_move', 't_est', 't_cnt', 't_rate', 't_unit']
-EXCLUDED_HCS = ["장재형", "강지인", "신재민"]
+
+# 🚀 수정 1: 신재민 님 제외 명단에서 삭제 (부활)
+EXCLUDED_HCS = ["장재형", "강지인"]
 
 @st.cache_resource
 def init_connection():
@@ -47,7 +49,6 @@ st.markdown(f"""
     @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&display=swap');
     html, body, [class*="css"], [class*="st-"], th, td {{ font-family: 'Noto Sans KR', sans-serif !important; }}
     
-    /* 🚀 수정 1: 탭 UI 글씨 키우고 강조 */
     div[data-testid="stTabs"] button {{ font-size: 15px !important; font-weight: 700 !important; color: #94a3b8 !important; }}
     div[data-testid="stTabs"] button[aria-selected="true"] {{ color: #1d4ed8 !important; font-weight: 900 !important; border-bottom: 3px solid #1d4ed8 !important; }}
 
@@ -59,7 +60,6 @@ st.markdown(f"""
     .vdt-table-container::-webkit-scrollbar-track {{ background: #f1f5f9; border-radius: 8px; }}
     .vdt-table-container::-webkit-scrollbar-thumb {{ background: #94a3b8; border-radius: 8px; border: 3px solid #f1f5f9; }}
     
-    /* 🚀 수정 8: 표 폰트 사이즈 13px로 상향 */
     .vdt-table {{ width: 100%; border-collapse: collapse; font-size: 13px; white-space: nowrap; }}
     
     .vdt-table tbody tr:hover {{ background-color: #dbeafe !important; font-weight: 900 !important; transition: all 0.1s ease-in-out; }}
@@ -96,7 +96,6 @@ st.markdown(f"""
 </style>
 """, unsafe_allow_html=True)
 
-# 🚀 수정 3 & 5: 파란색 음영 제목 부활 및 실시간 날짜 추가
 st.markdown(f"<div class='title-box'><h1>📊 충청호남팀 VDT 종합 관리 <span style='font-size:13px; font-weight:normal; color:#bae6fd; margin-left:10px;'>({current_date.strftime('%y년 %m월 %d일')} 기준)</span></h1></div>", unsafe_allow_html=True)
 
 def clean_str(val): return re.sub(r'\s+', '', str(val))
@@ -266,7 +265,6 @@ def load_vdt_data():
         
         mtd_labels = ['🌟 [당일기준] 당월 누적', '🌟 [당일기준] 전월 누적', '🌟 [당일기준] 전전월 누적', '🌟 [당일기준] 전년 누적']
         
-        # 🚀 수정 6: 매출액 덮어쓰기를 위한 latest_dt 추가 
         def new_d(): return {'amt':0, 'est':0, 'cnt':0, 'amt_wd':0, 'amt_we':0, 'sales':0, 'next_sales':0, 'amt_move':0, 'latest_dt': datetime.min}
         
         trend_hc_w = {clean_str(hc): [new_d() for _ in range(8)] for _, hc, _ in hc_info_raw}
@@ -288,6 +286,9 @@ def load_vdt_data():
         
         existing_hcs = [clean_str(h) for d, h, t in hc_info_raw]
         latest_sales_dict = {} 
+
+        sub_kw = ['합계', '소계', '총계', 'INT', '한밭', '위탁']
+        exact_kw = ['목표', '사번', '비고', '계', '대리점', '이름', 'HC', 'HC명', '영업사원']
 
         curr_y, curr_m, curr_d = -1, -1, -1
         curr_mode = ""
@@ -321,16 +322,20 @@ def load_vdt_data():
             if curr_mode == "일반" and len(row) > 3:
                 t_est, t_cnt = clean_val(safe_get(row, 4)), clean_val(safe_get(row, 5))
                 t_amt = clean_val(safe_get(row, 15)) 
-                t_sales = clean_val(safe_get(row, 18)) 
-                t_next = clean_val(safe_get(row, 24))  
+                
+                t_sales_raw = safe_get(row, 18)
+                t_next_raw = safe_get(row, 24)
+                has_sales = bool(t_sales_raw)
+                has_next = bool(t_next_raw)
+                t_sales = clean_val(t_sales_raw) 
+                t_next = clean_val(t_next_raw)  
                 
                 raw_hc = safe_get(row, 3) 
                 if not raw_hc and len(row) > 1: raw_hc = safe_get(row, 1) 
                 hc_name = clean_str(raw_hc.split('(')[0]) 
                 hc_name = re.sub(r'\d+', '', hc_name) 
                 
-                skip_kw = ['합계', '소계', '총계', '목표', '사번', '비고', '계', '대리점', 'INT', '한밭', '위탁']
-                if not hc_name or any(x in hc_name for x in skip_kw) or hc_name == '계': continue
+                if not hc_name or any(x in hc_name for x in sub_kw) or hc_name in exact_kw: continue
                 dc = hc_name.replace("팀", "").replace("대리점", "").strip()
                 if dc in valid_dealers or dc in ["충청상권", "호남상권", "세종2"]: continue
                 
@@ -381,9 +386,9 @@ def load_vdt_data():
                     trend_hc_w[hc_name][tr_idx]['cnt'] += t_cnt
                     trend_hc_w[hc_name][tr_idx]['amt'] += t_amt
                     if cur_dt >= trend_hc_w[hc_name][tr_idx]['latest_dt']:
-                        trend_hc_w[hc_name][tr_idx]['sales'] = t_sales
-                        trend_hc_w[hc_name][tr_idx]['next_sales'] = t_next
                         trend_hc_w[hc_name][tr_idx]['latest_dt'] = cur_dt
+                        if has_sales: trend_hc_w[hc_name][tr_idx]['sales'] = t_sales
+                        if has_next: trend_hc_w[hc_name][tr_idx]['next_sales'] = t_next
                     if is_we: trend_hc_w[hc_name][tr_idx]['amt_we'] += t_amt
                     else: trend_hc_w[hc_name][tr_idx]['amt_wd'] += t_amt
                         
@@ -392,13 +397,12 @@ def load_vdt_data():
                     trend_hc_m[hc_name][m_label]['cnt'] += t_cnt
                     trend_hc_m[hc_name][m_label]['amt'] += t_amt
                     if cur_dt >= trend_hc_m[hc_name][m_label]['latest_dt']:
-                        trend_hc_m[hc_name][m_label]['sales'] = t_sales
-                        trend_hc_m[hc_name][m_label]['next_sales'] = t_next
                         trend_hc_m[hc_name][m_label]['latest_dt'] = cur_dt
+                        if has_sales: trend_hc_m[hc_name][m_label]['sales'] = t_sales
+                        if has_next: trend_hc_m[hc_name][m_label]['next_sales'] = t_next
                     if is_we: trend_hc_m[hc_name][m_label]['amt_we'] += t_amt
                     else: trend_hc_m[hc_name][m_label]['amt_wd'] += t_amt
 
-                # 🚀 수정 6: MTD 매출액 뻥튀기 방지 (해당 기간 내 최신 일보만 덮어쓰기)
                 if curr_d <= max_d:
                     target_lbl = None
                     if curr_y == max_y and curr_m == max_m: target_lbl = '🌟 [당일기준] 당월 누적'
@@ -411,13 +415,13 @@ def load_vdt_data():
                         trend_hc_mtd[hc_name][target_lbl]['cnt'] += t_cnt
                         trend_hc_mtd[hc_name][target_lbl]['amt'] += t_amt
                         if cur_dt >= trend_hc_mtd[hc_name][target_lbl]['latest_dt']:
-                            trend_hc_mtd[hc_name][target_lbl]['sales'] = t_sales
-                            trend_hc_mtd[hc_name][target_lbl]['next_sales'] = t_next
                             trend_hc_mtd[hc_name][target_lbl]['latest_dt'] = cur_dt
+                            if has_sales: trend_hc_mtd[hc_name][target_lbl]['sales'] = t_sales
+                            if has_next: trend_hc_mtd[hc_name][target_lbl]['next_sales'] = t_next
                         if is_we: trend_hc_mtd[hc_name][target_lbl]['amt_we'] += t_amt
                         else: trend_hc_mtd[hc_name][target_lbl]['amt_wd'] += t_amt
 
-                if t_sales > 0: latest_sales_dict[hc_name] = t_sales
+                if has_sales: latest_sales_dict[hc_name] = t_sales
 
             elif curr_mode == "입주" and len(row) > 3:
                 raw_hc = safe_get(row, 1)
@@ -425,8 +429,7 @@ def load_vdt_data():
                 hc_name = clean_str(raw_hc.split('(')[0]) 
                 hc_name = re.sub(r'\d+', '', hc_name) 
                 
-                skip_kw = ['합계', '소계', '총계', '목표', '사번', '비고', '대리점', 'INT', '한밭', '위탁']
-                if not hc_name or any(x in hc_name for x in skip_kw) or hc_name == '계': continue
+                if not hc_name or any(x in hc_name for x in sub_kw) or hc_name in exact_kw: continue
                 dc = hc_name.replace("팀", "").replace("대리점", "").strip()
                 if dc in valid_dealers or dc in ["충청상권", "호남상권", "세종2"]: continue
                 
@@ -625,12 +628,10 @@ if not df_raw.empty:
         thc = vt.replace("👤 ", "").split(" - ")[1]
         ct, data_key = f"{thc} 님", thc
 
-    # 🚀 1. 브리핑 보드 UI
     st.markdown("#### 💡 **주/월 종합지표 비교**")
     all_normal_options = list(reversed(trend_labels)) + list(reversed(month_labels))
     curr_options = ['🌟 [당일기준] 당월 누적'] + all_normal_options
     
-    # 🚀 수정 4: 글씨 20% 키우고 900(블랙) 굵기로 진하게 변경
     if 'wow_curr' not in st.session_state: 
         default_idx = 1 if len(all_normal_options) > 1 else 0
         st.session_state['wow_curr'] = all_normal_options[default_idx]
@@ -704,7 +705,6 @@ if not df_raw.empty:
     st.markdown("".join(html_wow), unsafe_allow_html=True)
     st.markdown("---")
 
-    # 🚀 2. 조직 선택
     st.markdown("#### 🔎 **실적 조회 (조직 및 인원 선택)**")
     st.markdown('<div id="org-buttons"></div>', unsafe_allow_html=True)
     c_o = st.columns([12, 2, 12, 9, 9, 9, 9, 2, 12, 9, 9, 9, 30])
@@ -727,7 +727,6 @@ if not df_raw.empty:
             
     def toggle_state(key): st.session_state[key] = not st.session_state[key]
 
-    # 🚀 3. 트렌드 그래프
     t_c1, t_c2 = st.columns([6, 4])
     with t_c1: st.markdown(f"#### 📈 {ct} 실적 추이 그래프")
     with t_c2:
@@ -757,7 +756,6 @@ if not df_raw.empty:
             else:
                 t_amts.append(0); a_amts.append(0)
 
-        # 🚀 x축 라벨에 날짜구간(11.02~11.08) 보이도록 매핑
         x_lbls = [f"{wk} ({date_headers.get(wk, '')})" for wk in last_4_keys]
 
         fig = go.Figure()
@@ -862,10 +860,8 @@ if not df_raw.empty:
         
     st.markdown("---")
 
-    # 🚀 4. 하단 전체 상세 표 출력
     tdr = date_headers.get(CURRENT_TABLE_WEEK, "")
     
-    # 4-1. 👤 인원 선택 시 '스페셜 요약 카드'
     if "님" in ct:
         r_data = final_df[final_df[('기본정보', 'HC명', 'HC명')] == data_key]
         if not r_data.empty:
@@ -898,13 +894,11 @@ if not df_raw.empty:
     uds = [d for d in final_df[('기본정보', '대리점', '대리점')].unique() if d not in ["🌟 총계", "충청상권", "호남상권"]]
     dcs = {d: ['#f8fafc', '#ffffff'][i%2] for i, d in enumerate(uds)}
     
-    # 🚀 열 너비 최적화 축소
-    cws_s = [55, 75, 55, 55, 55, 55, 55, 55, 45, 45, 45, 45, 45, 45]
+    cws_s = [50, 70, 55, 55, 55, 55, 55, 55, 45, 45, 45, 45, 45, 45]
     cls_s = [sum(cws_s[:i]) for i in range(len(cws_s))]
     
     tab1, tab2 = st.tabs(["📊 핵심 요약 뷰 (달성률 게이지)", "📆 주차별 상세 뷰 (필터 조회)"])
 
-    # --- 탭 1: 핵심 요약 뷰 ---
     with tab1:
         hl_sum = ["<div class='vdt-table-container'><table class='vdt-table'><thead><tr>"]
         hl_sum.append(f"<th rowspan='3' style='position:sticky; top:0; left:0; z-index:20; background-color:#0f172a; min-width:{cws_s[0]}px; max-width:{cws_s[0]}px; border-right:1px solid #cbd5e1;'>대리점</th>")
@@ -944,7 +938,6 @@ if not df_raw.empty:
             for i, v in enumerate(r[2:14]):
                 ai, c = i + 2, final_df.columns[i + 2]
                 
-                # 🚀 수정 9: 모든 게이지 바에 진한 글씨체 적용 (가독성 향상)
                 if c[2] == '달성율(%)':
                     pct = min(max(v, 0), 100)
                     act_val = r.iloc[ai - 1] 
@@ -959,10 +952,11 @@ if not df_raw.empty:
                         elif v < 50: bar_col = "rgba(220, 38, 38, 0.8)"
                         else: bar_col = "rgba(37, 99, 235, 0.75)"
                         
+                    # 🚀 수정 2: 흰색 텍스트를 진한 검정색(0f172a, #000000)으로 변경 (가독성 폭발)
                     if v > 0:
-                        txt_display = f"<span style='font-size:11px; color:#ffffff; text-shadow: 1px 1px 1px rgba(0,0,0,0.6); font-weight:700;'>{act_val:,.0f} / {tgt_val:,.0f}</span> <span style='color:#ffffff; text-shadow: 1px 1px 1px rgba(0,0,0,0.6); font-weight:900; margin-left:4px; font-size:13px;'>{v:.0f}%</span>"
+                        txt_display = f"<span style='font-size:11px; color:#0f172a; font-weight:900;'>{act_val:,.0f} / {tgt_val:,.0f}</span> <span style='color:#000000; font-weight:900; margin-left:4px; font-size:13px;'>{v:.0f}%</span>"
                     else:
-                        txt_display = f"<span style='font-size:12px; color:#475569; font-weight:900;'>0%</span>"
+                        txt_display = f"<span style='font-size:12px; color:#0f172a; font-weight:900;'>0%</span>"
                         
                     sp = f"background: linear-gradient(90deg, {bar_col} {pct}%, transparent {pct}%);"
                 else:
@@ -978,12 +972,12 @@ if not df_raw.empty:
         hl_sum.append("</tbody></table></div>")
         st.markdown("".join(hl_sum), unsafe_allow_html=True)
 
-    # --- 탭 2: 주차별 상세 뷰 (필터) ---
     with tab2:
         st.markdown("<div style='margin-bottom:10px; font-weight:bold; color:#475569;'>🔎 확인하고 싶은 주차를 선택하세요 (기본: 전체보기)</div>", unsafe_allow_html=True)
-        # 🚀 수정 7: 주차 필터 버튼에 날짜 표시 추가
         wk_filter_options = ["전체 보기"] + [f"{wk} ({date_headers.get(wk, '')})" for wk in week_keys_list]
-        wk_filter = st.radio("주차별 필터", wk_filter_options, horizontal=True, label_visibility="collapsed")
+        wk_filter_sel = st.radio("주차별 필터", wk_filter_options, horizontal=True, label_visibility="collapsed")
+        
+        wk_filter = wk_filter_sel.split(" (")[0] if wk_filter_sel != "전체 보기" else "전체 보기"
         
         cws = [60,75,55,55,55,55,55,55,45,45,45,45,45,45]
         cls = [sum(cws[:i]) for i in range(len(cws))]
