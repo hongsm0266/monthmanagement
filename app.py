@@ -754,7 +754,6 @@ if not df_raw.empty:
     pr, tr = (pc/pe*100) if pe>0 else 0, (tc/te*100) if te>0 else 0
     pu, tu = (pa/(pc*10)) if pc>0 else 0, (ta/(tc*10)) if tc>0 else 0
     
-    # 🚀 2. 온라인 매출 비중 텍스트 가독성 강화 (진하게, 크기업, 파란색 적용)
     po_pct = f" <span style='font-size:12px; font-weight:900; color:#0284c7;'>({po/ps*100:.0f}%)</span>" if ps > 0 else " <span style='font-size:12px; font-weight:900; color:#64748b;'>(0%)</span>"
     to_pct = f" <span style='font-size:12px; font-weight:900; color:#0284c7;'>({to/ts*100:.0f}%)</span>" if ts > 0 else " <span style='font-size:12px; font-weight:900; color:#64748b;'>(0%)</span>"
 
@@ -1080,8 +1079,9 @@ if not df_raw.empty:
         for c in final_df.columns[2:]:
             if c[0] not in h1_list: h1_list.append(c[0])
                 
+        # 🚀 2. 주차 실종 버그 수정 (not in 연산자로 포함 여부만 체크)
         for h1 in h1_list:
-            if h1 not in ['🎯 당월매출', '🌟 당월 합계'] and wk_filter != "전체 보기" and wk_filter != h1: continue
+            if h1 not in ['🎯 당월매출', '🌟 당월 합계'] and wk_filter != "전체 보기" and wk_filter not in h1: continue
                 
             ic, im = CURRENT_TABLE_WEEK in h1, "당월" in h1
             sp = "position:sticky; top:0; " + ("background-color:#1e3a8a; border:3px solid #60a5fa;" if ic else ("background-color:#064e3b; color:#a7f3d0; border-top:2px solid #047857;" if im else "background-color:#0f172a;"))
@@ -1091,7 +1091,7 @@ if not df_raw.empty:
         hl.append("</tr><tr>")
         
         for h1 in h1_list:
-            if h1 not in ['🎯 당월매출', '🌟 당월 합계'] and wk_filter != "전체 보기" and wk_filter != h1: continue
+            if h1 not in ['🎯 당월매출', '🌟 당월 합계'] and wk_filter != "전체 보기" and wk_filter not in h1: continue
                 
             ic, im = CURRENT_TABLE_WEEK in h1, "당월" in h1
             sp = "position:sticky; top:33px; " + ("background-color:#1e40af; border-left:3px solid #60a5fa; border-right:3px solid #60a5fa;" if ic else ("background-color:#065f46; color:#a7f3d0;" if im else "background-color:#0f172a;"))
@@ -1101,7 +1101,7 @@ if not df_raw.empty:
         hl.append("</tr><tr>")
         
         for i, c in enumerate(final_df.columns[2:]):
-            if c[0] not in ['🎯 당월매출', '🌟 당월 합계'] and wk_filter != "전체 보기" and wk_filter != c[0]: continue
+            if c[0] not in ['🎯 당월매출', '🌟 당월 합계'] and wk_filter != "전체 보기" and wk_filter not in c[0]: continue
                 
             ai = i + 2
             ic, im = CURRENT_TABLE_WEEK in c[0], "당월" in c[0]
@@ -1129,7 +1129,7 @@ if not df_raw.empty:
             
             for i, v in enumerate(r[2:]):
                 c = final_df.columns[i + 2]
-                if c[0] not in ['🎯 당월매출', '🌟 당월 합계'] and wk_filter != "전체 보기" and wk_filter != c[0]: continue
+                if c[0] not in ['🎯 당월매출', '🌟 당월 합계'] and wk_filter != "전체 보기" and wk_filter not in c[0]: continue
                     
                 ai = i + 2
                 ic, im = CURRENT_TABLE_WEEK in c[0], "당월" in c[0]
