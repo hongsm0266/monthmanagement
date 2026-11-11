@@ -16,11 +16,12 @@ import time
 st.set_page_config(page_title="충청호남팀 영업사원 주차별 VDT 목표 관리", layout="wide")
 SHEET_URL = "https://docs.google.com/spreadsheets/d/1yZdc4BL5CHLwBQ2QGp8zD5_ov7LDKsEcnrONdQvDyHI/edit?gid=1748736055#gid=1748736055"
 
-if 'init_v17' not in st.session_state:
+if 'init_v18' not in st.session_state:
     st.session_state.update({'view_target': "충청호남팀 전체", 'hc_selector': "✨ 인원별 상세 실적 (선택 시 우선 적용)", 
                              'view_mode': "주간 추이 (최근 8주)", 't_amt': True, 't_sales': False, 't_next': False,
                              't_avg': False, 't_wd': False, 't_we': False, 't_walk': False, 't_move': False,
-                             't_est': False, 't_cnt': False, 't_rate': False, 't_unit': False, 'wow_week': None, 'init_v17': True})
+                             't_est': False, 't_cnt': False, 't_rate': False, 't_unit': False, 
+                             'wow_prev': None, 'wow_curr': None, 'init_v18': True})
 
 toggle_keys = ['t_amt', 't_sales', 't_next', 't_avg', 't_wd', 't_we', 't_walk', 't_move', 't_est', 't_cnt', 't_rate', 't_unit']
 EXCLUDED_HCS = ["장재형", "강지인", "신재민"]
@@ -125,19 +126,17 @@ def safe_api_call(func, *args, **kwargs):
                 continue
             raise e
 
-@st.cache_data(ttl=600)
+# 🚀 에러 방지: 캐시 함수 안에서는 st.info 같은 UI 요소를 절대 사용하지 않음
+@st.cache_data(ttl=600, show_spinner=False)
 def load_vdt_data():
     if not client: return pd.DataFrame(), {}, {}, {}, {}, [], {}, ""
-    sb = st.empty()
     try:
-        sb.info("🔍 0단계: 구글 시트 쾌속 연결 중... (통합 시트 스캔 대기)")
         sh = safe_api_call(client.open_by_url, SHEET_URL)
         all_ws_objs = safe_api_call(sh.worksheets)
         all_ws = [ws.title for ws in all_ws_objs]
         if "주차별 목표 세팅" not in all_ws: return pd.DataFrame(), {}, {}, {}, {}, [], {}, ""
         
         target_ws = sh.worksheet("주차별 목표 세팅")
-        sb.info("📊 1단계: O~R열 목표 스캔 및 세종 통합 중...")
         all_targets = safe_api_call(target_ws.get_all_values)
         
         hc_to_dealer_master, hc_info_dict, dealer_sales_sum = {}, {}, {}
@@ -155,7 +154,6 @@ def load_vdt_data():
         hc_info_raw = [(v['dealer'], k, v['tgt']) for k, v in hc_info_dict.items()]
         valid_dealers = list(set(d for d, _, _ in hc_info_raw))
         
-        sb.info("🎯 2단계: 주차별 표 자동 스캔 중...")
         week_row_idx, date_row_idx = -1, -1
         for i, row in enumerate(all_targets[:10]):
             rs = "".join(str(c) for c in row)
@@ -206,9 +204,6 @@ def load_vdt_data():
                     dealer_targets[d_name][wk]['amt'] += (clean_val(safe_get(row, cols['amt'])) / 1000.0) 
                     dealer_targets[d_name][wk]['est'] += clean_val(safe_get(row, cols['est']))
                     dealer_targets[d_name][wk]['cnt'] += clean_val(safe_get(row, cols['cnt']))
-
-        # 🚀 3단계: 통합 일보 탭 초고속 스캔 엔진 (딜레이 제거)
-        sb.info("🚀 3단계: 통합 일보 단일 탭 초고속 스캔 중...")
         
         daily_ws = None
         for ws in all_ws_objs:
@@ -216,10 +211,7 @@ def load_vdt_data():
                 daily_ws = ws
                 break
         
-        if not daily_ws:
-            st.error("🚨 '일보모음' 또는 '통합'이라는 이름이 포함된 시트(탭)를 찾을 수 없습니다! 탭 이름을 변경해주세요.")
-            sb.empty()
-            return pd.DataFrame(), {}, {}, {}, {}, [], {}, ""
+        if not daily_ws: return pd.DataFrame(), {}, {}, {}, {}, [], {}, ""
             
         all_daily_data = safe_api_call(daily_ws.get_all_values)
         
@@ -266,14 +258,13 @@ def load_vdt_data():
                 
             if curr_mode == "일반" and len(row) > 3:
                 t_est, t_cnt = clean_val(safe_get(row, 4)), clean_val(safe_get(row, 5))
-                t_amt = clean_val(safe_get(row, 15)) # 🚀 P열 복구 (이중 나누기 제거)
+                t_amt = clean_val(safe_get(row, 15)) 
                 t_sales = clean_val(safe_get(row, 18)) 
                 t_next = clean_val(safe_get(row, 24))  
                 
                 hc_name = clean_str(safe_get(row, 3)) 
                 if not hc_name and len(row) > 1: hc_name = clean_str(safe_get(row, 1)) 
                 
-                # 🚀 대리점 합계 줄 완벽 스킵
                 if any(x in hc_name for x in ['합계', '소계', '총계', '목표', '사번', '비고', '계']): continue
                 dc = hc_name.replace("팀", "").replace("대리점", "").strip()
                 if dc in valid_dealers or dc in ["충청상권", "호남상권", "세종2"]: continue
@@ -363,7 +354,6 @@ def load_vdt_data():
                         trend_dlr_m[md][i][k] += trend_hc_m[hc][i][k]
                         trend_tot_m[i][k] += trend_hc_m[hc][i][k]
 
-        sb.info("🎯 4단계: UI 출력 중...")
         dealer_active_hcs, dealer_sales_sum_active = {}, {}
         for d, hc, tgt in hc_info_raw:
             hc_c = clean_str(hc)
@@ -419,15 +409,11 @@ def load_vdt_data():
 
         ctw = date_to_target_week.get((curr_m if curr_m != -1 else current_date.month, curr_d if curr_d != -1 else current_date.day), week_keys[-1] if week_keys else '1주차')
         tp = {'W': {'hc': trend_hc_w, 'dlr': trend_dlr_w, 'tot': trend_tot_w, 'reg': trend_reg_w}, 'M': {'hc': trend_hc_m, 'dlr': trend_dlr_m, 'tot': trend_tot_m, 'reg': trend_reg_m}}
-        sb.empty()
         
-        st.toast("✅ 데이터 고속 스캔 완료!", icon="🚀")
         return df, date_headers, hc_to_dealer_master, rdm, rdw, week_keys, tp, ctw
 
     except Exception as e:
-        sb.empty()
-        st.error("🚨 에러 발생!")
-        with st.expander("🛠️ 상세 보기"): st.code(traceback.format_exc())
+        print(f"Error loading data: {e}")
         return pd.DataFrame(), {}, {}, {}, {}, [], {}, ""
 
 def calc_subtotals(df, rdm, rdw):
@@ -475,7 +461,9 @@ def calc_subtotals(df, rdm, rdw):
     rr.append(pd.Series(gt))
     return pd.DataFrame(rr)
 
-df_raw, date_headers, hc_to_dealer_master, rdm, rdw, week_keys_list, trend_pack, CURRENT_TABLE_WEEK = load_vdt_data()
+# 🚀 데이터를 가져올 때 스피너를 바깥으로 빼서 에러를 원천 차단합니다!
+with st.spinner("🚀 최신 일보 데이터를 초고속으로 스캔하고 있습니다..."):
+    df_raw, date_headers, hc_to_dealer_master, rdm, rdw, week_keys_list, trend_pack, CURRENT_TABLE_WEEK = load_vdt_data()
 
 if not df_raw.empty:
     final_df = calc_subtotals(df_raw, rdm, rdw)
@@ -504,52 +492,62 @@ if not df_raw.empty:
         ct, su = f"{thc} 님", [(thc, trend_pack['W']['hc'].get(thc, [{'amt':0,'est':0,'cnt':0,'sales':0,'amt_move':0} for _ in range(8)]))]
 
     # 🚀 1. 브리핑 보드
-    st.markdown("#### 💡 주간 회의 전용 브리핑 보드 (전주 대비 증감 분석)")
+    st.markdown("#### 💡 **주간 회의 전용 브리핑 보드 (자유 비교)**")
     ww_list = list(reversed(trend_labels))
-    if st.session_state['wow_week'] not in ww_list: st.session_state['wow_week'] = ww_list[0]
+    
+    if st.session_state.get('wow_curr') not in ww_list: st.session_state['wow_curr'] = ww_list[0]
+    if st.session_state.get('wow_prev') not in ww_list: st.session_state['wow_prev'] = ww_list[1] if len(ww_list)>1 else ww_list[0]
         
-    w1, w2 = st.columns([3, 7])
-    with w1: sel_ww = st.selectbox("👉 회의 기준 주차(Target) 선택", options=ww_list, key="wow_week")
+    w1, w2 = st.columns([1, 1])
+    with w1: 
+        st.markdown("<div style='font-size:14px; font-weight:900; color:#1e293b; margin-bottom:5px;'>⬅️ 비교 기준 주차 (전주/과거)</div>", unsafe_allow_html=True)
+        sel_prev = st.selectbox("비교 기준", options=ww_list, key="wow_prev", label_visibility="collapsed")
+    with w2: 
+        st.markdown("<div style='font-size:14px; font-weight:900; color:#dc2626; margin-bottom:5px;'>➡️ 회의 조회 주차 (당주/현재)</div>", unsafe_allow_html=True)
+        sel_curr = st.selectbox("조회 기준", options=ww_list, key="wow_curr", label_visibility="collapsed")
         
-    ti = trend_labels.index(sel_ww)
-    if ti == 0: st.warning("가장 과거 데이터라 비교 불가합니다.")
-    else:
-        pi = ti - 1
-        def td_cell(val, p_val, is_pct=False, is_unit=False):
-            delta = val - p_val
-            v_s = f"{delta:.1f}%" if is_pct else (f"{int(delta):,}만" if is_unit else f"{delta:,.0f}")
-            if delta > 0: return f"<td style='text-align:center; background-color:#f8fafc;'><span class='wow-up'>+{v_s} 🔺</span></td>"
-            elif delta < 0: return f"<td style='text-align:center; background-color:#f8fafc;'><span class='wow-down'>{v_s} 🔻</span></td>"
-            return "<td style='text-align:center; background-color:#f8fafc;'><span class='wow-same'>-</span></td>"
-
-        def td_val(v, is_pct=False, is_unit=False, is_tgt=False, bg=""):
-            s = f"{v:.1f}%" if is_pct else (f"{int(v):,}" if is_unit else f"{v:,.0f}")
-            c = "color: #1e3a8a; font-weight: 900;" if is_tgt else "font-weight: 600;"
-            b = f"background-color:{bg};" if bg else ""
-            return f"<td style='text-align:center; {c} {b}'>{s}</td>"
-
-        un, ud = su[0]
-        pv, tv = ud[pi], ud[ti]
-        pa, ta, ps, ts = pv.get('amt',0), tv.get('amt',0), pv.get('sales',0), tv.get('sales',0)
-        pe, te, pc, tc = pv.get('est',0), tv.get('est',0), pv.get('cnt',0), tv.get('cnt',0)
-        pm, tm = pv.get('amt_move',0), tv.get('amt_move',0)
-        pw, tw = pa - pm, ta - tm
-        pr, tr = (pc/pe*100) if pe>0 else 0, (tc/te*100) if te>0 else 0
-        pu, tu = (pa/(pc*10)) if pc>0 else 0, (ta/(tc*10)) if tc>0 else 0
-
-        html_wow = [
-            '<table class="wow-table" style="width: 100%; border: 2px solid #94a3b8; border-radius: 8px; overflow: hidden;">',
-            '<thead><tr style="background-color: #1e293b; color: white;">',
-            f'<th style="padding: 10px; font-size: 13px; border-right: 2px solid #94a3b8;">주차 구분<br><span style="font-size:11px; color:#cbd5e1;">({ct})</span></th>',
-            '<th style="padding: 10px;">💰 총 계약액<br>(천원)</th><th style="padding: 10px;">💰 총 매출액<br>(천원)</th><th style="padding: 10px;">📝 견적건<br>(건)</th><th style="padding: 10px;">🤝 계약건<br>(건)</th>',
-            '<th style="padding: 10px; background-color:#334155;">🚶 워크인 계약액<br>(천원)</th><th style="padding: 10px; background-color:#334155;">🏠 입주 계약액<br>(천원)</th>',
-            '<th style="padding: 10px;">📊 계약률<br>(%)</th><th style="padding: 10px;">💸 객단가<br>(만원)</th></tr></thead><tbody>'
-        ]
-        html_wow.append(f"<tr style='background-color: #f8fafc;'><td style='text-align:center; font-weight:900; border-right:2px solid #94a3b8;'>{trend_labels[pi]} (전주)</td>" + td_val(pa)+td_val(ps)+td_val(pe)+td_val(pc)+td_val(pw,bg='#f1f5f9')+td_val(pm,bg='#f1f5f9')+td_val(pr,True)+td_val(pu,False,True) + "</tr>")
-        html_wow.append(f"<tr style='background-color: white;'><td style='text-align:center; font-weight:900; color:#1e3a8a; border-right:2px solid #94a3b8;'>{trend_labels[ti]} (당주)</td>" + td_val(ta,is_tgt=True)+td_val(ts,is_tgt=True)+td_val(te,is_tgt=True)+td_val(tc,is_tgt=True)+td_val(tw,is_tgt=True,bg='#f1f5f9')+td_val(tm,is_tgt=True,bg='#f1f5f9')+td_val(tr,True,is_tgt=True)+td_val(tu,False,True,is_tgt=True) + "</tr>")
-        html_wow.append(f"<tr style='background-color: #fef2f2;'><td style='text-align:center; font-weight:900; color:#b91c1c; border-right:2px solid #94a3b8;'>전주 대비 증감</td>" + td_cell(ta,pa)+td_cell(ts,ps)+td_cell(te,pe)+td_cell(tc,pc)+td_cell(tw,pw)+td_cell(tm,pm)+td_cell(tr,pr,True)+td_cell(tu,pu,False,True) + "</tr></tbody></table>")
+    pi = trend_labels.index(sel_prev)
+    ti = trend_labels.index(sel_curr)
+    
+    def td_cell(val, p_val, is_pct=False, is_unit=False, is_rate=False):
+        delta = val - p_val
+        if is_rate: v_s = f"+{delta:.1f}p%" if delta > 0 else f"{delta:.1f}p%"
+        elif is_pct: v_s = f"+{delta:.0f}%" if delta > 0 else f"{delta:.0f}%"
+        elif is_unit: v_s = f"+{int(delta):,}만" if delta > 0 else f"{int(delta):,}만"
+        else: v_s = f"+{delta:,.0f}" if delta > 0 else f"{delta:,.0f}"
         
-        st.markdown("".join(html_wow), unsafe_allow_html=True)
+        if delta > 0: return f"<td style='text-align:center; background-color:#f8fafc;'><span class='wow-up'>{v_s} 🔺</span></td>"
+        elif delta < 0: return f"<td style='text-align:center; background-color:#f8fafc;'><span class='wow-down'>{v_s} 🔻</span></td>"
+        return "<td style='text-align:center; background-color:#f8fafc;'><span class='wow-same'>-</span></td>"
+
+    def td_val(v, is_pct=False, is_unit=False, is_tgt=False, bg=""):
+        s = f"{v:.1f}%" if is_pct else (f"{int(v):,}" if is_unit else f"{v:,.0f}")
+        c = "color: #1e3a8a; font-weight: 900;" if is_tgt else "font-weight: 600;"
+        b = f"background-color:{bg};" if bg else ""
+        return f"<td style='text-align:center; {c} {b}'>{s}</td>"
+
+    un, ud = su[0]
+    pv, tv = ud[pi], ud[ti]
+    pa, ta, ps, ts = pv.get('amt',0), tv.get('amt',0), pv.get('sales',0), tv.get('sales',0)
+    pe, te, pc, tc = pv.get('est',0), tv.get('est',0), pv.get('cnt',0), tv.get('cnt',0)
+    pm, tm = pv.get('amt_move',0), tv.get('amt_move',0)
+    pw, tw = pa - pm, ta - tm
+    pr, tr = (pc/pe*100) if pe>0 else 0, (tc/te*100) if te>0 else 0
+    pu, tu = (pa/(pc*10)) if pc>0 else 0, (ta/(tc*10)) if tc>0 else 0
+
+    html_wow = [
+        '<table class="wow-table" style="width: 100%; border: 2px solid #94a3b8; border-radius: 8px; overflow: hidden;">',
+        '<thead><tr style="background-color: #1e293b; color: white;">',
+        f'<th style="padding: 10px; font-size: 13px; border-right: 2px solid #94a3b8;">주차 구분<br><span style="font-size:11px; color:#cbd5e1;">({ct})</span></th>',
+        '<th style="padding: 10px;">💰 총 계약액<br>(천원)</th><th style="padding: 10px;">💰 총 매출액<br>(천원)</th><th style="padding: 10px;">📝 견적건<br>(건)</th><th style="padding: 10px;">🤝 계약건<br>(건)</th>',
+        '<th style="padding: 10px; background-color:#334155;">🚶 워크인 계약액<br>(천원)</th><th style="padding: 10px; background-color:#334155;">🏠 입주 계약액<br>(천원)</th>',
+        '<th style="padding: 10px;">📊 계약률<br>(%)</th><th style="padding: 10px;">💸 객단가<br>(만원)</th></tr></thead><tbody>'
+    ]
+    html_wow.append(f"<tr style='background-color: #f8fafc;'><td style='text-align:center; font-weight:900; border-right:2px solid #94a3b8;'>{trend_labels[pi]} (비교 대상)</td>" + td_val(pa)+td_val(ps)+td_val(pe)+td_val(pc)+td_val(pw,bg='#f1f5f9')+td_val(pm,bg='#f1f5f9')+td_val(pr,True)+td_val(pu,False,True) + "</tr>")
+    html_wow.append(f"<tr style='background-color: white;'><td style='text-align:center; font-weight:900; color:#1e3a8a; border-right:2px solid #94a3b8;'>{trend_labels[ti]} (조회 기준)</td>" + td_val(ta,is_tgt=True)+td_val(ts,is_tgt=True)+td_val(te,is_tgt=True)+td_val(tc,is_tgt=True)+td_val(tw,is_tgt=True,bg='#f1f5f9')+td_val(tm,is_tgt=True,bg='#f1f5f9')+td_val(tr,True,is_tgt=True)+td_val(tu,False,True,is_tgt=True) + "</tr>")
+    html_wow.append(f"<tr style='background-color: #fef2f2;'><td style='text-align:center; font-weight:900; color:#b91c1c; border-right:2px solid #94a3b8;'>선택 주차 간 증감</td>" + td_cell(ta,pa)+td_cell(ts,ps)+td_cell(te,pe)+td_cell(tc,pc)+td_cell(tw,pw)+td_cell(tm,pm)+td_cell(tr,pr,is_rate=True)+td_cell(tu,pu,is_unit=True) + "</tr></tbody></table>")
+    
+    st.markdown("".join(html_wow), unsafe_allow_html=True)
     st.markdown("---")
 
     # 🚀 2. 조직 선택
@@ -630,8 +628,8 @@ if not df_raw.empty:
     ym_txt, yw_txt = [], []
     for w, m, a in zip(y_wk, y_m, y_a):
         if a > 0:
-            ym_txt.append(f"<b>{m:.2f}억</b><br><span style='font-size:11px'>({(m/a*100):.1f}%)</span>")
-            yw_txt.append(f"<b>{w:.2f}억</b><br><span style='font-size:11px'>({(w/a*100):.1f}%)</span>")
+            ym_txt.append(f"<b>{m:.2f}억</b><br><span style='font-size:11px'>({(m/a*100):.0f}%)</span>")
+            yw_txt.append(f"<b>{w:.2f}억</b><br><span style='font-size:11px'>({(w/a*100):.0f}%)</span>")
         else:
             ym_txt.append(f"<b>{m:.2f}억</b>")
             yw_txt.append(f"<b>{w:.2f}억</b>")
