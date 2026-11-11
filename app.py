@@ -16,12 +16,12 @@ import time
 st.set_page_config(page_title="충청호남팀 영업사원 주차별 VDT 목표 관리", layout="wide")
 SHEET_URL = "https://docs.google.com/spreadsheets/d/1yZdc4BL5CHLwBQ2QGp8zD5_ov7LDKsEcnrONdQvDyHI/edit?gid=1748736055#gid=1748736055"
 
-if 'init_v19' not in st.session_state:
+if 'init_v20' not in st.session_state:
     st.session_state.update({'view_target': "충청호남팀 전체", 'hc_selector': "✨ 인원별 상세 실적 (선택 시 우선 적용)", 
                              'view_mode': "주간 추이 (최근 8주)", 't_amt': True, 't_sales': False, 't_next': False,
                              't_avg': False, 't_wd': False, 't_we': False, 't_walk': False, 't_move': False,
                              't_est': False, 't_cnt': False, 't_rate': False, 't_unit': False, 
-                             'wow_prev': None, 'wow_curr': None, 'init_v19': True})
+                             'wow_prev': None, 'wow_curr': None, 'init_v20': True})
 
 toggle_keys = ['t_amt', 't_sales', 't_next', 't_avg', 't_wd', 't_we', 't_walk', 't_move', 't_est', 't_cnt', 't_rate', 't_unit']
 EXCLUDED_HCS = ["장재형", "강지인", "신재민"]
@@ -325,7 +325,7 @@ def load_vdt_data():
                         
                 if t_sales > 0: latest_sales_dict[hc_name] = t_sales
 
-            # 🚀 입주 일보 스캔 오류 해결 (len(row) > 3으로 조건 완화)
+            # 🚀 입주 일보 스캔: /1000 이중 적용 완전 제거! 천 원 단위 원본 그대로 스캔
             elif curr_mode == "입주" and len(row) > 3:
                 hc_name = clean_str(safe_get(row, 1)) 
                 if not hc_name: hc_name = clean_str(safe_get(row, 3))
@@ -334,7 +334,8 @@ def load_vdt_data():
                 dc = hc_name.replace("팀", "").replace("대리점", "").strip()
                 if dc in valid_dealers or dc in ["충청상권", "호남상권", "세종2"]: continue
                 
-                m_m, m_r = clean_val(safe_get(row, 12)) / 1000.0, clean_val(safe_get(row, 17)) / 1000.0
+                # 🚀 여기에 있던 / 1000.0 을 없앴습니다. 시트의 천원 단위 숫자를 그대로 유지합니다!
+                m_m, m_r = clean_val(safe_get(row, 12)), clean_val(safe_get(row, 17))
                 dm = m_m + m_r
                 md = hc_to_dealer_master.get(hc_name)
                 
@@ -461,7 +462,7 @@ def calc_subtotals(df, rdm, rdw):
     rr.append(pd.Series(gt))
     return pd.DataFrame(rr)
 
-# 🚀 데이터를 가져올 때 스피너를 바깥으로 빼서 에러를 원천 차단합니다!
+# 🚀 데이터를 가져올 때 스피너를 바깥으로 빼서 화면 에러를 원천 차단합니다!
 with st.spinner("🚀 최신 일보 데이터를 초고속으로 스캔하고 있습니다..."):
     df_raw, date_headers, hc_to_dealer_master, rdm, rdw, week_keys_list, trend_pack, CURRENT_TABLE_WEEK = load_vdt_data()
 
@@ -480,7 +481,6 @@ if not df_raw.empty:
         
     vt = st.session_state['view_target']
     
-    # 헬퍼 함수: 주/월 데이터를 모두 찾을 수 있도록 통합 탐색
     def get_period_data(label, hc_or_dlr_key):
         if label in trend_labels:
             idx = trend_labels.index(label)
