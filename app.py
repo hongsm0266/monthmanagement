@@ -16,12 +16,12 @@ import time
 st.set_page_config(page_title="충청호남팀 영업사원 주차별 VDT 목표 관리", layout="wide")
 SHEET_URL = "https://docs.google.com/spreadsheets/d/1yZdc4BL5CHLwBQ2QGp8zD5_ov7LDKsEcnrONdQvDyHI/edit?gid=1748736055#gid=1748736055"
 
-if 'init_v22' not in st.session_state:
+if 'init_v23' not in st.session_state:
     st.session_state.update({'view_target': "충청호남팀 전체", 'hc_selector': "✨ 인원별 상세 실적 (선택 시 우선 적용)", 
                              'view_mode': "주간 추이 (최근 8주)", 't_amt': True, 't_sales': False, 't_next': False,
                              't_avg': False, 't_wd': False, 't_we': False, 't_walk': False, 't_move': False,
                              't_est': False, 't_cnt': False, 't_rate': False, 't_unit': False, 
-                             'wow_prev': None, 'wow_curr': None, 'init_v22': True})
+                             'wow_prev': None, 'wow_curr': None, 'init_v23': True})
 
 toggle_keys = ['t_amt', 't_sales', 't_next', 't_avg', 't_wd', 't_we', 't_walk', 't_move', 't_est', 't_cnt', 't_rate', 't_unit']
 EXCLUDED_HCS = ["장재형", "강지인", "신재민"]
@@ -73,6 +73,7 @@ st.markdown("""
     #org-buttons + div[data-testid="stHorizontalBlock"] > div:nth-child(9) button { background-color: #f0fdf4 !important; border-color: #bbf7d0 !important; color: #16a34a !important; border-bottom: 2px solid #86efac !important; }
     #org-buttons + div[data-testid="stHorizontalBlock"] > div:nth-child(9) button[kind="primary"] { background: linear-gradient(180deg, #dcfce7 0%, #bbf7d0 100%) !important; color: #052e16 !important; border-bottom: 2px solid #16a34a !important; }
     .chart-btn-group { font-size: 11px; font-weight: 800; color: #475569; background: #e2e8f0; border-radius: 4px; padding: 2px 0; text-align: center; margin-bottom: 4px; border: 1px solid #cbd5e1;}
+    .mode-toggle { font-size: 14px; font-weight: 900; color: #0f172a; display:flex; align-items:center; gap:10px;}
 </style>
 """, unsafe_allow_html=True)
 
@@ -237,7 +238,6 @@ def load_vdt_data():
         wk_info, tr_idx, mo_idx, is_we = None, -1, -1, False
 
         for r_idx, row in enumerate(all_daily_data):
-            # 🚀 날짜 및 이정표 파싱 로직 초강력 보강! (연도 무시하고 정확히 달/일 추출)
             row_header = clean_str("".join([safe_get(row, i) for i in range(min(5, len(row)))]))
             
             if "일반" in row_header or "입주" in row_header:
@@ -260,8 +260,11 @@ def load_vdt_data():
                 t_sales = clean_val(safe_get(row, 18)) 
                 t_next = clean_val(safe_get(row, 24))  
                 
-                hc_name = clean_str(safe_get(row, 3)) 
-                if not hc_name and len(row) > 1: hc_name = clean_str(safe_get(row, 1)) 
+                # 🚀 이름(D열 또는 B열) 괄호 제거 & 사번 삭제
+                raw_hc = safe_get(row, 3) 
+                if not raw_hc and len(row) > 1: raw_hc = safe_get(row, 1) 
+                hc_name = clean_str(raw_hc.split('(')[0]) # 괄호 앞까지만 자르기
+                hc_name = re.sub(r'\d+', '', hc_name) # 혹시 남은 숫자도 삭제
                 
                 if any(x in hc_name for x in ['합계', '소계', '총계', '목표', '사번', '비고', '계']): continue
                 dc = hc_name.replace("팀", "").replace("대리점", "").strip()
@@ -325,8 +328,11 @@ def load_vdt_data():
                 if t_sales > 0: latest_sales_dict[hc_name] = t_sales
 
             elif curr_mode == "입주" and len(row) > 3:
-                hc_name = clean_str(safe_get(row, 1)) 
-                if not hc_name: hc_name = clean_str(safe_get(row, 3))
+                # 🚀 이름(B열 또는 D열) 괄호 제거 & 사번 삭제
+                raw_hc = safe_get(row, 1)
+                if not raw_hc: raw_hc = safe_get(row, 3)
+                hc_name = clean_str(raw_hc.split('(')[0]) # 괄호 앞까지만 자르기
+                hc_name = re.sub(r'\d+', '', hc_name) # 혹시 남은 숫자도 삭제
                 
                 if not hc_name or any(x in hc_name for x in ['합계', '소계', '총계', '목표', '대리점', '계']): continue
                 dc = hc_name.replace("팀", "").replace("대리점", "").strip()
@@ -503,7 +509,7 @@ if not df_raw.empty:
         thc = vt.replace("👤 ", "").split(" - ")[1]
         ct, data_key = f"{thc} 님", thc
 
-    # 🚀 1. 브리핑 보드
+    # 🚀 1. 브리핑 보드 (주/월 통합 자유 비교 모드)
     st.markdown("#### 💡 **주/월 종합지표 비교**")
     all_options = list(reversed(trend_labels)) + list(reversed(month_labels))
     
