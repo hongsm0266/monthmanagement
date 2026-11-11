@@ -17,6 +17,7 @@ import calendar
 st.set_page_config(page_title="충청호남팀 영업사원 주차별 VDT 목표 관리", layout="wide")
 SHEET_URL = "https://docs.google.com/spreadsheets/d/1yZdc4BL5CHLwBQ2QGp8zD5_ov7LDKsEcnrONdQvDyHI/edit?gid=1748736055#gid=1748736055"
 
+# 🚀 TypeError 완벽 방어: 초기값을 None 대신 안전한 기본 텍스트로 고정
 default_states = {
     'view_target': "충청호남팀 전체", 'hc_selector': "✨ 인원별 상세 실적 (선택 시 우선 적용)", 
     'view_mode': "주간 추이 (최근 8주)", 't_amt': True, 't_sales': False, 't_next': False,
@@ -197,6 +198,10 @@ max_date_in_sheet = available_dates[-1] if available_dates else current_date.dat
 all_normal_options = list(reversed(trend_labels))
 curr_options = ['🌟 [당일기준] 당월 누적', '🌟 [당일기준] 전월 누적', '🌟 [당일기준] 전전월 누적', '🌟 [당일기준] 전년 누적'] + all_normal_options
 
+if 'wow_curr' not in st.session_state: 
+    st.session_state['wow_curr'] = '🌟 [당일기준] 당월 누적'
+
+# 🚀 이중 방어막: 무조건 str(문자열)로 캐스팅하여 에러 원천 차단
 is_weekly_selected = "▪️" in str(st.session_state.get('wow_curr', ''))
 
 c_cal1, c_cal2 = st.columns([10, 2])
@@ -953,12 +958,10 @@ if all_daily_data:
                 a_amt = r_data[('🌟 당월 합계', '계약액(천)', 'ACT')].values[0]
                 pct_amt = r_data[('🌟 당월 합계', '계약액(천)', '달성율(%)')].values[0]
                 
-                # 🚀 문법 에러 완전 차단: 따옴표 중첩 로직을 f-string 밖으로 안전하게 분리
-                text_color = '#047857' if pct_amt >= 100 else ('#ef4444' if pct_amt < 50 else '#ea580c')
-                bar_color = '#10b981' if pct_amt >= 100 else ('#ef4444' if pct_amt < 50 else '#f97316')
-                
                 st.markdown(f"""
                 <div style='display:flex; gap:15px; margin-bottom:20px;'>
                     <div style='flex:1; background:white; padding:15px; border-radius:10px; border:2px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);'>
                         <div style='font-size:13px; color:#64748b; font-weight:bold;'>🎯 당월 계약액 목표 (천원)</div>
-                        <div style='
+                        <div style='font-size:22px; font-weight:900; color:#0f172a;'>{t_amt:,.0f}</div>
+                    </div>
+           
