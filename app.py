@@ -17,7 +17,6 @@ import calendar
 st.set_page_config(page_title="충청호남팀 영업사원 주차별 VDT 목표 관리", layout="wide")
 SHEET_URL = "https://docs.google.com/spreadsheets/d/1yZdc4BL5CHLwBQ2QGp8zD5_ov7LDKsEcnrONdQvDyHI/edit?gid=1748736055#gid=1748736055"
 
-# 🚀 1. Session State 방어형 초기화 (KeyError 완벽 차단)
 default_states = {
     'view_target': "충청호남팀 전체", 'hc_selector': "✨ 인원별 상세 실적 (선택 시 우선 적용)", 
     'view_mode': "주간 추이 (최근 8주)", 't_amt': True, 't_sales': False, 't_next': False,
@@ -270,7 +269,7 @@ def load_vdt_data():
         
         mtd_labels = ['🌟 [당일기준] 당월 누적', '🌟 [당일기준] 전월 누적', '🌟 [당일기준] 전전월 누적', '🌟 [당일기준] 전년 누적']
         
-        def new_d(): return {'amt':0, 'est':0, 'cnt':0, 'amt_wd':0, 'amt_we':0, 'sales':0, 'next_sales':0, 'amt_move':0, 'online':0, 'cancel':0, 'latest_dt': datetime.min, 'latest_dt_pt': datetime.min}
+        def new_d(): return {'amt':0, 'est':0, 'cnt':0, 'amt_wd':0, 'amt_we':0, 'sales':0, 'next_sales':0, 'amt_move':0, 'online':0, 'cancel':0, 'latest_dt': datetime.min}
         
         trend_hc_w = {clean_str(hc): [new_d() for _ in range(8)] for _, hc, _ in hc_info_raw}
         trend_hc_m = {clean_str(hc): {lbl: new_d() for lbl in month_labels} for _, hc, _ in hc_info_raw}
@@ -291,6 +290,9 @@ def load_vdt_data():
         
         existing_hcs = [clean_str(h) for d, h, t in hc_info_raw]
         latest_sales_dict = {} 
+        
+        # 🚀 3. 달력 기반 스마트 정산기를 위한 누적액 수집 바구니
+        daily_cumul = {} 
 
         sub_kw = ['합계', '소계', '총계', 'INT', '한밭', '위탁']
         exact_kw = ['목표', '사번', '비고', '계', '대리점', '이름', 'HC', 'HC명', '영업사원']
@@ -331,8 +333,6 @@ def load_vdt_data():
                 
                 t_sales_raw = safe_get(row, 18)
                 t_next_raw = safe_get(row, 24)
-                has_sales = bool(t_sales_raw)
-                has_next = bool(t_next_raw)
                 t_sales = clean_val(t_sales_raw) 
                 t_next = clean_val(t_next_raw)  
                 
@@ -391,10 +391,6 @@ def load_vdt_data():
                     trend_hc_w[hc_name][tr_idx]['est'] += t_est
                     trend_hc_w[hc_name][tr_idx]['cnt'] += t_cnt
                     trend_hc_w[hc_name][tr_idx]['amt'] += t_amt
-                    if cur_dt >= trend_hc_w[hc_name][tr_idx]['latest_dt']:
-                        trend_hc_w[hc_name][tr_idx]['latest_dt'] = cur_dt
-                        if has_sales: trend_hc_w[hc_name][tr_idx]['sales'] = t_sales
-                        if has_next: trend_hc_w[hc_name][tr_idx]['next_sales'] = t_next
                     if is_we: trend_hc_w[hc_name][tr_idx]['amt_we'] += t_amt
                     else: trend_hc_w[hc_name][tr_idx]['amt_wd'] += t_amt
                         
@@ -402,10 +398,6 @@ def load_vdt_data():
                     trend_hc_m[hc_name][m_label]['est'] += t_est
                     trend_hc_m[hc_name][m_label]['cnt'] += t_cnt
                     trend_hc_m[hc_name][m_label]['amt'] += t_amt
-                    if cur_dt >= trend_hc_m[hc_name][m_label]['latest_dt']:
-                        trend_hc_m[hc_name][m_label]['latest_dt'] = cur_dt
-                        if has_sales: trend_hc_m[hc_name][m_label]['sales'] = t_sales
-                        if has_next: trend_hc_m[hc_name][m_label]['next_sales'] = t_next
                     if is_we: trend_hc_m[hc_name][m_label]['amt_we'] += t_amt
                     else: trend_hc_m[hc_name][m_label]['amt_wd'] += t_amt
 
@@ -420,14 +412,17 @@ def load_vdt_data():
                         trend_hc_mtd[hc_name][target_lbl]['est'] += t_est
                         trend_hc_mtd[hc_name][target_lbl]['cnt'] += t_cnt
                         trend_hc_mtd[hc_name][target_lbl]['amt'] += t_amt
-                        if cur_dt >= trend_hc_mtd[hc_name][target_lbl]['latest_dt']:
-                            trend_hc_mtd[hc_name][target_lbl]['latest_dt'] = cur_dt
-                            if has_sales: trend_hc_mtd[hc_name][target_lbl]['sales'] = t_sales
-                            if has_next: trend_hc_mtd[hc_name][target_lbl]['next_sales'] = t_next
                         if is_we: trend_hc_mtd[hc_name][target_lbl]['amt_we'] += t_amt
                         else: trend_hc_mtd[hc_name][target_lbl]['amt_wd'] += t_amt
+                        
+                # 🚀 매출액/이월매출 누적액 달력에 기록
+                if t_sales > 0 or t_next > 0:
+                    if hc_name not in daily_cumul: daily_cumul[hc_name] = {}
+                    if cur_dt not in daily_cumul[hc_name]: daily_cumul[hc_name][cur_dt] = {'sales':0, 'online':0, 'cancel':0, 'next':0}
+                    if t_sales > 0: daily_cumul[hc_name][cur_dt]['sales'] = t_sales
+                    if t_next > 0: daily_cumul[hc_name][cur_dt]['next'] = t_next
 
-                if has_sales: latest_sales_dict[hc_name] = t_sales
+                if bool(t_sales_raw): latest_sales_dict[hc_name] = t_sales
 
             elif curr_mode == "입주" and len(row) > 3:
                 raw_hc = safe_get(row, 1)
@@ -478,35 +473,75 @@ def load_vdt_data():
                 t_cancel_raw1 = safe_get(row, 37) 
                 t_cancel_raw2 = safe_get(row, 38) 
                 
-                has_online = bool(t_online_raw)
-                has_cancel = bool(t_cancel_raw1) or bool(t_cancel_raw2)
                 t_online = clean_val(t_online_raw)
                 t_cancel = clean_val(t_cancel_raw1) + clean_val(t_cancel_raw2)
+                
+                # 🚀 온라인/취소 누적액 달력에 기록
+                if t_online > 0 or t_cancel > 0:
+                    if hc_name not in daily_cumul: daily_cumul[hc_name] = {}
+                    if cur_dt not in daily_cumul[hc_name]: daily_cumul[hc_name][cur_dt] = {'sales':0, 'online':0, 'cancel':0, 'next':0}
+                    if t_online > 0: daily_cumul[hc_name][cur_dt]['online'] = t_online
+                    if t_cancel > 0: daily_cumul[hc_name][cur_dt]['cancel'] = t_cancel
 
+        # 🚀 스마트 정산기 (달력 데이터를 기반으로 순수 증감액(순증) 발라내기)
+        for hc_name, date_dict in daily_cumul.items():
+            if hc_name not in existing_hcs: continue
+            
+            sorted_dates = sorted(date_dict.keys())
+            last_sales, last_online, last_cancel, last_next = 0, 0, 0, 0
+            curr_month = -1
+            
+            for dt in sorted_dates:
+                # 월이 넘어가면 누적값 리셋 (예: 10/31 -> 11/1)
+                if dt.month != curr_month:
+                    last_sales, last_online, last_cancel, last_next = 0, 0, 0, 0
+                    curr_month = dt.month
+                    
+                c_s = date_dict[dt].get('sales', 0)
+                c_o = date_dict[dt].get('online', 0)
+                c_c = date_dict[dt].get('cancel', 0)
+                c_n = date_dict[dt].get('next', 0)
+                
+                # 전날 대비 오늘 '순증'된 금액만 계산
+                n_s = c_s - last_sales if c_s > last_sales else 0
+                n_o = c_o - last_online if c_o > last_online else 0
+                n_c = c_c - last_cancel if c_c > last_cancel else 0
+                n_n = c_n - last_next if c_n > last_next else 0
+                
+                # 덮어쓰기 업데이트 (누적 유지)
+                if c_s > last_sales: last_sales = c_s
+                if c_o > last_online: last_online = c_o
+                if c_c > last_cancel: last_cancel = c_c
+                if c_n > last_next: last_next = c_n
+                
+                tr_idx = get_trend_week_idx(dt.month, dt.day, dt.year)
+                m_label = f"📊 [월마감] {dt.year%100}년 {dt.month}월"
+                
+                # 순증액을 각 주차, 당월 바구니에 합산!
                 if tr_idx != -1:
-                    if cur_dt >= trend_hc_w[hc_name][tr_idx]['latest_dt_pt']:
-                        trend_hc_w[hc_name][tr_idx]['latest_dt_pt'] = cur_dt
-                        if has_online: trend_hc_w[hc_name][tr_idx]['online'] = t_online
-                        if has_cancel: trend_hc_w[hc_name][tr_idx]['cancel'] = t_cancel
-                        
+                    trend_hc_w[hc_name][tr_idx]['sales'] += n_s
+                    trend_hc_w[hc_name][tr_idx]['online'] += n_o
+                    trend_hc_w[hc_name][tr_idx]['cancel'] += n_c
+                    trend_hc_w[hc_name][tr_idx]['next_sales'] += n_n
+                    
                 if m_label in trend_hc_m[hc_name]:
-                    if cur_dt >= trend_hc_m[hc_name][m_label]['latest_dt_pt']:
-                        trend_hc_m[hc_name][m_label]['latest_dt_pt'] = cur_dt
-                        if has_online: trend_hc_m[hc_name][m_label]['online'] = t_online
-                        if has_cancel: trend_hc_m[hc_name][m_label]['cancel'] = t_cancel
-                        
-                if curr_d <= max_d:
+                    trend_hc_m[hc_name][m_label]['sales'] += n_s
+                    trend_hc_m[hc_name][m_label]['online'] += n_o
+                    trend_hc_m[hc_name][m_label]['cancel'] += n_c
+                    trend_hc_m[hc_name][m_label]['next_sales'] += n_n
+                    
+                if dt.day <= max_d:
                     target_lbl = None
-                    if curr_y == max_y and curr_m == max_m: target_lbl = '🌟 [당일기준] 당월 누적'
-                    elif curr_y == prev1_dt.year and curr_m == prev1_dt.month: target_lbl = '🌟 [당일기준] 전월 누적'
-                    elif curr_y == prev2_dt.year and curr_m == prev2_dt.month: target_lbl = '🌟 [당일기준] 전전월 누적'
-                    elif curr_y == y3 and curr_m == m3: target_lbl = '🌟 [당일기준] 전년 누적'
+                    if dt.year == max_y and dt.month == max_m: target_lbl = '🌟 [당일기준] 당월 누적'
+                    elif dt.year == prev1_dt.year and dt.month == prev1_dt.month: target_lbl = '🌟 [당일기준] 전월 누적'
+                    elif dt.year == prev2_dt.year and dt.month == prev2_dt.month: target_lbl = '🌟 [당일기준] 전전월 누적'
+                    elif dt.year == y3 and dt.month == m3: target_lbl = '🌟 [당일기준] 전년 누적'
                     
                     if target_lbl:
-                        if cur_dt >= trend_hc_mtd[hc_name][target_lbl]['latest_dt_pt']:
-                            trend_hc_mtd[hc_name][target_lbl]['latest_dt_pt'] = cur_dt
-                            if has_online: trend_hc_mtd[hc_name][target_lbl]['online'] = t_online
-                            if has_cancel: trend_hc_mtd[hc_name][target_lbl]['cancel'] = t_cancel
+                        trend_hc_mtd[hc_name][target_lbl]['sales'] += n_s
+                        trend_hc_mtd[hc_name][target_lbl]['online'] += n_o
+                        trend_hc_mtd[hc_name][target_lbl]['cancel'] += n_c
+                        trend_hc_mtd[hc_name][target_lbl]['next_sales'] += n_n
 
         keys_to_sum = ['sales', 'next_sales', 'est', 'cnt', 'amt', 'amt_we', 'amt_wd', 'amt_move', 'online', 'cancel']
         for hc in existing_hcs:
@@ -757,6 +792,19 @@ if not df_raw.empty:
     po_pct = f" <span style='font-size:12px; font-weight:900; color:#0284c7;'>({po/ps*100:.0f}%)</span>" if ps > 0 else " <span style='font-size:12px; font-weight:900; color:#64748b;'>(0%)</span>"
     to_pct = f" <span style='font-size:12px; font-weight:900; color:#0284c7;'>({to/ts*100:.0f}%)</span>" if ts > 0 else " <span style='font-size:12px; font-weight:900; color:#64748b;'>(0%)</span>"
 
+    # 🚀 4. 스마트 블라인드 (주차를 누르면 매출, 온라인 칸 숫자 숨기기 & 회색 처리)
+    curr_is_week = "▪️" in sel_curr
+    prev_is_week = "▪️" in sel_prev
+
+    disp_ps = "<td style='text-align:center; color:#94a3b8; background-color:#f1f5f9;'>-</td>" if prev_is_week else td_val(ps)
+    disp_po = "<td style='text-align:center; color:#94a3b8; background-color:#f1f5f9;'>-</td>" if prev_is_week else td_val_str(f"{po:,.0f}{po_pct}")
+    
+    disp_ts = "<td style='text-align:center; color:#94a3b8; background-color:#f1f5f9;'>-</td>" if curr_is_week else td_val(ts, is_tgt=True)
+    disp_to = "<td style='text-align:center; color:#94a3b8; background-color:#f1f5f9;'>-</td>" if curr_is_week else td_val_str(f"{to:,.0f}{to_pct}", is_tgt=True)
+    
+    disp_diff_s = "<td style='text-align:center; color:#94a3b8; background-color:#f1f5f9;'>-</td>" if (curr_is_week or prev_is_week) else td_cell(ts, ps)
+    disp_diff_o = "<td style='text-align:center; color:#94a3b8; background-color:#f1f5f9;'>-</td>" if (curr_is_week or prev_is_week) else td_cell(to, po)
+
     html_wow = [
         '<table class="wow-table" style="width: 100%; border: 2px solid #94a3b8; border-radius: 8px; overflow: hidden; margin-top: 5px;">',
         '<thead><tr style="background-color: #1e293b; color: white;">',
@@ -766,9 +814,9 @@ if not df_raw.empty:
         '<th style="padding: 10px; background-color:#334155;">🚶 워크인 계약액<br>(천원)</th><th style="padding: 10px; background-color:#334155;">🏠 입주 계약액<br>(천원)</th>',
         '<th style="padding: 10px;">📊 계약률<br>(%)</th><th style="padding: 10px;">💸 객단가<br>(만원)</th><th style="padding: 10px;">📉 총 취소액<br>(천원)</th></tr></thead><tbody>'
     ]
-    html_wow.append(f"<tr style='background-color: #f8fafc;'><td style='text-align:center; font-weight:900; border-right:2px solid #94a3b8; color:#64748b;'>{sel_prev}</td>" + td_val(pa)+td_val(ps)+td_val_str(f"{po:,.0f}{po_pct}")+td_val(pe)+td_val(pc)+td_val(pw,bg='#f1f5f9')+td_val(pm,bg='#f1f5f9')+td_val(pr,True)+td_val(pu,False,True)+td_val(p_can) + "</tr>")
-    html_wow.append(f"<tr style='background-color: white;'><td style='text-align:center; font-weight:900; color:#1e3a8a; border-right:2px solid #94a3b8;'>{sel_curr}</td>" + td_val(ta,is_tgt=True)+td_val(ts,is_tgt=True)+td_val_str(f"{to:,.0f}{to_pct}",is_tgt=True)+td_val(te,is_tgt=True)+td_val(tc,is_tgt=True)+td_val(tw,is_tgt=True,bg='#f1f5f9')+td_val(tm,is_tgt=True,bg='#f1f5f9')+td_val(tr,True,is_tgt=True)+td_val(tu,False,True,is_tgt=True)+td_val(t_can,is_tgt=True) + "</tr>")
-    html_wow.append(f"<tr style='background-color: #fef2f2;'><td style='text-align:center; font-weight:900; color:#b91c1c; border-right:2px solid #94a3b8;'>지표 간 증감</td>" + td_cell(ta,pa)+td_cell(ts,ps)+td_cell(to,po)+td_cell(te,pe)+td_cell(tc,pc)+td_cell(tw,pw)+td_cell(tm,pm)+td_cell(tr,pr,is_rate=True)+td_cell(tu,pu,is_unit=True)+td_cell(t_can,p_can) + "</tr></tbody></table>")
+    html_wow.append(f"<tr style='background-color: #f8fafc;'><td style='text-align:center; font-weight:900; border-right:2px solid #94a3b8; color:#64748b;'>{sel_prev}</td>" + td_val(pa)+disp_ps+disp_po+td_val(pe)+td_val(pc)+td_val(pw,bg='#f1f5f9')+td_val(pm,bg='#f1f5f9')+td_val(pr,True)+td_val(pu,False,True)+td_val(p_can) + "</tr>")
+    html_wow.append(f"<tr style='background-color: white;'><td style='text-align:center; font-weight:900; color:#1e3a8a; border-right:2px solid #94a3b8;'>{sel_curr}</td>" + td_val(ta,is_tgt=True)+disp_ts+disp_to+td_val(te,is_tgt=True)+td_val(tc,is_tgt=True)+td_val(tw,is_tgt=True,bg='#f1f5f9')+td_val(tm,is_tgt=True,bg='#f1f5f9')+td_val(tr,True,is_tgt=True)+td_val(tu,False,True,is_tgt=True)+td_val(t_can,is_tgt=True) + "</tr>")
+    html_wow.append(f"<tr style='background-color: #fef2f2;'><td style='text-align:center; font-weight:900; color:#b91c1c; border-right:2px solid #94a3b8;'>지표 간 증감</td>" + td_cell(ta,pa)+disp_diff_s+disp_diff_o+td_cell(te,pe)+td_cell(tc,pc)+td_cell(tw,pw)+td_cell(tm,pm)+td_cell(tr,pr,is_rate=True)+td_cell(tu,pu,is_unit=True)+td_cell(t_can,p_can) + "</tr></tbody></table>")
     
     st.markdown("".join(html_wow), unsafe_allow_html=True)
     st.markdown("---")
@@ -847,9 +895,10 @@ if not df_raw.empty:
             st.markdown("<div class='chart-btn-group'>💰 재무 지표</div>", unsafe_allow_html=True)
             c1, c2, c3, c4, c5 = st.columns(5)
             with c1: st.button("✅ 계약액" if st.session_state['t_amt'] else "계약액", on_click=toggle_state, args=('t_amt',), use_container_width=True, type="primary" if st.session_state['t_amt'] else "secondary")
-            with c2: st.button("✅ 매출액" if st.session_state['t_sales'] else "매출액", on_click=toggle_state, args=('t_sales',), use_container_width=True, type="primary" if st.session_state['t_sales'] else "secondary")
+            # 🚀 5. 버튼 텍스트 변경
+            with c2: st.button("✅ 매출액(순증분)" if st.session_state['t_sales'] else "매출액(순증분)", on_click=toggle_state, args=('t_sales',), use_container_width=True, type="primary" if st.session_state['t_sales'] else "secondary")
             with c3: st.button("✅ 이월매출" if st.session_state['t_next'] else "이월매출", on_click=toggle_state, args=('t_next',), use_container_width=True, type="primary" if st.session_state['t_next'] else "secondary")
-            with c4: st.button("✅ 온라인" if st.session_state['t_onl'] else "온라인", on_click=toggle_state, args=('t_onl',), use_container_width=True, type="primary" if st.session_state['t_onl'] else "secondary")
+            with c4: st.button("✅ 온라인(매출순증분)" if st.session_state['t_onl'] else "온라인(매출순증분)", on_click=toggle_state, args=('t_onl',), use_container_width=True, type="primary" if st.session_state['t_onl'] else "secondary")
             with c5: st.button("✅ 평균(계약)" if st.session_state['t_avg'] else "평균(계약)", on_click=toggle_state, args=('t_avg',), use_container_width=True, type="primary" if st.session_state['t_avg'] else "secondary")
         with g_c2:
             st.markdown("<div class='chart-btn-group'>🏢 분류 지표 (계약액)</div>", unsafe_allow_html=True)
@@ -905,9 +954,9 @@ if not df_raw.empty:
             ms = [10] * (len(la)-1) + [20]
             
             if st.session_state['t_amt']: fig.add_trace(go.Scatter(x=la, y=y_a, mode='lines+markers+text', name='계약액', text=[f"<b>{v:.2f}억</b>" for v in y_a], textposition='top center', textfont=dict(size=15, color='black'), line=dict(color='#0f172a', width=4), marker=dict(size=ms, color=['#0f172a'] * (len(la)-1) + ['#dc2626'], line=dict(width=2, color='white'))))
-            if st.session_state['t_sales']: fig.add_trace(go.Scatter(x=la, y=y_s, mode='lines+markers+text', name='매출액', text=[f"<b>{v:.2f}억</b>" for v in y_s], textposition='bottom right', textfont=dict(size=15, color='#0d9488'), line=dict(color='#14b8a6', width=3), marker=dict(size=ms, line=dict(width=2, color='white'))))
+            if st.session_state['t_sales']: fig.add_trace(go.Scatter(x=la, y=y_s, mode='lines+markers+text', name='매출액(순증분)', text=[f"<b>{v:.2f}억</b>" for v in y_s], textposition='bottom right', textfont=dict(size=15, color='#0d9488'), line=dict(color='#14b8a6', width=3), marker=dict(size=ms, line=dict(width=2, color='white'))))
             if st.session_state['t_next']: fig.add_trace(go.Scatter(x=la, y=y_n, mode='lines+markers+text', name='이월매출', text=[f"<b>{v:.2f}억</b>" for v in y_n], textposition='top left', textfont=dict(size=15, color='#d97706'), line=dict(color='#f59e0b', width=3), marker=dict(size=ms, line=dict(width=2, color='white'))))
-            if st.session_state['t_onl']: fig.add_trace(go.Scatter(x=la, y=y_onl, mode='lines+markers+text', name='온라인매출', text=y_onl_txt, textposition='top right', textfont=dict(size=14, color='#0284c7'), line=dict(color='#38bdf8', width=3), marker=dict(size=ms, line=dict(width=2, color='white'))))
+            if st.session_state['t_onl']: fig.add_trace(go.Scatter(x=la, y=y_onl, mode='lines+markers+text', name='온라인매출(순증분)', text=y_onl_txt, textposition='top right', textfont=dict(size=14, color='#0284c7'), line=dict(color='#38bdf8', width=3), marker=dict(size=ms, line=dict(width=2, color='white'))))
             
             if st.session_state['t_avg']: 
                 avg_txt = [""] * len(la)
@@ -1079,7 +1128,6 @@ if not df_raw.empty:
         for c in final_df.columns[2:]:
             if c[0] not in h1_list: h1_list.append(c[0])
                 
-        # 🚀 2. 주차 실종 버그 수정 (not in 연산자로 포함 여부만 체크)
         for h1 in h1_list:
             if h1 not in ['🎯 당월매출', '🌟 당월 합계'] and wk_filter != "전체 보기" and wk_filter not in h1: continue
                 
