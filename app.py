@@ -947,13 +947,13 @@ if all_daily_data:
                 a_amt = r_data[('🌟 당월 합계', '계약액(천)', 'ACT')].values[0]
                 pct_amt = r_data[('🌟 당월 합계', '계약액(천)', '달성율(%)')].values[0]
                 
-                # 🚀 핸드폰 자동 줄바꿈 테러 방어 (초미세 문자열 조각화 기법)
+                # 🚀 핸드폰 자동 줄바꿈 테러 원천 봉쇄 (CSS 조각화 기법 적용)
                 t_c = '#047857' if pct_amt >= 100 else ('#ef4444' if pct_amt < 50 else '#ea580c')
                 b_c = '#10b981' if pct_amt >= 100 else ('#ef4444' if pct_amt < 50 else '#f97316')
                 b_w = min(pct_amt, 100)
                 
-                c1 = "display:flex;gap:15px;margin-bottom:20px;"
-                c2 = "flex:1;background:white;padding:15px;border-radius:10px;border:2px solid #e2e8f0;box-shadow:0 4px 6px -1px rgba(0,0,0,0.05);"
-                c3 = "font-size:13px;color:#64748b;font-weight:bold;"
-                c4 = "font-size:22px;font-weight:900;color:#0f172a;"
-                c5 = "font-size:22px;font-weight:900;color:#1d
+                c_wrp = "display:flex; gap:15px; margin-bottom:20px;"
+                c_box = "flex:1; background:white; padding:15px; border-radius:10px; border:2px solid #e2e8f0; box-shadow:0 4px 6px -1px rgba(0,0,0,0.05);"
+                c_sub = "font-size:13px; color:#64748b; font-weight:bold;"
+                c_val = "font-size:22px; font-weight:900; color:#0f172a;"
+                c_act = "font-size:22
