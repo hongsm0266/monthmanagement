@@ -94,21 +94,28 @@ css_styles = [
 ]
 st.markdown("".join(css_styles), unsafe_allow_html=True)
 
-st.markdown(
-    f"<div class='title-box'><h1>📊 충청호남팀 VDT 종합 관리 "
-    f"<span style='font-size:13px; font-weight:normal; color:#bae6fd; margin-left:10px;'>"
-    f"({current_date.strftime('%y년 %m월 %d일')} 기준)</span></h1></div>", 
-    unsafe_allow_html=True
-)
+title_html = [
+    "<div class='title-box'><h1>📊 충청호남팀 VDT 종합 관리 ",
+    f"<span style='font-size:13px; font-weight:normal; color:#bae6fd; margin-left:10px;'>({current_date.strftime('%y년 %m월 %d일')} 기준)</span></h1></div>"
+]
+st.markdown("".join(title_html), unsafe_allow_html=True)
 
 def clean_str(val): return re.sub(r'\s+', '', str(val))
 def safe_get(row, idx): return str(row[idx]).strip() if len(row) > idx else ""
+
+# 🚀 ValueError 완벽 차단: 기호(-, .)가 들어와도 에러 없이 0으로 부드럽게 치환
 def clean_val(v):
     if not v or pd.isna(v): return 0.0
     v_str = str(v).replace('%', '').replace(',', '').replace('원', '').replace('건', '').strip()
     m = 100000000 if '억' in v_str else (10000 if '만' in v_str else 1)
     v_str = re.sub(r'[^\d\.-]', '', v_str)
-    return float(v_str) * m if v_str else 0.0
+    
+    try:
+        # v_str이 비어있거나 단일 하이픈(-)이면 0.0으로 처리, 아니면 실수 변환
+        return float(v_str) * m if v_str and v_str != '-' else 0.0
+    except ValueError:
+        # 그 외에 파싱 불가한 이상한 텍스트가 와도 뻗지 않도록 방어막 전개
+        return 0.0
 
 def get_mapped_dealer(raw_d):
     c_d = clean_str(raw_d)
@@ -313,7 +320,7 @@ def process_vdt_data(all_targets, all_daily_data, selected_date):
             hc_name = re.sub(r'\d+', '', hc_name) 
             if not hc_name or any(x in hc_name for x in sub_kw) or hc_name in exact_kw: continue
             
-            # 🚀 목표 시트에 없는 유령 인원 완벽 포용 로직
+            # 🚀 목표 시트에 없는 유령 인원 자동 흡수 로직
             if hc_name not in hc_to_dealer_master:
                 hc_to_dealer_master[hc_name] = get_mapped_dealer(raw_dealer)
             if hc_name not in existing_hcs:
@@ -336,7 +343,8 @@ def process_vdt_data(all_targets, all_daily_data, selected_date):
                 
             if cur_dt not in raw_snapshots: raw_snapshots[cur_dt] = {}
             if hc_name not in raw_snapshots[cur_dt]: raw_snapshots[cur_dt][hc_name] = {'sales':0, 'online':0, 'cancel':0, 'next':0}
-            # 🚀 덮어쓰기(=)에서 엑셀 드래그 합산(+=)으로 변경
+            
+            # 🚀 덮어쓰기(=)에서 무한 합산(+=)으로 변경하여 누락 방지
             raw_snapshots[cur_dt][hc_name]['sales'] += t_sales
             raw_snapshots[cur_dt][hc_name]['next'] += t_next
 
@@ -379,7 +387,6 @@ def process_vdt_data(all_targets, all_daily_data, selected_date):
             raw_snapshots[cur_dt][hc_name]['online'] += t_online
             raw_snapshots[cur_dt][hc_name]['cancel'] += t_cancel
 
-    # 🚀 유령 인원들의 대리점 소속을 실시간으로 팀 통계에 반영
     valid_dealers = list(set(hc_to_dealer_master.values()))
 
     av_dates = sorted(list(set(daily_data.keys()).union(set(raw_snapshots.keys()))))
@@ -620,7 +627,6 @@ def process_vdt_data(all_targets, all_daily_data, selected_date):
     columns = pd.MultiIndex.from_tuples(col_tuples, names=['주차', '항목', '구분'])
     rows = []
     
-    # 🚀 유령 인원들의 실적을 표에도 정확히 끌고 오도록 existing_hcs 기반 생성
     for hc_c in existing_hcs:
         if hc_c in EXCLUDED_HCS: continue
         d = hc_to_dealer_master.get(hc_c, "기타")
@@ -832,31 +838,23 @@ if all_daily_data:
         disp_diff_s = "<td style='text-align:center; color:#94a3b8; background-color:#f1f5f9;'>-</td>" if (curr_is_week or prev_is_week) else td_cell(ts, ps)
         disp_diff_o = "<td style='text-align:center; color:#94a3b8; background-color:#f1f5f9;'>-</td>" if (curr_is_week or prev_is_week) else td_cell(to, po)
 
-        html_wow = '''
-        <table class="wow-table" style="width: 100%; border: 2px solid #94a3b8; border-radius: 8px; overflow: hidden; margin-top: 5px;">
-            <thead><tr style="background-color: #1e293b; color: white;">
-            <th style="padding: 10px; font-size: 13px; border-right: 2px solid #94a3b8; width:14%;">조직<br><span style="font-size:11px; color:#cbd5e1;">({CT})</span></th>
-            <th style="padding: 10px;">💰 총 계약액<br>(천원)</th><th style="padding: 10px;">💰 총 매출액<br>(천원)</th><th style="padding: 10px;">💻 온라인매출<br>(천원)</th>
-            <th style="padding: 10px;">📝 견적건<br>(건)</th><th style="padding: 10px;">🤝 계약건<br>(건)</th>
-            <th style="padding: 10px; background-color:#334155;">🚶 워크인 계약액<br>(천원)</th><th style="padding: 10px; background-color:#334155;">🏠 입주 계약액<br>(천원)</th>
-            <th style="padding: 10px;">📊 계약률<br>(%)</th><th style="padding: 10px;">💸 객단가<br>(만원)</th><th style="padding: 10px;">📉 총 취소액<br>(천원)</th></tr></thead><tbody>
-            <tr style='background-color: #f8fafc;'><td style='text-align:center; font-weight:900; border-right:2px solid #94a3b8; color:#64748b;'>{SEL_PREV}</td>
-            {TD_PA} {DISP_PS} {DISP_PO} {TD_PE} {TD_PC} {TD_PW} {TD_PM} {TD_PR} {TD_PU} {TD_PCAN} </tr>
-            <tr style='background-color: white;'><td style='text-align:center; font-weight:900; color:#1e3a8a; border-right:2px solid #94a3b8;'>{SEL_CURR}</td>
-            {TD_TA} {DISP_TS} {DISP_TO} {TD_TE} {TD_TC} {TD_TW} {TD_TM} {TD_TR} {TD_TU} {TD_TCAN} </tr>
-            <tr style='background-color: #fef2f2;'><td style='text-align:center; font-weight:900; color:#b91c1c; border-right:2px solid #94a3b8;'>지표 간 증감</td>
-            {DIFF_A} {DIFF_S} {DIFF_O} {DIFF_E} {DIFF_C} {DIFF_W} {DIFF_M} {DIFF_R} {DIFF_U} {DIFF_CAN} </tr></tbody></table>
-        '''
+        html_wow = [
+            '<table class="wow-table" style="width: 100%; border: 2px solid #94a3b8; border-radius: 8px; overflow: hidden; margin-top: 5px;">',
+            '<thead><tr style="background-color: #1e293b; color: white;">',
+            f'<th style="padding: 10px; font-size: 13px; border-right: 2px solid #94a3b8; width:14%;">조직<br><span style="font-size:11px; color:#cbd5e1;">({ct})</span></th>',
+            '<th style="padding: 10px;">💰 총 계약액<br>(천원)</th><th style="padding: 10px;">💰 총 매출액<br>(천원)</th><th style="padding: 10px;">💻 온라인매출<br>(천원)</th>',
+            '<th style="padding: 10px;">📝 견적건<br>(건)</th><th style="padding: 10px;">🤝 계약건<br>(건)</th>',
+            '<th style="padding: 10px; background-color:#334155;">🚶 워크인 계약액<br>(천원)</th><th style="padding: 10px; background-color:#334155;">🏠 입주 계약액<br>(천원)</th>',
+            '<th style="padding: 10px;">📊 계약률<br>(%)</th><th style="padding: 10px;">💸 객단가<br>(만원)</th><th style="padding: 10px;">📉 총 취소액<br>(천원)</th></tr></thead><tbody>',
+            f"<tr style='background-color: #f8fafc;'><td style='text-align:center; font-weight:900; border-right:2px solid #94a3b8; color:#64748b;'>{sel_prev}</td>",
+            td_val(pa), disp_ps, disp_po, td_val(pe), td_val(pc), td_val(pw,bg='#f1f5f9'), td_val(pm,bg='#f1f5f9'), td_val(pr,True), td_val(pu,False,True), td_val(p_can), "</tr>",
+            f"<tr style='background-color: white;'><td style='text-align:center; font-weight:900; color:#1e3a8a; border-right:2px solid #94a3b8;'>{sel_curr}</td>",
+            td_val(ta,is_tgt=True), disp_ts, disp_to, td_val(te,is_tgt=True), td_val(tc,is_tgt=True), td_val(tw,is_tgt=True,bg='#f1f5f9'), td_val(tm,is_tgt=True,bg='#f1f5f9'), td_val(tr,True,is_tgt=True), td_val(tu,False,True,is_tgt=True), td_val(t_can,is_tgt=True), "</tr>",
+            f"<tr style='background-color: #fef2f2;'><td style='text-align:center; font-weight:900; color:#b91c1c; border-right:2px solid #94a3b8;'>지표 간 증감</td>",
+            td_cell(ta,pa), disp_diff_s, disp_diff_o, td_cell(te,pe), td_cell(tc,pc), td_cell(tw,pw), td_cell(tm,pm), td_cell(tr,pr,is_rate=True), td_cell(tu,pu,is_unit=True), td_cell(t_can,p_can), "</tr></tbody></table>"
+        ]
         
-        html_wow = html_wow.replace("{CT}", ct).replace("{SEL_PREV}", str(sel_prev)).replace("{SEL_CURR}", str(sel_curr))
-        html_wow = html_wow.replace("{TD_PA}", td_val(pa)).replace("{DISP_PS}", disp_ps).replace("{DISP_PO}", disp_po).replace("{TD_PE}", td_val(pe)).replace("{TD_PC}", td_val(pc))
-        html_wow = html_wow.replace("{TD_PW}", td_val(pw,bg='#f1f5f9')).replace("{TD_PM}", td_val(pm,bg='#f1f5f9')).replace("{TD_PR}", td_val(pr,True)).replace("{TD_PU}", td_val(pu,False,True)).replace("{TD_PCAN}", td_val(p_can))
-        html_wow = html_wow.replace("{TD_TA}", td_val(ta,is_tgt=True)).replace("{DISP_TS}", disp_ts).replace("{DISP_TO}", disp_to).replace("{TD_TE}", td_val(te,is_tgt=True)).replace("{TD_TC}", td_val(tc,is_tgt=True))
-        html_wow = html_wow.replace("{TD_TW}", td_val(tw,is_tgt=True,bg='#f1f5f9')).replace("{TD_TM}", td_val(tm,is_tgt=True,bg='#f1f5f9')).replace("{TD_TR}", td_val(tr,True,is_tgt=True)).replace("{TD_TU}", td_val(tu,False,True,is_tgt=True)).replace("{TD_TCAN}", td_val(t_can,is_tgt=True))
-        html_wow = html_wow.replace("{DIFF_A}", td_cell(ta,pa)).replace("{DIFF_S}", disp_diff_s).replace("{DIFF_O}", disp_diff_o).replace("{DIFF_E}", td_cell(te,pe)).replace("{DIFF_C}", td_cell(tc,pc))
-        html_wow = html_wow.replace("{DIFF_W}", td_cell(tw,pw)).replace("{DIFF_M}", td_cell(tm,pm)).replace("{DIFF_R}", td_cell(tr,pr,is_rate=True)).replace("{DIFF_U}", td_cell(tu,pu,is_unit=True)).replace("{DIFF_CAN}", td_cell(t_can,p_can))
-        
-        st.markdown(html_wow, unsafe_allow_html=True)
+        st.markdown("".join(html_wow), unsafe_allow_html=True)
         st.markdown("---")
 
         st.markdown("#### 🔎 **실적 조회 (조직 및 인원 선택)**")
@@ -1053,31 +1051,26 @@ if all_daily_data:
                 b_c = '#10b981' if pct_amt >= 100 else ('#ef4444' if pct_amt < 50 else '#f97316')
                 b_w = min(pct_amt, 100)
                 
-                html_card = '''
-                <div style="display:flex; gap:15px; margin-bottom:20px;">
-                    <div style="flex:1; background:white; padding:15px; border-radius:10px; border:2px solid #e2e8f0; box-shadow:0 4px 6px -1px rgba(0,0,0,0.05);">
-                        <div style="font-size:13px; color:#64748b; font-weight:bold;">🎯 당월 계약액 목표 (천원)</div>
-                        <div style="font-size:22px; font-weight:900; color:#0f172a;">{T_AMT}</div>
-                    </div>
-                    <div style="flex:1; background:white; padding:15px; border-radius:10px; border:2px solid #e2e8f0; box-shadow:0 4px 6px -1px rgba(0,0,0,0.05);">
-                        <div style="font-size:13px; color:#64748b; font-weight:bold;">🏆 현재 계약액 실적 (천원)</div>
-                        <div style="font-size:22px; font-weight:900; color:#1d4ed8;">{A_AMT}</div>
-                    </div>
-                    <div style="flex:1; background:white; padding:15px; border-radius:10px; border:2px solid #e2e8f0; box-shadow:0 4px 6px -1px rgba(0,0,0,0.05);">
-                        <div style="font-size:13px; color:#64748b; font-weight:bold;">🔥 목표 달성율 (%)</div>
-                        <div style="font-size:22px; font-weight:900; color:{T_C};">{PCT_AMT}%</div>
-                        <div style="width:100%; background-color:#e2e8f0; height:6px; border-radius:3px; margin-top:5px;">
-                            <div style="width:{B_W}%; background-color:{B_C}; height:100%; border-radius:3px;"></div>
-                        </div>
-                    </div>
-                </div>
-                '''
+                c_wrp = "display:flex; gap:15px; margin-bottom:20px;"
+                c_box = "flex:1; background:white; padding:15px; border-radius:10px; border:2px solid #e2e8f0; box-shadow:0 4px 6px -1px rgba(0,0,0,0.05);"
+                c_sub = "font-size:13px; color:#64748b; font-weight:bold;"
+                c_val = "font-size:22px; font-weight:900; color:#0f172a;"
+                c_act = "font-size:22px; font-weight:900; color:#1d4ed8;"
+                c_pct = "font-size:22px; font-weight:900; color:" + t_c + ";"
+                c_b_bg = "width:100%; background-color:#e2e8f0; height:6px; border-radius:3px; margin-top:5px;"
+                c_b_fg = "width:" + str(b_w) + "%; background-color:" + b_c + "; height:100%; border-radius:3px;"
                 
-                html_card = html_card.replace("{T_AMT}", f"{t_amt:,.0f}").replace("{A_AMT}", f"{a_amt:,.0f}")
-                html_card = html_card.replace("{PCT_AMT}", f"{pct_amt:,.0f}").replace("{T_C}", t_c)
-                html_card = html_card.replace("{B_W}", str(b_w)).replace("{B_C}", b_c)
-                
-                st.markdown(html_card, unsafe_allow_html=True)
+                pt = [
+                    "<div style='", c_wrp, "'>",
+                    "<div style='", c_box, "'><div style='", c_sub, "'>🎯 당월 계약액 목표 (천원)</div>",
+                    "<div style='", c_val, "'>", f"{t_amt:,.0f}", "</div></div>",
+                    "<div style='", c_box, "'><div style='", c_sub, "'>🏆 현재 계약액 실적 (천원)</div>",
+                    "<div style='", c_act, "'>", f"{a_amt:,.0f}", "</div></div>",
+                    "<div style='", c_box, "'><div style='", c_sub, "'>🔥 목표 달성율 (%)</div>",
+                    "<div style='", c_pct, "'>", f"{pct_amt:,.0f}", "%</div>",
+                    "<div style='", c_b_bg, "'><div style='", c_b_fg, "'></div></div></div></div>"
+                ]
+                st.markdown("".join(pt), unsafe_allow_html=True)
 
         st.markdown(f"<div style='background-color: #f8fafc; padding: 15px; border-left: 5px solid #3b82f6; border-radius: 5px; margin-bottom: 20px;'><h4 style='margin:0; color: #1e3a8a;'>📌 {current_month}월 {CURRENT_TABLE_WEEK} {tdr} 전체 VDT 현황 표 (기준일: {eff_selected_date})</h4></div>", unsafe_allow_html=True)
         
