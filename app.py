@@ -752,23 +752,31 @@ if all_daily_data:
         disp_diff_s = "<td style='text-align:center; color:#94a3b8; background-color:#f1f5f9;'>-</td>" if (curr_is_week or prev_is_week) else td_cell(ts, ps)
         disp_diff_o = "<td style='text-align:center; color:#94a3b8; background-color:#f1f5f9;'>-</td>" if (curr_is_week or prev_is_week) else td_cell(to, po)
 
-        html_wow = [
-            '<table class="wow-table" style="width: 100%; border: 2px solid #94a3b8; border-radius: 8px; overflow: hidden; margin-top: 5px;">',
-            '<thead><tr style="background-color: #1e293b; color: white;">',
-            f'<th style="padding: 10px; font-size: 13px; border-right: 2px solid #94a3b8; width:14%;">조직<br><span style="font-size:11px; color:#cbd5e1;">({ct})</span></th>',
-            '<th style="padding: 10px;">💰 총 계약액<br>(천원)</th><th style="padding: 10px;">💰 총 매출액<br>(천원)</th><th style="padding: 10px;">💻 온라인매출<br>(천원)</th>',
-            '<th style="padding: 10px;">📝 견적건<br>(건)</th><th style="padding: 10px;">🤝 계약건<br>(건)</th>',
-            '<th style="padding: 10px; background-color:#334155;">🚶 워크인 계약액<br>(천원)</th><th style="padding: 10px; background-color:#334155;">🏠 입주 계약액<br>(천원)</th>',
-            '<th style="padding: 10px;">📊 계약률<br>(%)</th><th style="padding: 10px;">💸 객단가<br>(만원)</th><th style="padding: 10px;">📉 총 취소액<br>(천원)</th></tr></thead><tbody>',
-            f"<tr style='background-color: #f8fafc;'><td style='text-align:center; font-weight:900; border-right:2px solid #94a3b8; color:#64748b;'>{sel_prev}</td>",
-            td_val(pa), disp_ps, disp_po, td_val(pe), td_val(pc), td_val(pw,bg='#f1f5f9'), td_val(pm,bg='#f1f5f9'), td_val(pr,True), td_val(pu,False,True), td_val(p_can), "</tr>",
-            f"<tr style='background-color: white;'><td style='text-align:center; font-weight:900; color:#1e3a8a; border-right:2px solid #94a3b8;'>{sel_curr}</td>",
-            td_val(ta,is_tgt=True), disp_ts, disp_to, td_val(te,is_tgt=True), td_val(tc,is_tgt=True), td_val(tw,is_tgt=True,bg='#f1f5f9'), td_val(tm,is_tgt=True,bg='#f1f5f9'), td_val(tr,True,is_tgt=True), td_val(tu,False,True,is_tgt=True), td_val(t_can,is_tgt=True), "</tr>",
-            f"<tr style='background-color: #fef2f2;'><td style='text-align:center; font-weight:900; color:#b91c1c; border-right:2px solid #94a3b8;'>지표 간 증감</td>",
-            td_cell(ta,pa), disp_diff_s, disp_diff_o, td_cell(te,pe), td_cell(tc,pc), td_cell(tw,pw), td_cell(tm,pm), td_cell(tr,pr,is_rate=True), td_cell(tu,pu,is_unit=True), td_cell(t_can,p_can), "</tr></tbody></table>"
-        ]
+        html_wow = '''
+        <table class="wow-table" style="width: 100%; border: 2px solid #94a3b8; border-radius: 8px; overflow: hidden; margin-top: 5px;">
+            <thead><tr style="background-color: #1e293b; color: white;">
+            <th style="padding: 10px; font-size: 13px; border-right: 2px solid #94a3b8; width:14%;">조직<br><span style="font-size:11px; color:#cbd5e1;">({CT})</span></th>
+            <th style="padding: 10px;">💰 총 계약액<br>(천원)</th><th style="padding: 10px;">💰 총 매출액<br>(천원)</th><th style="padding: 10px;">💻 온라인매출<br>(천원)</th>
+            <th style="padding: 10px;">📝 견적건<br>(건)</th><th style="padding: 10px;">🤝 계약건<br>(건)</th>
+            <th style="padding: 10px; background-color:#334155;">🚶 워크인 계약액<br>(천원)</th><th style="padding: 10px; background-color:#334155;">🏠 입주 계약액<br>(천원)</th>
+            <th style="padding: 10px;">📊 계약률<br>(%)</th><th style="padding: 10px;">💸 객단가<br>(만원)</th><th style="padding: 10px;">📉 총 취소액<br>(천원)</th></tr></thead><tbody>
+            <tr style='background-color: #f8fafc;'><td style='text-align:center; font-weight:900; border-right:2px solid #94a3b8; color:#64748b;'>{SEL_PREV}</td>
+            {TD_PA} {DISP_PS} {DISP_PO} {TD_PE} {TD_PC} {TD_PW} {TD_PM} {TD_PR} {TD_PU} {TD_PCAN} </tr>
+            <tr style='background-color: white;'><td style='text-align:center; font-weight:900; color:#1e3a8a; border-right:2px solid #94a3b8;'>{SEL_CURR}</td>
+            {TD_TA} {DISP_TS} {DISP_TO} {TD_TE} {TD_TC} {TD_TW} {TD_TM} {TD_TR} {TD_TU} {TD_TCAN} </tr>
+            <tr style='background-color: #fef2f2;'><td style='text-align:center; font-weight:900; color:#b91c1c; border-right:2px solid #94a3b8;'>지표 간 증감</td>
+            {DIFF_A} {DIFF_S} {DIFF_O} {DIFF_E} {DIFF_C} {DIFF_W} {DIFF_M} {DIFF_R} {DIFF_U} {DIFF_CAN} </tr></tbody></table>
+        '''
         
-        st.markdown("".join(html_wow), unsafe_allow_html=True)
+        html_wow = html_wow.replace("{CT}", ct).replace("{SEL_PREV}", str(sel_prev)).replace("{SEL_CURR}", str(sel_curr))
+        html_wow = html_wow.replace("{TD_PA}", td_val(pa)).replace("{DISP_PS}", disp_ps).replace("{DISP_PO}", disp_po).replace("{TD_PE}", td_val(pe)).replace("{TD_PC}", td_val(pc))
+        html_wow = html_wow.replace("{TD_PW}", td_val(pw,bg='#f1f5f9')).replace("{TD_PM}", td_val(pm,bg='#f1f5f9')).replace("{TD_PR}", td_val(pr,True)).replace("{TD_PU}", td_val(pu,False,True)).replace("{TD_PCAN}", td_val(p_can))
+        html_wow = html_wow.replace("{TD_TA}", td_val(ta,is_tgt=True)).replace("{DISP_TS}", disp_ts).replace("{DISP_TO}", disp_to).replace("{TD_TE}", td_val(te,is_tgt=True)).replace("{TD_TC}", td_val(tc,is_tgt=True))
+        html_wow = html_wow.replace("{TD_TW}", td_val(tw,is_tgt=True,bg='#f1f5f9')).replace("{TD_TM}", td_val(tm,is_tgt=True,bg='#f1f5f9')).replace("{TD_TR}", td_val(tr,True,is_tgt=True)).replace("{TD_TU}", td_val(tu,False,True,is_tgt=True)).replace("{TD_TCAN}", td_val(t_can,is_tgt=True))
+        html_wow = html_wow.replace("{DIFF_A}", td_cell(ta,pa)).replace("{DIFF_S}", disp_diff_s).replace("{DIFF_O}", disp_diff_o).replace("{DIFF_E}", td_cell(te,pe)).replace("{DIFF_C}", td_cell(tc,pc))
+        html_wow = html_wow.replace("{DIFF_W}", td_cell(tw,pw)).replace("{DIFF_M}", td_cell(tm,pm)).replace("{DIFF_R}", td_cell(tr,pr,is_rate=True)).replace("{DIFF_U}", td_cell(tu,pu,is_unit=True)).replace("{DIFF_CAN}", td_cell(t_can,p_can))
+        
+        st.markdown(html_wow, unsafe_allow_html=True)
         st.markdown("---")
 
         st.markdown("#### 🔎 **실적 조회 (조직 및 인원 선택)**")
@@ -938,22 +946,4 @@ if all_daily_data:
             
         st.markdown("---")
 
-        tdr = date_headers.get(CURRENT_TABLE_WEEK, "")
-        
-        if "님" in ct:
-            r_data = final_df[final_df[('기본정보', 'HC명', 'HC명')] == data_key]
-            if not r_data.empty:
-                t_amt = r_data[('🌟 당월 합계', '계약액(천)', '목표')].values[0]
-                a_amt = r_data[('🌟 당월 합계', '계약액(천)', 'ACT')].values[0]
-                pct_amt = r_data[('🌟 당월 합계', '계약액(천)', '달성율(%)')].values[0]
-                
-                # 🚀 핸드폰 자동 줄바꿈 테러 원천 봉쇄 (CSS 조각화 기법 적용)
-                t_c = '#047857' if pct_amt >= 100 else ('#ef4444' if pct_amt < 50 else '#ea580c')
-                b_c = '#10b981' if pct_amt >= 100 else ('#ef4444' if pct_amt < 50 else '#f97316')
-                b_w = min(pct_amt, 100)
-                
-                c_wrp = "display:flex; gap:15px; margin-bottom:20px;"
-                c_box = "flex:1; background:white; padding:15px; border-radius:10px; border:2px solid #e2e8f0; box-shadow:0 4px 6px -1px rgba(0,0,0,0.05);"
-                c_sub = "font-size:13px; color:#64748b; font-weight:bold;"
-                c_val = "font-size:22px; font-weight:900; color:#0f172a;"
-                c_act = "font-size:22
+        tdr = date_headers.get(CURRENT_TABLE_WEE
