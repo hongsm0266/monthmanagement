@@ -428,29 +428,23 @@ def process_vdt_data(all_targets, all_daily_data, selected_date):
                     d_val = daily_data[curr][hc]
                     trend_hc_w[hc][i]['amt'] += d_val['amt']; trend_hc_w[hc][i]['est'] += d_val['est']; trend_hc_w[hc][i]['cnt'] += d_val['cnt']
                     trend_hc_w[hc][i]['amt_we'] += d_val['amt_we']; trend_hc_w[hc][i]['amt_wd'] += d_val['amt_wd']; trend_hc_w[hc][i]['amt_move'] += d_val['amt_move']
+                
+                # 🚀 주간 데이터: 일일 순증분 핀셋 합산기 (월 넘어갈 때 더블카운팅 원천 차단)
+                m_start = curr.replace(day=1)
+                curr_snap = get_snap(curr, hc, min_d=m_start)
+                if curr.day == 1:
+                    trend_hc_w[hc][i]['sales'] += curr_snap['sales']
+                    trend_hc_w[hc][i]['online'] += curr_snap['online']
+                    trend_hc_w[hc][i]['cancel'] += curr_snap['cancel']
+                    trend_hc_w[hc][i]['next_sales'] += curr_snap['next']
+                else:
+                    prev_snap = get_snap(curr - timedelta(days=1), hc, min_d=m_start)
+                    trend_hc_w[hc][i]['sales'] += (curr_snap['sales'] - prev_snap['sales'])
+                    trend_hc_w[hc][i]['online'] += (curr_snap['online'] - prev_snap['online'])
+                    trend_hc_w[hc][i]['cancel'] += (curr_snap['cancel'] - prev_snap['cancel'])
+                    trend_hc_w[hc][i]['next_sales'] += (curr_snap['next'] - prev_snap['next'])
+                    
                 curr += timedelta(days=1)
-                
-            if s_dt.month == e_dt.month:
-                m_start = s_dt.replace(day=1)
-                snap_end = get_snap(e_dt, hc)
-                snap_prev = get_snap(s_dt - timedelta(days=1), hc, min_d=m_start)
-                trend_hc_w[hc][i]['sales'] = snap_end['sales'] - snap_prev['sales']
-                trend_hc_w[hc][i]['online'] = snap_end['online'] - snap_prev['online']
-                trend_hc_w[hc][i]['cancel'] = snap_end['cancel'] - snap_prev['cancel']
-                trend_hc_w[hc][i]['next_sales'] = snap_end['next'] - snap_prev['next']
-            else:
-                m1_end = (s_dt.replace(day=28) + timedelta(days=4)).replace(day=1) - timedelta(days=1)
-                m1_start = s_dt.replace(day=1)
-                snap_m1_end = get_snap(m1_end, hc)
-                snap_m1_prev = get_snap(s_dt - timedelta(days=1), hc, min_d=m1_start)
-                
-                m2_start = e_dt.replace(day=1)
-                snap_m2_end = get_snap(e_dt, hc)
-                
-                trend_hc_w[hc][i]['sales'] = (snap_m1_end['sales'] - snap_m1_prev['sales']) + snap_m2_end['sales']
-                trend_hc_w[hc][i]['online'] = (snap_m1_end['online'] - snap_m1_prev['online']) + snap_m2_end['online']
-                trend_hc_w[hc][i]['cancel'] = (snap_m1_end['cancel'] - snap_m1_prev['cancel']) + snap_m2_end['cancel']
-                trend_hc_w[hc][i]['next_sales'] = (snap_m1_end['next'] - snap_m1_prev['next']) + snap_m2_end['next']
 
     t_mtd = eff_selected_date
     t_prev1 = get_prev_month_date(eff_selected_date, 1)
@@ -660,7 +654,6 @@ def process_vdt_data(all_targets, all_daily_data, selected_date):
 
     df = pd.DataFrame(rows, columns=columns)
     
-    # 🚀 달성율(%) 수학적 안전망 (0으로 나누기 방지)
     for c in df.columns[2:]:
         if c[2] == '달성율(%)': 
             tgt_col = pd.to_numeric(df[(c[0], c[1], '목표')], errors='coerce').fillna(0)
@@ -697,7 +690,6 @@ if all_daily_data:
                         stot[(w, '견적건', 'ACT')] = wd['est']
                         stot[(w, '계약건', 'ACT')] = wd['cnt']
             
-            # 🚀 소계/합계 달성율 수학적 안전망
             for c in df.columns[2:]:
                 if c[2] == '달성율(%)': 
                     tgt_val = float(stot.get((c[0],c[1],'목표'), 0) or 0)
@@ -721,7 +713,6 @@ if all_daily_data:
                     gt[(w, '견적건', 'ACT')] = sum([rdw.get(d, {}).get(wk, {}).get('est', 0) for d in df[d_c].unique()])
                     gt[(w, '계약건', 'ACT')] = sum([rdw.get(d, {}).get(wk, {}).get('cnt', 0) for d in df[d_c].unique()])
 
-        # 🚀 총계 달성율 수학적 안전망
         for c in df.columns[2:]:
             if c[2] == '달성율(%)': 
                 tgt_val = float(gt.get((c[0],c[1],'목표'), 0) or 0)
@@ -842,15 +833,18 @@ if all_daily_data:
         po_pct = f" <span style='font-size:12px; font-weight:900; color:#0284c7;'>({po/ps*100:.0f}%)</span>" if ps > 0 else " <span style='font-size:12px; font-weight:900; color:#64748b;'>(0%)</span>"
         to_pct = f" <span style='font-size:12px; font-weight:900; color:#0284c7;'>({to/ts*100:.0f}%)</span>" if ts > 0 else " <span style='font-size:12px; font-weight:900; color:#64748b;'>(0%)</span>"
 
-        # 🚀 주간 조회 시 누적실적 화면 가림(-) 원천 차단 (전부 보여주기)
-        disp_ps = td_val(ps)
-        disp_po = td_val_str(f"{po:,.0f}{po_pct}")
+        # 🚀 1. 표(Wow Table) 주간 조회 시 '매출/온라인' 음영 마스킹 완벽 복구!
+        curr_is_week = "▪️" in str(sel_curr)
+        prev_is_week = "▪️" in str(sel_prev)
+
+        disp_ps = "<td style='text-align:center; color:#94a3b8; background-color:#f1f5f9;'>-</td>" if prev_is_week else td_val(ps)
+        disp_po = "<td style='text-align:center; color:#94a3b8; background-color:#f1f5f9;'>-</td>" if prev_is_week else td_val_str(f"{po:,.0f}{po_pct}")
         
-        disp_ts = td_val(ts, is_tgt=True)
-        disp_to = td_val_str(f"{to:,.0f}{to_pct}", is_tgt=True)
+        disp_ts = "<td style='text-align:center; color:#94a3b8; background-color:#f1f5f9;'>-</td>" if curr_is_week else td_val(ts, is_tgt=True)
+        disp_to = "<td style='text-align:center; color:#94a3b8; background-color:#f1f5f9;'>-</td>" if curr_is_week else td_val_str(f"{to:,.0f}{to_pct}", is_tgt=True)
         
-        disp_diff_s = td_cell(ts, ps)
-        disp_diff_o = td_cell(to, po)
+        disp_diff_s = "<td style='text-align:center; color:#94a3b8; background-color:#f1f5f9;'>-</td>" if (curr_is_week or prev_is_week) else td_cell(ts, ps)
+        disp_diff_o = "<td style='text-align:center; color:#94a3b8; background-color:#f1f5f9;'>-</td>" if (curr_is_week or prev_is_week) else td_cell(to, po)
 
         html_wow = '''
         <table class="wow-table" style="width: 100%; border: 2px solid #94a3b8; border-radius: 8px; overflow: hidden; margin-top: 5px;">
@@ -945,17 +939,20 @@ if all_daily_data:
                 else:
                     t_amts.append(0); a_amts.append(0)
 
-            x_lbls = [f"{wk} ({date_headers.get(wk, '')})" for wk in last_4_keys]
+            # 🚀 6. X축 주차 글씨 크기 14px 확대 및 볼드 처리
+            x_lbls = [f"<b>{wk} ({date_headers.get(wk, '')})</b>" for wk in last_4_keys]
 
             fig = go.Figure()
             fig.add_trace(go.Bar(name='목표 계약액', x=x_lbls, y=t_amts, marker_color='#94a3b8', text=[f"{v:.1f}억" for v in t_amts], textposition='auto'))
             fig.add_trace(go.Bar(name='실제 계약액', x=x_lbls, y=a_amts, marker_color='#2563eb', text=[f"<b>{v:.1f}억</b>" for v in a_amts], textposition='auto'))
             fig.update_layout(barmode='group', height=450, margin=dict(l=20, r=20, t=60, b=20), plot_bgcolor='white', legend=dict(orientation="h", yanchor="bottom", y=1.05, xanchor="right", x=1))
             fig.update_yaxes(title="금액 (억)", gridcolor='#f1f5f9')
+            fig.update_xaxes(showgrid=True, gridcolor='#f1f5f9', tickfont=dict(size=14, color='black'))
             st.plotly_chart(fig, use_container_width=True)
             
         else:
             la = month_labels if is_m else trend_labels
+            la_chart = [f"<b>{l}</b>" for l in la] # 🚀 X축 라벨 볼드 처리 적용
             
             if vt == "충청호남팀 전체": sd = [trend_pack['M' if is_m else 'W']['tot'][l if is_m else trend_labels.index(l)] for l in la]
             elif vt in ["충청팀 통합", "호남팀 통합"]: sd = [trend_pack['M' if is_m else 'W']['reg'][data_key][l if is_m else trend_labels.index(l)] for l in la]
@@ -968,7 +965,9 @@ if all_daily_data:
                 c1, c2, c3, c4, c5 = st.columns(5)
                 with c1: st.button("✅ 계약액" if st.session_state['t_amt'] else "계약액", on_click=toggle_state, args=('t_amt',), use_container_width=True, type="primary" if st.session_state['t_amt'] else "secondary")
                 with c2: st.button("✅ 매출액(순증분)" if st.session_state['t_sales'] else "매출액(순증분)", on_click=toggle_state, args=('t_sales',), use_container_width=True, type="primary" if st.session_state['t_sales'] else "secondary")
-                with c3: st.button("✅ 이월매출" if st.session_state['t_next'] else "이월매출", on_click=toggle_state, args=('t_next',), use_container_width=True, type="primary" if st.session_state['t_next'] else "secondary")
+                
+                # 🚀 3. 이월매출 명칭을 '이월매출(순증분)'으로 변경
+                with c3: st.button("✅ 이월매출(순증분)" if st.session_state['t_next'] else "이월매출(순증분)", on_click=toggle_state, args=('t_next',), use_container_width=True, type="primary" if st.session_state['t_next'] else "secondary")
                 with c4: st.button("✅ 온라인(순증분)" if st.session_state['t_onl'] else "온라인(순증분)", on_click=toggle_state, args=('t_onl',), use_container_width=True, type="primary" if st.session_state['t_onl'] else "secondary")
                 with c5: st.button("✅ 평균(계약)" if st.session_state['t_avg'] else "평균(계약)", on_click=toggle_state, args=('t_avg',), use_container_width=True, type="primary" if st.session_state['t_avg'] else "secondary")
             with g_c2:
@@ -1003,7 +1002,8 @@ if all_daily_data:
             
             ym_txt, yw_txt, y_onl_txt = [], [], []
             for w, m, a, o, s in zip(y_wk, y_m, y_a, y_onl, y_s):
-                if a > 0:
+                # 🚀 5. 워크인 텍스트 누락 방어막 (총 계약액이 0이어도 무조건 텍스트 생성)
+                if a != 0:
                     ym_txt.append(f"<b>{m:.2f}억</b><br><span style='font-size:11px'>({(m/a*100):.0f}%)</span>")
                     yw_txt.append(f"<b>{w:.2f}억</b><br><span style='font-size:11px'>({(w/a*100):.0f}%)</span>")
                 else:
@@ -1024,26 +1024,27 @@ if all_daily_data:
                 fig = go.Figure()
                 ms = [10] * (len(la)-1) + [20]
                 
-                if st.session_state['t_amt']: fig.add_trace(go.Scatter(x=la, y=y_a, mode='lines+markers+text', name='계약액', text=[f"<b>{v:.2f}억</b>" for v in y_a], textposition='top center', textfont=dict(size=15, color='black'), line=dict(color='#0f172a', width=4), marker=dict(size=ms, color=['#0f172a'] * (len(la)-1) + ['#dc2626'], line=dict(width=2, color='white'))))
-                if st.session_state['t_sales']: fig.add_trace(go.Scatter(x=la, y=y_s, mode='lines+markers+text', name='매출액(순증분)', text=[f"<b>{v:.2f}억</b>" for v in y_s], textposition='bottom right', textfont=dict(size=15, color='#0d9488'), line=dict(color='#14b8a6', width=3), marker=dict(size=ms, line=dict(width=2, color='white'))))
-                if st.session_state['t_next']: fig.add_trace(go.Scatter(x=la, y=y_n, mode='lines+markers+text', name='이월매출', text=[f"<b>{v:.2f}억</b>" for v in y_n], textposition='top left', textfont=dict(size=15, color='#d97706'), line=dict(color='#f59e0b', width=3), marker=dict(size=ms, line=dict(width=2, color='white'))))
-                if st.session_state['t_onl']: fig.add_trace(go.Scatter(x=la, y=y_onl, mode='lines+markers+text', name='온라인매출(순증분)', text=y_onl_txt, textposition='top right', textfont=dict(size=14, color='#0284c7'), line=dict(color='#38bdf8', width=3), marker=dict(size=ms, line=dict(width=2, color='white'))))
+                # 🚀 X축 렌더링에 la_chart(볼드처리된 텍스트) 일괄 적용 완료!
+                if st.session_state['t_amt']: fig.add_trace(go.Scatter(x=la_chart, y=y_a, mode='lines+markers+text', name='계약액', text=[f"<b>{v:.2f}억</b>" for v in y_a], textposition='top center', textfont=dict(size=15, color='black'), line=dict(color='#0f172a', width=4), marker=dict(size=ms, color=['#0f172a'] * (len(la)-1) + ['#dc2626'], line=dict(width=2, color='white'))))
+                if st.session_state['t_sales']: fig.add_trace(go.Scatter(x=la_chart, y=y_s, mode='lines+markers+text', name='매출액(순증분)', text=[f"<b>{v:.2f}억</b>" for v in y_s], textposition='bottom right', textfont=dict(size=15, color='#0d9488'), line=dict(color='#14b8a6', width=3), marker=dict(size=ms, line=dict(width=2, color='white'))))
+                if st.session_state['t_next']: fig.add_trace(go.Scatter(x=la_chart, y=y_n, mode='lines+markers+text', name='이월매출(순증분)', text=[f"<b>{v:.2f}억</b>" for v in y_n], textposition='top left', textfont=dict(size=15, color='#d97706'), line=dict(color='#f59e0b', width=3), marker=dict(size=ms, line=dict(width=2, color='white'))))
+                if st.session_state['t_onl']: fig.add_trace(go.Scatter(x=la_chart, y=y_onl, mode='lines+markers+text', name='온라인매출(순증분)', text=y_onl_txt, textposition='top right', textfont=dict(size=14, color='#0284c7'), line=dict(color='#38bdf8', width=3), marker=dict(size=ms, line=dict(width=2, color='white'))))
                 
                 if st.session_state['t_avg']: 
                     avg_txt = [""] * len(la)
                     mid_idx = len(la) // 2
                     avg_txt[mid_idx] = f"<b>평균 {y_av[-1]:.2f}억</b>"
-                    fig.add_trace(go.Scatter(x=la, y=y_av, mode='lines+text', name='평균선', text=avg_txt, textposition='top center', textfont=dict(size=18, color='#0f172a'), line=dict(color='#94a3b8', width=2, dash='dash')))
+                    fig.add_trace(go.Scatter(x=la_chart, y=y_av, mode='lines+text', name='평균선', text=avg_txt, textposition='top center', textfont=dict(size=18, color='#0f172a'), line=dict(color='#94a3b8', width=2, dash='dash')))
                     
-                if st.session_state['t_wd']: fig.add_trace(go.Scatter(x=la, y=y_wd, mode='lines+markers+text', name='주중', text=[f"<b>{v:.2f}억</b>" for v in y_wd], textposition='bottom center', textfont=dict(size=15, color='#0ea5e9'), line=dict(color='#0ea5e9', width=3), marker=dict(size=ms, line=dict(width=2, color='white'))))
-                if st.session_state['t_we']: fig.add_trace(go.Scatter(x=la, y=y_we, mode='lines+markers+text', name='주말', text=[f"<b>{v:.2f}억</b>" for v in y_we], textposition='top right', textfont=dict(size=15, color='#ef4444'), line=dict(color='#ef4444', width=3), marker=dict(size=ms, line=dict(width=2, color='white'))))
-                if st.session_state['t_walk']: fig.add_trace(go.Scatter(x=la, y=y_wk, mode='lines+markers+text', name='워크인', text=yw_txt, textposition='top left', textfont=dict(size=15, color='#f97316'), line=dict(color='#f97316', width=3, dash='dot')))
-                if st.session_state['t_move']: fig.add_trace(go.Scatter(x=la, y=y_m, mode='lines+markers+text', name='입주', text=ym_txt, textposition='bottom right', textfont=dict(size=15, color='#a855f7'), line=dict(color='#a855f7', width=3, dash='dot')))
-                if st.session_state['t_est']: fig.add_trace(go.Scatter(x=la, y=y_e, mode='lines+markers+text', name='견적건', text=[f"<b>{v:,.0f}건</b>" for v in y_e], textposition='top center', textfont=dict(size=15, color='#4338ca'), line=dict(color='#4338ca', width=3), marker=dict(size=ms, line=dict(width=2, color='white')), yaxis='y2'))
-                if st.session_state['t_cnt']: fig.add_trace(go.Scatter(x=la, y=y_c, mode='lines+markers+text', name='계약건', text=[f"<b>{v:,.0f}건</b>" for v in y_c], textposition='bottom center', textfont=dict(size=15, color='#10b981'), line=dict(color='#10b981', width=3), marker=dict(size=ms, line=dict(width=2, color='white')), yaxis='y2'))
-                if st.session_state['t_rate']: fig.add_trace(go.Scatter(x=la, y=y_r, mode='lines+markers+text', name='계약률', text=[f"<b>{v:.1f}%</b>" for v in y_r], textposition='top right', textfont=dict(size=15, color='#ca8a04'), line=dict(color='#ca8a04', width=3), marker=dict(size=ms, line=dict(width=2, color='white')), yaxis='y3'))
-                if st.session_state['t_unit']: fig.add_trace(go.Scatter(x=la, y=y_u, mode='lines+markers+text', name='객단가', text=[f"<b>{int(v):,}만</b>" for v in y_u], textposition='bottom left', textfont=dict(size=15, color='#ec4899'), line=dict(color='#ec4899', width=3), marker=dict(size=ms, line=dict(width=2, color='white')), yaxis='y4'))
-                if st.session_state['t_can']: fig.add_trace(go.Scatter(x=la, y=y_can, mode='lines+markers+text', name='취소액', text=[f"<b>{v:.2f}억</b>" for v in y_can], textposition='bottom left', textfont=dict(size=14, color='#9f1239'), line=dict(color='#e11d48', width=3, dash='dot'), marker=dict(size=ms, line=dict(width=2, color='white'))))
+                if st.session_state['t_wd']: fig.add_trace(go.Scatter(x=la_chart, y=y_wd, mode='lines+markers+text', name='주중', text=[f"<b>{v:.2f}억</b>" for v in y_wd], textposition='bottom center', textfont=dict(size=15, color='#0ea5e9'), line=dict(color='#0ea5e9', width=3), marker=dict(size=ms, line=dict(width=2, color='white'))))
+                if st.session_state['t_we']: fig.add_trace(go.Scatter(x=la_chart, y=y_we, mode='lines+markers+text', name='주말', text=[f"<b>{v:.2f}억</b>" for v in y_we], textposition='top right', textfont=dict(size=15, color='#ef4444'), line=dict(color='#ef4444', width=3), marker=dict(size=ms, line=dict(width=2, color='white'))))
+                if st.session_state['t_walk']: fig.add_trace(go.Scatter(x=la_chart, y=y_wk, mode='lines+markers+text', name='워크인', text=yw_txt, textposition='top left', textfont=dict(size=15, color='#f97316'), line=dict(color='#f97316', width=3, dash='dot')))
+                if st.session_state['t_move']: fig.add_trace(go.Scatter(x=la_chart, y=y_m, mode='lines+markers+text', name='입주', text=ym_txt, textposition='bottom right', textfont=dict(size=15, color='#a855f7'), line=dict(color='#a855f7', width=3, dash='dot')))
+                if st.session_state['t_est']: fig.add_trace(go.Scatter(x=la_chart, y=y_e, mode='lines+markers+text', name='견적건', text=[f"<b>{v:,.0f}건</b>" for v in y_e], textposition='top center', textfont=dict(size=15, color='#4338ca'), line=dict(color='#4338ca', width=3), marker=dict(size=ms, line=dict(width=2, color='white')), yaxis='y2'))
+                if st.session_state['t_cnt']: fig.add_trace(go.Scatter(x=la_chart, y=y_c, mode='lines+markers+text', name='계약건', text=[f"<b>{v:,.0f}건</b>" for v in y_c], textposition='bottom center', textfont=dict(size=15, color='#10b981'), line=dict(color='#10b981', width=3), marker=dict(size=ms, line=dict(width=2, color='white')), yaxis='y2'))
+                if st.session_state['t_rate']: fig.add_trace(go.Scatter(x=la_chart, y=y_r, mode='lines+markers+text', name='계약률', text=[f"<b>{v:.1f}%</b>" for v in y_r], textposition='top right', textfont=dict(size=15, color='#ca8a04'), line=dict(color='#ca8a04', width=3), marker=dict(size=ms, line=dict(width=2, color='white')), yaxis='y3'))
+                if st.session_state['t_unit']: fig.add_trace(go.Scatter(x=la_chart, y=y_u, mode='lines+markers+text', name='객단가', text=[f"<b>{int(v):,}만</b>" for v in y_u], textposition='bottom left', textfont=dict(size=15, color='#ec4899'), line=dict(color='#ec4899', width=3), marker=dict(size=ms, line=dict(width=2, color='white')), yaxis='y4'))
+                if st.session_state['t_can']: fig.add_trace(go.Scatter(x=la_chart, y=y_can, mode='lines+markers+text', name='취소액', text=[f"<b>{v:.2f}억</b>" for v in y_can], textposition='bottom left', textfont=dict(size=14, color='#9f1239'), line=dict(color='#e11d48', width=3, dash='dot'), marker=dict(size=ms, line=dict(width=2, color='white'))))
                     
                 fig.update_layout(
                     height=450, margin=dict(l=20, r=20, t=60, b=20), plot_bgcolor='white', 
@@ -1054,7 +1055,8 @@ if all_daily_data:
                     yaxis3=dict(overlaying='y', visible=False), 
                     yaxis4=dict(overlaying='y', visible=False)
                 )
-                fig.update_xaxes(showgrid=True, gridcolor='#f1f5f9', tickfont=dict(size=12, color='black'))
+                # 🚀 6. X축 주차 글씨 크기 14px 확대
+                fig.update_xaxes(showgrid=True, gridcolor='#f1f5f9', tickfont=dict(size=14, color='black'))
                 st.plotly_chart(fig, use_container_width=True)
             else: st.info("👆 위 세부 지표 버튼을 클릭하시면 실시간 꺾은선 그래프가 나타납니다.")
             
