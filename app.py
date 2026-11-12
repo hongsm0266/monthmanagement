@@ -103,7 +103,6 @@ st.markdown("".join(title_html), unsafe_allow_html=True)
 def clean_str(val): return re.sub(r'\s+', '', str(val))
 def safe_get(row, idx): return str(row[idx]).strip() if len(row) > idx else ""
 
-# 🚀 텍스트/숫자 혼용 완벽 파싱 엔진
 def clean_val(v):
     if not v or pd.isna(v): return 0.0
     v_str = str(v).replace('%', '').replace(',', '').strip()
@@ -289,12 +288,16 @@ def process_vdt_data(all_targets, all_daily_data, selected_date):
     existing_hcs = [clean_str(h) for d, h, t in hc_info_raw]
     
     daily_data = {}       
-    raw_snapshots = {}    
+    raw_snapshots = {}
+    
+    # 🚀 시트별로 날짜가 언제 업데이트됐는지 기록하는 독립 추적기
+    sheet_latest_dates = {'normal': {}, 'online': {}}
     
     sub_kw = ['합계', '소계', '총계', 'INT', '한밭', '위탁']
     exact_kw = ['목표', '사번', '비고', '계', '대리점', '이름', 'HC', 'HC명', '영업사원']
     dealer_names = ["둔산", "목포", "세종", "충주", "광양", "여수", "익산", "충청", "호남", "INT", "한밭"]
     curr_mode = ""
+    cur_dt = datetime.min.date()
 
     for r_idx, row in enumerate(all_daily_data):
         row_header = clean_str("".join([safe_get(row, i) for i in range(min(5, len(row)))]))
@@ -310,6 +313,12 @@ def process_vdt_data(all_targets, all_daily_data, selected_date):
             if "일반" in row_header: curr_mode = "일반"
             elif "입주" in row_header: curr_mode = "입주"
             elif "점별" in row_header: curr_mode = "점별"
+            
+            # 🚀 일반일보/점별일보에 오늘 날짜(cur_dt) 기록 추가
+            if curr_mode == "일반" and cur_dt != datetime.min.date():
+                if cur_dt not in sheet_latest_dates['normal']: sheet_latest_dates['normal'][cur_dt] = True
+            elif curr_mode == "점별" and cur_dt != datetime.min.date():
+                if cur_dt not in sheet_latest_dates['online']: sheet_latest_dates['online'][cur_dt] = True
             continue
             
         if curr_mode == "일반" and len(row) > 3:
@@ -404,22 +413,33 @@ def process_vdt_data(all_targets, all_daily_data, selected_date):
     else:
         eff_selected_date = selected_date
 
-    # 🚀 엑셀 총합 100% 동기화 스냅샷 엔진 (명단에 없으면 0원 처리)
+    # 🚀 시트별 완벽 격리 + 엑셀 명단 누락자 0원 동기화 (마이너스 구현)
     def get_snap(target_d, hc, min_d=None):
         res = {'sales':0, 'online':0, 'cancel':0, 'next':0, 'next_next':0}
         
-        valid_dates = [d for d in raw_snapshots.keys() if d <= target_d]
-        if min_d:
-            valid_dates = [d for d in valid_dates if d >= min_d]
-            
-        if not valid_dates:
-            return res
-            
-        eff_team_d = max(valid_dates)
+        valid_normal = [d for d in sheet_latest_dates['normal'].keys() if d <= target_d]
+        valid_online = [d for d in sheet_latest_dates['online'].keys() if d <= target_d]
         
-        if hc in raw_snapshots[eff_team_d]:
-            for metric in res.keys():
-                res[metric] = raw_snapshots[eff_team_d][hc].get(metric, 0)
+        if min_d:
+            valid_normal = [d for d in valid_normal if d >= min_d]
+            valid_online = [d for d in valid_online if d >= min_d]
+            
+        eff_normal_d = max(valid_normal) if valid_normal else None
+        eff_online_d = max(valid_online) if valid_online else None
+        
+        # 일반 일보 날짜에 명단이 있으면 해당 실적, 없으면(결근/퇴사) 가차없이 0원!
+        if eff_normal_d and eff_normal_d in raw_snapshots:
+            if hc in raw_snapshots[eff_normal_d]:
+                res['sales'] = raw_snapshots[eff_normal_d][hc].get('sales', 0)
+                res['next'] = raw_snapshots[eff_normal_d][hc].get('next', 0)
+                res['next_next'] = raw_snapshots[eff_normal_d][hc].get('next_next', 0)
+                
+        # 점별 일보 날짜에 명단이 있으면 온라인 실적, 없으면 0원!
+        if eff_online_d and eff_online_d in raw_snapshots:
+            if hc in raw_snapshots[eff_online_d]:
+                res['online'] = raw_snapshots[eff_online_d][hc].get('online', 0)
+                res['cancel'] = raw_snapshots[eff_online_d][hc].get('cancel', 0)
+                
         return res
 
     def new_d(): return {'amt':0, 'est':0, 'cnt':0, 'amt_wd':0, 'amt_we':0, 'sales':0, 'next_sales':0, 'amt_move':0, 'online':0, 'cancel':0}
