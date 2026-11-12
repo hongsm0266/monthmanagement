@@ -288,7 +288,6 @@ def process_vdt_data(all_targets, all_daily_data, selected_date):
     
     daily_data = {}       
     raw_snapshots = {}
-    # 🚀 [신규 직통 합산 통장] 사원 이름 매칭 누락 없이 대리점 합계 제외 순수 인별 행을 날짜·대리점별로 즉시 합산
     daily_raw_totals = {} 
     
     sub_kw = ['합계', '소계', '총계', 'INT', '한밭', '위탁']
@@ -332,8 +331,9 @@ def process_vdt_data(all_targets, all_daily_data, selected_date):
             t_est, t_cnt = clean_val(safe_get(row, 4)), clean_val(safe_get(row, 5))
             t_amt = clean_val(safe_get(row, 15)) 
             t_sales = clean_val(safe_get(row, 18)) 
-            t_next = clean_val(safe_get(row, 24))  
-            t_next_next = clean_val(safe_get(row, 25))
+            # 🚀 M+1 이월매출 X열(23번 인덱스), M+2 익익월매출 Y열(24번 인덱스)로 정확히 수정
+            t_next = clean_val(safe_get(row, 23))  
+            t_next_next = clean_val(safe_get(row, 24))
             
             is_we = cur_dt.weekday() >= 5 if cur_dt != datetime.min.date() else False
             
@@ -352,7 +352,6 @@ def process_vdt_data(all_targets, all_daily_data, selected_date):
             raw_snapshots[cur_dt][hc_name]['next'] = raw_snapshots[cur_dt][hc_name].get('next', 0) + t_next
             raw_snapshots[cur_dt][hc_name]['next_next'] = raw_snapshots[cur_dt][hc_name].get('next_next', 0) + t_next_next
 
-            # 🚀 직통 통장에 날짜별·대리점별 순수 S/Y/Z(M+2) 합계 즉시 적립
             if cur_dt not in daily_raw_totals: daily_raw_totals[cur_dt] = {}
             if mapped_d not in daily_raw_totals[cur_dt]: daily_raw_totals[cur_dt][mapped_d] = {'has_normal': False, 'has_online': False, 'sales': 0, 'next': 0, 'next_next': 0, 'online': 0, 'cancel': 0}
             daily_raw_totals[cur_dt][mapped_d]['has_normal'] = True
@@ -405,7 +404,6 @@ def process_vdt_data(all_targets, all_daily_data, selected_date):
             raw_snapshots[cur_dt][hc_name]['online'] = raw_snapshots[cur_dt][hc_name].get('online', 0) + t_online
             raw_snapshots[cur_dt][hc_name]['cancel'] = raw_snapshots[cur_dt][hc_name].get('cancel', 0) + t_cancel
 
-            # 🚀 직통 통장에 날짜별·대리점별 순수 온라인/취소 합계 즉시 적립
             if cur_dt not in daily_raw_totals: daily_raw_totals[cur_dt] = {}
             if mapped_d not in daily_raw_totals[cur_dt]: daily_raw_totals[cur_dt][mapped_d] = {'has_normal': False, 'has_online': False, 'sales': 0, 'next': 0, 'next_next': 0, 'online': 0, 'cancel': 0}
             daily_raw_totals[cur_dt][mapped_d]['has_online'] = True
@@ -421,7 +419,6 @@ def process_vdt_data(all_targets, all_daily_data, selected_date):
     else:
         eff_selected_date = selected_date
 
-    # [기존 오리지널 스냅샷 함수 - 표 & 월 누적 계산용으로 100% 보존]
     def get_snap(target_d, hc, min_d=None):
         res = {'sales':0, 'online':0, 'cancel':0, 'next':0, 'next_next':0}
         for metric in res.keys():
@@ -432,7 +429,6 @@ def process_vdt_data(all_targets, all_daily_data, selected_date):
                 res[metric] = raw_snapshots[eff_d][hc][metric]
         return res
 
-    # 🚀 [직통 합산 전용] 조직(대리점 리스트) 기준 날짜별 순수 덩어리 합계 조회 (오차 0%)
     def get_direct_group_snap(target_d, target_dealers, min_d=None):
         res = {'sales':0, 'online':0, 'cancel':0, 'next':0, 'next_next':0}
         
@@ -459,7 +455,6 @@ def process_vdt_data(all_targets, all_daily_data, selected_date):
                     res['cancel'] += vals['cancel']
         return res
 
-    # 🚀 [개인별 조회 전용] 사원 1명 기준 스냅샷 조회
     def get_single_hc_snap(target_d, hc, min_d=None):
         res = {'sales':0, 'online':0, 'cancel':0, 'next':0, 'next_next':0}
         valid_n = [d for d, hcs in raw_snapshots.items() if d <= target_d and any('sales' in m for m in hcs.values())]
@@ -478,14 +473,12 @@ def process_vdt_data(all_targets, all_daily_data, selected_date):
             res['cancel'] = raw_snapshots[eff_o][hc].get('cancel', 0)
         return res
 
-    # 🚀 주간 순증분 3대 공식 계산 엔진 (조직 조회 시 직통 덩어리 사용, 개인 조회 시 개인 스냅샷 사용)
     def calc_weekly_net_increments(target_hcs, target_dealers=None, is_single_hc=False):
         w_res = [new_d() for _ in range(8)]
         for i in range(8):
             s_dt = trend_ranges[i][0].date()
             e_dt = trend_ranges[i][1].date()
             
-            # 단순 합산 지표 (계약액, 견적건, 계약건 등)
             curr = s_dt
             while curr <= e_dt:
                 if curr in daily_data:
@@ -502,7 +495,6 @@ def process_vdt_data(all_targets, all_daily_data, selected_date):
                 
             snap_fn = (lambda d, md: get_single_hc_snap(d, target_hcs[0], md)) if is_single_hc else (lambda d, md: get_direct_group_snap(d, target_dealers, md))
 
-            # 스냅샷 기반 순증분 지표 (양끝점 차감 공식 적용)
             if s_dt.month == e_dt.month:
                 m_start = s_dt.replace(day=1)
                 snap_end = snap_fn(e_dt, m_start)
@@ -522,7 +514,7 @@ def process_vdt_data(all_targets, all_daily_data, selected_date):
                 snap_m2_end = snap_fn(e_dt, m2_start)
                 snap_m2_start = snap_fn(m2_start, m2_start)
                 
-                # [공식 1] 당월 매출 = (9.30 S총합 - 9.27 S총합) + (10.4 S총합 - 9.30 Y총합)
+                # [공식 1] 당월 매출 = (9.30 S총합 - 9.27 S총합) + (10.4 S총합 - 9.30 X총합(M+1))
                 m1_sales = snap_m1_end['sales'] - snap_m1_prev['sales']
                 m2_sales = snap_m2_end['sales'] - snap_m1_end['next']
                 w_res[i]['sales'] = m1_sales + m2_sales
@@ -538,7 +530,7 @@ def process_vdt_data(all_targets, all_daily_data, selected_date):
                 w_res[i]['online'] = m1_online + m2_online
                 w_res[i]['cancel'] = m1_cancel + m2_cancel
                 
-                # [공식 3] 이월매출 = (9.30 Y총합 - 9.27 Y총합) + (10.4 Y총합 - 9.30 Z총합(M+2))
+                # [공식 3] 이월매출 = (9.30 X총합 - 9.27 X총합) + (10.4 X총합 - 9.30 Y총합(M+2))
                 m1_next = snap_m1_end['next'] - snap_m1_prev['next']
                 m2_next = snap_m2_end['next'] - snap_m1_end['next_next']
                 w_res[i]['next_sales'] = m1_next + m2_next
@@ -549,13 +541,11 @@ def process_vdt_data(all_targets, all_daily_data, selected_date):
     month_labels = [f"📊 [월마감] {y%100}년 {m}월" for y, m in sorted(list(set((d.year, d.month) for d in av_dates)))]
     mtd_labels = ['🌟 [당일기준] 당월 누적', '🌟 [당일기준] 전월 누적', '🌟 [당일기준] 전전월 누적', '🌟 [당일기준] 전년 누적']
     
-    # 🚀 1. 주간 추이(W): 조직 조회는 직통 합산(target_dealers), 개인 조회는 개인 스냅샷(is_single_hc=True)
     trend_hc_w = {hc: calc_weekly_net_increments([hc], is_single_hc=True) for hc in existing_hcs}
     trend_dlr_w = {d: calc_weekly_net_increments([hc for hc in existing_hcs if hc_to_dealer_master.get(hc) == d], target_dealers=[d]) for d in valid_dealers}
     trend_reg_w = {reg: calc_weekly_net_increments([hc for hc in existing_hcs if hc_to_dealer_master.get(hc) in dlrs], target_dealers=dlrs) for reg, dlrs in REGION_MAP.items()}
     trend_tot_w = calc_weekly_net_increments(existing_hcs, target_dealers=None)
 
-    # 🚀 2. 월간 추이(M, MTD)는 기존 오리지널 로직 100% 유지
     trend_hc_m = {hc: {lbl: new_d() for lbl in month_labels} for hc in existing_hcs}
     trend_hc_mtd = {hc: {lbl: new_d() for lbl in mtd_labels} for hc in existing_hcs}
 
