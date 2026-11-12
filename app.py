@@ -103,13 +103,12 @@ st.markdown("".join(title_html), unsafe_allow_html=True)
 def clean_str(val): return re.sub(r'\s+', '', str(val))
 def safe_get(row, idx): return str(row[idx]).strip() if len(row) > idx else ""
 
-# 🚀 ValueError 완벽 방어막 (기호 에러 시 0.0 반환)
+# 🚀 기호(-, .) 에러 원천 차단 방어막
 def clean_val(v):
     if not v or pd.isna(v): return 0.0
     v_str = str(v).replace('%', '').replace(',', '').replace('원', '').replace('건', '').strip()
     m = 100000000 if '억' in v_str else (10000 if '만' in v_str else 1)
     v_str = re.sub(r'[^\d\.-]', '', v_str)
-    
     try:
         return float(v_str) * m if v_str and v_str != '-' else 0.0
     except ValueError:
@@ -207,7 +206,6 @@ is_weekly_selected = "▪️" in str(st.session_state.get('wow_curr', ''))
 c_cal1, c_cal2 = st.columns([10, 2])
 with c_cal2:
     st.markdown("<div style='font-size:13px; font-weight:900; color:#1e293b; margin-bottom:4px;'>조회 기준일 선택 📅</div>", unsafe_allow_html=True)
-    # 🚀 오늘 날짜까지 항상 선택 가능하도록 제한 해제
     selected_date = st.date_input(
         "기준일", 
         value=max_date_in_sheet, 
@@ -233,7 +231,6 @@ def process_vdt_data(all_targets, all_daily_data, selected_date):
             dealer_sales_sum[d] = dealer_sales_sum.get(d, 0.0) + tgt
 
     hc_info_raw = [(v['dealer'], k, v['tgt']) for k, v in hc_info_dict.items()]
-    valid_dealers = list(set(d for d, _, _ in hc_info_raw))
     
     week_row_idx, date_row_idx = -1, -1
     for i, row in enumerate(all_targets[:10]):
@@ -291,10 +288,8 @@ def process_vdt_data(all_targets, all_daily_data, selected_date):
     daily_data = {}       
     raw_snapshots = {}    
     
-    # 🚀 유령 인원 차단 키워드 & 대리점 이름 필터 완벽 적용
     sub_kw = ['합계', '소계', '총계', 'INT', '한밭', '위탁']
     exact_kw = ['목표', '사번', '비고', '계', '대리점', '이름', 'HC', 'HC명', '영업사원']
-    dealer_names = ["둔산", "목포", "세종", "충주", "광양", "여수", "익산", "충청", "호남"]
     curr_mode = ""
 
     for r_idx, row in enumerate(all_daily_data):
@@ -313,101 +308,78 @@ def process_vdt_data(all_targets, all_daily_data, selected_date):
             elif "점별" in row_header: curr_mode = "점별"
             continue
             
-        if curr_mode == "일반" and len(row) > 3:
+        # 🚀 3가지 시트 완벽 동일 필터링 (합계행 제거 & 유령인원 추가)
+        if curr_mode in ["일반", "입주", "점별"] and len(row) > 3:
             raw_dealer = safe_get(row, 1) 
             raw_hc = safe_get(row, 3) 
             if not raw_hc and len(row) > 1: raw_hc = raw_dealer 
             hc_name = clean_str(raw_hc.split('(')[0]) 
             hc_name = re.sub(r'\d+', '', hc_name) 
             
-            # 🚀 대리점 합계 줄 2중 필터링 
-            if not hc_name or any(x in hc_name for x in sub_kw) or hc_name in exact_kw or hc_name in dealer_names: 
+            # 대리점 이름이 사람 이름으로 둔갑하는 현상 원천 차단
+            is_dealer = get_mapped_dealer(hc_name) in ["둔산", "목포", "세종", "충주", "광양", "여수", "익산"]
+            if not hc_name or any(x in hc_name for x in sub_kw) or hc_name in exact_kw or is_dealer:
                 continue
-            
-            if hc_name not in hc_to_dealer_master:
-                hc_to_dealer_master[hc_name] = get_mapped_dealer(raw_dealer)
-            if hc_name not in existing_hcs:
-                existing_hcs.append(hc_name)
-
-            t_est, t_cnt = clean_val(safe_get(row, 4)), clean_val(safe_get(row, 5))
-            t_amt = clean_val(safe_get(row, 15)) 
-            t_sales = clean_val(safe_get(row, 18)) 
-            t_next = clean_val(safe_get(row, 24))  
-            
-            is_we = cur_dt.weekday() >= 5 if cur_dt != datetime.min.date() else False
-            
-            if cur_dt not in daily_data: daily_data[cur_dt] = {}
-            if hc_name not in daily_data[cur_dt]: daily_data[cur_dt][hc_name] = {'amt':0, 'est':0, 'cnt':0, 'amt_we':0, 'amt_wd':0, 'amt_move':0}
-            daily_data[cur_dt][hc_name]['amt'] += t_amt
-            daily_data[cur_dt][hc_name]['est'] += t_est
-            daily_data[cur_dt][hc_name]['cnt'] += t_cnt
-            if is_we: daily_data[cur_dt][hc_name]['amt_we'] += t_amt
-            else: daily_data[cur_dt][hc_name]['amt_wd'] += t_amt
                 
-            if cur_dt not in raw_snapshots: raw_snapshots[cur_dt] = {}
-            if hc_name not in raw_snapshots[cur_dt]: raw_snapshots[cur_dt][hc_name] = {'sales':0, 'online':0, 'cancel':0, 'next':0}
-            
-            raw_snapshots[cur_dt][hc_name]['sales'] += t_sales
-            raw_snapshots[cur_dt][hc_name]['next'] += t_next
-
-        elif curr_mode == "입주" and len(row) > 3:
-            raw_dealer = safe_get(row, 1)
-            raw_hc = safe_get(row, 1)
-            if not raw_hc: raw_hc = safe_get(row, 3)
-            hc_name = clean_str(raw_hc.split('(')[0]) 
-            hc_name = re.sub(r'\d+', '', hc_name) 
-            
-            if not hc_name or any(x in hc_name for x in sub_kw) or hc_name in exact_kw or hc_name in dealer_names: 
-                continue
-            
             if hc_name not in hc_to_dealer_master:
                 hc_to_dealer_master[hc_name] = get_mapped_dealer(raw_dealer)
             if hc_name not in existing_hcs:
                 existing_hcs.append(hc_name)
-            
-            dm = clean_val(safe_get(row, 12)) + clean_val(safe_get(row, 17))
+
             if cur_dt not in daily_data: daily_data[cur_dt] = {}
             if hc_name not in daily_data[cur_dt]: daily_data[cur_dt][hc_name] = {'amt':0, 'est':0, 'cnt':0, 'amt_we':0, 'amt_wd':0, 'amt_move':0}
-            daily_data[cur_dt][hc_name]['amt_move'] += dm
-
-        elif curr_mode == "점별" and len(row) > 3:
-            raw_dealer = safe_get(row, 1)
-            raw_hc = safe_get(row, 1)
-            if not raw_hc: raw_hc = safe_get(row, 3)
-            hc_name = clean_str(raw_hc.split('(')[0]) 
-            hc_name = re.sub(r'\d+', '', hc_name) 
-            
-            if not hc_name or any(x in hc_name for x in sub_kw) or hc_name in exact_kw or hc_name in dealer_names: 
-                continue
-            
-            if hc_name not in hc_to_dealer_master:
-                hc_to_dealer_master[hc_name] = get_mapped_dealer(raw_dealer)
-            if hc_name not in existing_hcs:
-                existing_hcs.append(hc_name)
-            
-            t_online = clean_val(safe_get(row, 25)) 
-            t_cancel = clean_val(safe_get(row, 37)) + clean_val(safe_get(row, 38)) 
             
             if cur_dt not in raw_snapshots: raw_snapshots[cur_dt] = {}
-            if hc_name not in raw_snapshots[cur_dt]: raw_snapshots[cur_dt][hc_name] = {'sales':0, 'online':0, 'cancel':0, 'next':0}
-            raw_snapshots[cur_dt][hc_name]['online'] += t_online
-            raw_snapshots[cur_dt][hc_name]['cancel'] += t_cancel
+            if hc_name not in raw_snapshots[cur_dt]: raw_snapshots[cur_dt][hc_name] = {}
+
+            if curr_mode == "일반":
+                t_est, t_cnt = clean_val(safe_get(row, 4)), clean_val(safe_get(row, 5))
+                t_amt = clean_val(safe_get(row, 15)) 
+                t_sales = clean_val(safe_get(row, 18)) 
+                t_next = clean_val(safe_get(row, 24))  
+                
+                is_we = cur_dt.weekday() >= 5 if cur_dt != datetime.min.date() else False
+                
+                daily_data[cur_dt][hc_name]['amt'] += t_amt
+                daily_data[cur_dt][hc_name]['est'] += t_est
+                daily_data[cur_dt][hc_name]['cnt'] += t_cnt
+                if is_we: daily_data[cur_dt][hc_name]['amt_we'] += t_amt
+                else: daily_data[cur_dt][hc_name]['amt_wd'] += t_amt
+                
+                # 지표별 최신 기록을 각각 독립적으로 누적 (0원 덮어쓰기 방지)
+                raw_snapshots[cur_dt][hc_name]['sales'] = raw_snapshots[cur_dt][hc_name].get('sales', 0) + t_sales
+                raw_snapshots[cur_dt][hc_name]['next'] = raw_snapshots[cur_dt][hc_name].get('next', 0) + t_next
+
+            elif curr_mode == "입주":
+                dm = clean_val(safe_get(row, 12)) + clean_val(safe_get(row, 17))
+                daily_data[cur_dt][hc_name]['amt_move'] += dm
+
+            elif curr_mode == "점별":
+                t_online = clean_val(safe_get(row, 25)) 
+                t_cancel = clean_val(safe_get(row, 37)) + clean_val(safe_get(row, 38)) 
+                
+                raw_snapshots[cur_dt][hc_name]['online'] = raw_snapshots[cur_dt][hc_name].get('online', 0) + t_online
+                raw_snapshots[cur_dt][hc_name]['cancel'] = raw_snapshots[cur_dt][hc_name].get('cancel', 0) + t_cancel
 
     valid_dealers = list(set(hc_to_dealer_master.values()))
-
     av_dates = sorted(list(set(daily_data.keys()).union(set(raw_snapshots.keys()))))
+    
     if selected_date not in av_dates:
         valid_dates = [d for d in av_dates if d <= selected_date]
         eff_selected_date = max(valid_dates) if valid_dates else max_date_in_sheet
     else:
         eff_selected_date = selected_date
 
+    # 🚀 독립 추적기: 각 지표별로 가장 최신에 업데이트된 과거 기록을 핀셋 추출 (결근/누락 방어)
     def get_snap(target_d, hc, min_d=None):
-        valid = [d for d in raw_snapshots.keys() if d <= target_d]
-        if min_d: valid = [d for d in valid if d >= min_d]
-        if not valid: return {'sales':0, 'online':0, 'cancel':0, 'next':0}
-        eff_d = max(valid)
-        return raw_snapshots[eff_d].get(hc, {'sales':0, 'online':0, 'cancel':0, 'next':0})
+        res = {'sales':0, 'online':0, 'cancel':0, 'next':0}
+        for metric in res.keys():
+            valid = [d for d in raw_snapshots.keys() if d <= target_d and hc in raw_snapshots[d] and metric in raw_snapshots[d][hc]]
+            if min_d: valid = [d for d in valid if d >= min_d]
+            if valid:
+                eff_d = max(valid)
+                res[metric] = raw_snapshots[eff_d][hc][metric]
+        return res
 
     def new_d(): return {'amt':0, 'est':0, 'cnt':0, 'amt_wd':0, 'amt_we':0, 'sales':0, 'next_sales':0, 'amt_move':0, 'online':0, 'cancel':0}
     
@@ -557,7 +529,7 @@ def process_vdt_data(all_targets, all_daily_data, selected_date):
 
     for hc in existing_hcs:
         md = hc_to_dealer_master.get(hc, "기타")
-        latest_sales_dict[hc] = get_snap(eff_selected_date, hc, min_d=eff_selected_date.replace(day=1))['sales']
+        latest_sales_dict[hc] = get_snap(eff_selected_date, hc, min_d=eff_selected_date.replace(day=1)).get('sales', 0.0)
         
         for wk_lbl, d_str in date_headers.items():
             dt_match = re.findall(r'\d+', d_str)
@@ -844,23 +816,31 @@ if all_daily_data:
         disp_diff_s = "<td style='text-align:center; color:#94a3b8; background-color:#f1f5f9;'>-</td>" if (curr_is_week or prev_is_week) else td_cell(ts, ps)
         disp_diff_o = "<td style='text-align:center; color:#94a3b8; background-color:#f1f5f9;'>-</td>" if (curr_is_week or prev_is_week) else td_cell(to, po)
 
-        html_wow = [
-            '<table class="wow-table" style="width: 100%; border: 2px solid #94a3b8; border-radius: 8px; overflow: hidden; margin-top: 5px;">',
-            '<thead><tr style="background-color: #1e293b; color: white;">',
-            f'<th style="padding: 10px; font-size: 13px; border-right: 2px solid #94a3b8; width:14%;">조직<br><span style="font-size:11px; color:#cbd5e1;">({ct})</span></th>',
-            '<th style="padding: 10px;">💰 총 계약액<br>(천원)</th><th style="padding: 10px;">💰 총 매출액<br>(천원)</th><th style="padding: 10px;">💻 온라인매출<br>(천원)</th>',
-            '<th style="padding: 10px;">📝 견적건<br>(건)</th><th style="padding: 10px;">🤝 계약건<br>(건)</th>',
-            '<th style="padding: 10px; background-color:#334155;">🚶 워크인 계약액<br>(천원)</th><th style="padding: 10px; background-color:#334155;">🏠 입주 계약액<br>(천원)</th>',
-            '<th style="padding: 10px;">📊 계약률<br>(%)</th><th style="padding: 10px;">💸 객단가<br>(만원)</th><th style="padding: 10px;">📉 총 취소액<br>(천원)</th></tr></thead><tbody>',
-            f"<tr style='background-color: #f8fafc;'><td style='text-align:center; font-weight:900; border-right:2px solid #94a3b8; color:#64748b;'>{sel_prev}</td>",
-            td_val(pa), disp_ps, disp_po, td_val(pe), td_val(pc), td_val(pw,bg='#f1f5f9'), td_val(pm,bg='#f1f5f9'), td_val(pr,True), td_val(pu,False,True), td_val(p_can), "</tr>",
-            f"<tr style='background-color: white;'><td style='text-align:center; font-weight:900; color:#1e3a8a; border-right:2px solid #94a3b8;'>{sel_curr}</td>",
-            td_val(ta,is_tgt=True), disp_ts, disp_to, td_val(te,is_tgt=True), td_val(tc,is_tgt=True), td_val(tw,is_tgt=True,bg='#f1f5f9'), td_val(tm,is_tgt=True,bg='#f1f5f9'), td_val(tr,True,is_tgt=True), td_val(tu,False,True,is_tgt=True), td_val(t_can,is_tgt=True), "</tr>",
-            f"<tr style='background-color: #fef2f2;'><td style='text-align:center; font-weight:900; color:#b91c1c; border-right:2px solid #94a3b8;'>지표 간 증감</td>",
-            td_cell(ta,pa), disp_diff_s, disp_diff_o, td_cell(te,pe), td_cell(tc,pc), td_cell(tw,pw), td_cell(tm,pm), td_cell(tr,pr,is_rate=True), td_cell(tu,pu,is_unit=True), td_cell(t_can,p_can), "</tr></tbody></table>"
-        ]
+        html_wow = '''
+        <table class="wow-table" style="width: 100%; border: 2px solid #94a3b8; border-radius: 8px; overflow: hidden; margin-top: 5px;">
+            <thead><tr style="background-color: #1e293b; color: white;">
+            <th style="padding: 10px; font-size: 13px; border-right: 2px solid #94a3b8; width:14%;">조직<br><span style="font-size:11px; color:#cbd5e1;">({CT})</span></th>
+            <th style="padding: 10px;">💰 총 계약액<br>(천원)</th><th style="padding: 10px;">💰 총 매출액<br>(천원)</th><th style="padding: 10px;">💻 온라인매출<br>(천원)</th>
+            <th style="padding: 10px;">📝 견적건<br>(건)</th><th style="padding: 10px;">🤝 계약건<br>(건)</th>
+            <th style="padding: 10px; background-color:#334155;">🚶 워크인 계약액<br>(천원)</th><th style="padding: 10px; background-color:#334155;">🏠 입주 계약액<br>(천원)</th>
+            <th style="padding: 10px;">📊 계약률<br>(%)</th><th style="padding: 10px;">💸 객단가<br>(만원)</th><th style="padding: 10px;">📉 총 취소액<br>(천원)</th></tr></thead><tbody>
+            <tr style='background-color: #f8fafc;'><td style='text-align:center; font-weight:900; border-right:2px solid #94a3b8; color:#64748b;'>{SEL_PREV}</td>
+            {TD_PA} {DISP_PS} {DISP_PO} {TD_PE} {TD_PC} {TD_PW} {TD_PM} {TD_PR} {TD_PU} {TD_PCAN} </tr>
+            <tr style='background-color: white;'><td style='text-align:center; font-weight:900; color:#1e3a8a; border-right:2px solid #94a3b8;'>{SEL_CURR}</td>
+            {TD_TA} {DISP_TS} {DISP_TO} {TD_TE} {TD_TC} {TD_TW} {TD_TM} {TD_TR} {TD_TU} {TD_TCAN} </tr>
+            <tr style='background-color: #fef2f2;'><td style='text-align:center; font-weight:900; color:#b91c1c; border-right:2px solid #94a3b8;'>지표 간 증감</td>
+            {DIFF_A} {DIFF_S} {DIFF_O} {DIFF_E} {DIFF_C} {DIFF_W} {DIFF_M} {DIFF_R} {DIFF_U} {DIFF_CAN} </tr></tbody></table>
+        '''
         
-        st.markdown("".join(html_wow), unsafe_allow_html=True)
+        html_wow = html_wow.replace("{CT}", ct).replace("{SEL_PREV}", str(sel_prev)).replace("{SEL_CURR}", str(sel_curr))
+        html_wow = html_wow.replace("{TD_PA}", td_val(pa)).replace("{DISP_PS}", disp_ps).replace("{DISP_PO}", disp_po).replace("{TD_PE}", td_val(pe)).replace("{TD_PC}", td_val(pc))
+        html_wow = html_wow.replace("{TD_PW}", td_val(pw,bg='#f1f5f9')).replace("{TD_PM}", td_val(pm,bg='#f1f5f9')).replace("{TD_PR}", td_val(pr,True)).replace("{TD_PU}", td_val(pu,False,True)).replace("{TD_PCAN}", td_val(p_can))
+        html_wow = html_wow.replace("{TD_TA}", td_val(ta,is_tgt=True)).replace("{DISP_TS}", disp_ts).replace("{DISP_TO}", disp_to).replace("{TD_TE}", td_val(te,is_tgt=True)).replace("{TD_TC}", td_val(tc,is_tgt=True))
+        html_wow = html_wow.replace("{TD_TW}", td_val(tw,is_tgt=True,bg='#f1f5f9')).replace("{TD_TM}", td_val(tm,is_tgt=True,bg='#f1f5f9')).replace("{TD_TR}", td_val(tr,True,is_tgt=True)).replace("{TD_TU}", td_val(tu,False,True,is_tgt=True)).replace("{TD_TCAN}", td_val(t_can,is_tgt=True))
+        html_wow = html_wow.replace("{DIFF_A}", td_cell(ta,pa)).replace("{DIFF_S}", disp_diff_s).replace("{DIFF_O}", disp_diff_o).replace("{DIFF_E}", td_cell(te,pe)).replace("{DIFF_C}", td_cell(tc,pc))
+        html_wow = html_wow.replace("{DIFF_W}", td_cell(tw,pw)).replace("{DIFF_M}", td_cell(tm,pm)).replace("{DIFF_R}", td_cell(tr,pr,is_rate=True)).replace("{DIFF_U}", td_cell(tu,pu,is_unit=True)).replace("{DIFF_CAN}", td_cell(t_can,p_can))
+        
+        st.markdown(html_wow, unsafe_allow_html=True)
         st.markdown("---")
 
         st.markdown("#### 🔎 **실적 조회 (조직 및 인원 선택)**")
@@ -1057,26 +1037,31 @@ if all_daily_data:
                 b_c = '#10b981' if pct_amt >= 100 else ('#ef4444' if pct_amt < 50 else '#f97316')
                 b_w = min(pct_amt, 100)
                 
-                c_wrp = "display:flex; gap:15px; margin-bottom:20px;"
-                c_box = "flex:1; background:white; padding:15px; border-radius:10px; border:2px solid #e2e8f0; box-shadow:0 4px 6px -1px rgba(0,0,0,0.05);"
-                c_sub = "font-size:13px; color:#64748b; font-weight:bold;"
-                c_val = "font-size:22px; font-weight:900; color:#0f172a;"
-                c_act = "font-size:22px; font-weight:900; color:#1d4ed8;"
-                c_pct = "font-size:22px; font-weight:900; color:" + t_c + ";"
-                c_b_bg = "width:100%; background-color:#e2e8f0; height:6px; border-radius:3px; margin-top:5px;"
-                c_b_fg = "width:" + str(b_w) + "%; background-color:" + b_c + "; height:100%; border-radius:3px;"
+                html_card = '''
+                <div style="display:flex; gap:15px; margin-bottom:20px;">
+                    <div style="flex:1; background:white; padding:15px; border-radius:10px; border:2px solid #e2e8f0; box-shadow:0 4px 6px -1px rgba(0,0,0,0.05);">
+                        <div style="font-size:13px; color:#64748b; font-weight:bold;">🎯 당월 계약액 목표 (천원)</div>
+                        <div style="font-size:22px; font-weight:900; color:#0f172a;">{T_AMT}</div>
+                    </div>
+                    <div style="flex:1; background:white; padding:15px; border-radius:10px; border:2px solid #e2e8f0; box-shadow:0 4px 6px -1px rgba(0,0,0,0.05);">
+                        <div style="font-size:13px; color:#64748b; font-weight:bold;">🏆 현재 계약액 실적 (천원)</div>
+                        <div style="font-size:22px; font-weight:900; color:#1d4ed8;">{A_AMT}</div>
+                    </div>
+                    <div style="flex:1; background:white; padding:15px; border-radius:10px; border:2px solid #e2e8f0; box-shadow:0 4px 6px -1px rgba(0,0,0,0.05);">
+                        <div style="font-size:13px; color:#64748b; font-weight:bold;">🔥 목표 달성율 (%)</div>
+                        <div style="font-size:22px; font-weight:900; color:{T_C};">{PCT_AMT}%</div>
+                        <div style="width:100%; background-color:#e2e8f0; height:6px; border-radius:3px; margin-top:5px;">
+                            <div style="width:{B_W}%; background-color:{B_C}; height:100%; border-radius:3px;"></div>
+                        </div>
+                    </div>
+                </div>
+                '''
                 
-                pt = [
-                    "<div style='", c_wrp, "'>",
-                    "<div style='", c_box, "'><div style='", c_sub, "'>🎯 당월 계약액 목표 (천원)</div>",
-                    "<div style='", c_val, "'>", f"{t_amt:,.0f}", "</div></div>",
-                    "<div style='", c_box, "'><div style='", c_sub, "'>🏆 현재 계약액 실적 (천원)</div>",
-                    "<div style='", c_act, "'>", f"{a_amt:,.0f}", "</div></div>",
-                    "<div style='", c_box, "'><div style='", c_sub, "'>🔥 목표 달성율 (%)</div>",
-                    "<div style='", c_pct, "'>", f"{pct_amt:,.0f}", "%</div>",
-                    "<div style='", c_b_bg, "'><div style='", c_b_fg, "'></div></div></div></div>"
-                ]
-                st.markdown("".join(pt), unsafe_allow_html=True)
+                html_card = html_card.replace("{T_AMT}", f"{t_amt:,.0f}").replace("{A_AMT}", f"{a_amt:,.0f}")
+                html_card = html_card.replace("{PCT_AMT}", f"{pct_amt:,.0f}").replace("{T_C}", t_c)
+                html_card = html_card.replace("{B_W}", str(b_w)).replace("{B_C}", b_c)
+                
+                st.markdown(html_card, unsafe_allow_html=True)
 
         st.markdown(f"<div style='background-color: #f8fafc; padding: 15px; border-left: 5px solid #3b82f6; border-radius: 5px; margin-bottom: 20px;'><h4 style='margin:0; color: #1e3a8a;'>📌 {current_month}월 {CURRENT_TABLE_WEEK} {tdr} 전체 VDT 현황 표 (기준일: {eff_selected_date})</h4></div>", unsafe_allow_html=True)
         
