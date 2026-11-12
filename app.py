@@ -103,7 +103,6 @@ st.markdown("".join(title_html), unsafe_allow_html=True)
 def clean_str(val): return re.sub(r'\s+', '', str(val))
 def safe_get(row, idx): return str(row[idx]).strip() if len(row) > idx else ""
 
-# 🚀 기호(-, .) 에러 원천 차단 방어막
 def clean_val(v):
     if not v or pd.isna(v): return 0.0
     v_str = str(v).replace('%', '').replace(',', '').replace('원', '').replace('건', '').strip()
@@ -290,6 +289,7 @@ def process_vdt_data(all_targets, all_daily_data, selected_date):
     
     sub_kw = ['합계', '소계', '총계', 'INT', '한밭', '위탁']
     exact_kw = ['목표', '사번', '비고', '계', '대리점', '이름', 'HC', 'HC명', '영업사원']
+    dealer_names = ["둔산", "목포", "세종", "충주", "광양", "여수", "익산", "충청", "호남", "INT", "한밭"]
     curr_mode = ""
 
     for r_idx, row in enumerate(all_daily_data):
@@ -308,16 +308,15 @@ def process_vdt_data(all_targets, all_daily_data, selected_date):
             elif "점별" in row_header: curr_mode = "점별"
             continue
             
-        # 🚀 3가지 시트 완벽 동일 필터링 (합계행 제거 & 유령인원 추가)
-        if curr_mode in ["일반", "입주", "점별"] and len(row) > 3:
+        # 🚀 일반 일보 데이터 추출
+        if curr_mode == "일반" and len(row) > 3:
             raw_dealer = safe_get(row, 1) 
             raw_hc = safe_get(row, 3) 
             if not raw_hc and len(row) > 1: raw_hc = raw_dealer 
             hc_name = clean_str(raw_hc.split('(')[0]) 
             hc_name = re.sub(r'\d+', '', hc_name) 
             
-            # 대리점 이름이 사람 이름으로 둔갑하는 현상 원천 차단
-            is_dealer = get_mapped_dealer(hc_name) in ["둔산", "목포", "세종", "충주", "광양", "여수", "익산"]
+            is_dealer = get_mapped_dealer(hc_name) in dealer_names
             if not hc_name or any(x in hc_name for x in sub_kw) or hc_name in exact_kw or is_dealer:
                 continue
                 
@@ -326,40 +325,73 @@ def process_vdt_data(all_targets, all_daily_data, selected_date):
             if hc_name not in existing_hcs:
                 existing_hcs.append(hc_name)
 
+            t_est, t_cnt = clean_val(safe_get(row, 4)), clean_val(safe_get(row, 5))
+            t_amt = clean_val(safe_get(row, 15)) 
+            t_sales = clean_val(safe_get(row, 18)) 
+            t_next = clean_val(safe_get(row, 24))  
+            
+            is_we = cur_dt.weekday() >= 5 if cur_dt != datetime.min.date() else False
+            
             if cur_dt not in daily_data: daily_data[cur_dt] = {}
             if hc_name not in daily_data[cur_dt]: daily_data[cur_dt][hc_name] = {'amt':0, 'est':0, 'cnt':0, 'amt_we':0, 'amt_wd':0, 'amt_move':0}
+            daily_data[cur_dt][hc_name]['amt'] += t_amt
+            daily_data[cur_dt][hc_name]['est'] += t_est
+            daily_data[cur_dt][hc_name]['cnt'] += t_cnt
+            if is_we: daily_data[cur_dt][hc_name]['amt_we'] += t_amt
+            else: daily_data[cur_dt][hc_name]['amt_wd'] += t_amt
+                
+            if cur_dt not in raw_snapshots: raw_snapshots[cur_dt] = {}
+            if hc_name not in raw_snapshots[cur_dt]: raw_snapshots[cur_dt][hc_name] = {'sales':0, 'online':0, 'cancel':0, 'next':0}
+            
+            raw_snapshots[cur_dt][hc_name]['sales'] += t_sales
+            raw_snapshots[cur_dt][hc_name]['next'] += t_next
+
+        # 🚀 입주 일보 데이터 추출 (버그 수정: row, 3으로 복구 완료)
+        elif curr_mode == "입주" and len(row) > 3:
+            raw_dealer = safe_get(row, 1)
+            raw_hc = safe_get(row, 3) 
+            if not raw_hc: raw_hc = raw_dealer 
+            hc_name = clean_str(raw_hc.split('(')[0]) 
+            hc_name = re.sub(r'\d+', '', hc_name) 
+            
+            is_dealer = get_mapped_dealer(hc_name) in dealer_names
+            if not hc_name or any(x in hc_name for x in sub_kw) or hc_name in exact_kw or is_dealer:
+                continue
+            
+            if hc_name not in hc_to_dealer_master:
+                hc_to_dealer_master[hc_name] = get_mapped_dealer(raw_dealer)
+            if hc_name not in existing_hcs:
+                existing_hcs.append(hc_name)
+            
+            dm = clean_val(safe_get(row, 12)) + clean_val(safe_get(row, 17))
+            if cur_dt not in daily_data: daily_data[cur_dt] = {}
+            if hc_name not in daily_data[cur_dt]: daily_data[cur_dt][hc_name] = {'amt':0, 'est':0, 'cnt':0, 'amt_we':0, 'amt_wd':0, 'amt_move':0}
+            daily_data[cur_dt][hc_name]['amt_move'] += dm
+
+        # 🚀 점별(온라인/취소) 데이터 추출 (버그 수정: row, 3으로 복구 완료)
+        elif curr_mode == "점별" and len(row) > 3:
+            raw_dealer = safe_get(row, 1)
+            raw_hc = safe_get(row, 3) 
+            if not raw_hc: raw_hc = raw_dealer 
+            hc_name = clean_str(raw_hc.split('(')[0]) 
+            hc_name = re.sub(r'\d+', '', hc_name) 
+            
+            is_dealer = get_mapped_dealer(hc_name) in dealer_names
+            if not hc_name or any(x in hc_name for x in sub_kw) or hc_name in exact_kw or is_dealer:
+                continue
+            
+            if hc_name not in hc_to_dealer_master:
+                hc_to_dealer_master[hc_name] = get_mapped_dealer(raw_dealer)
+            if hc_name not in existing_hcs:
+                existing_hcs.append(hc_name)
+            
+            t_online = clean_val(safe_get(row, 25)) 
+            t_cancel = clean_val(safe_get(row, 37)) + clean_val(safe_get(row, 38)) 
             
             if cur_dt not in raw_snapshots: raw_snapshots[cur_dt] = {}
-            if hc_name not in raw_snapshots[cur_dt]: raw_snapshots[cur_dt][hc_name] = {}
-
-            if curr_mode == "일반":
-                t_est, t_cnt = clean_val(safe_get(row, 4)), clean_val(safe_get(row, 5))
-                t_amt = clean_val(safe_get(row, 15)) 
-                t_sales = clean_val(safe_get(row, 18)) 
-                t_next = clean_val(safe_get(row, 24))  
-                
-                is_we = cur_dt.weekday() >= 5 if cur_dt != datetime.min.date() else False
-                
-                daily_data[cur_dt][hc_name]['amt'] += t_amt
-                daily_data[cur_dt][hc_name]['est'] += t_est
-                daily_data[cur_dt][hc_name]['cnt'] += t_cnt
-                if is_we: daily_data[cur_dt][hc_name]['amt_we'] += t_amt
-                else: daily_data[cur_dt][hc_name]['amt_wd'] += t_amt
-                
-                # 지표별 최신 기록을 각각 독립적으로 누적 (0원 덮어쓰기 방지)
-                raw_snapshots[cur_dt][hc_name]['sales'] = raw_snapshots[cur_dt][hc_name].get('sales', 0) + t_sales
-                raw_snapshots[cur_dt][hc_name]['next'] = raw_snapshots[cur_dt][hc_name].get('next', 0) + t_next
-
-            elif curr_mode == "입주":
-                dm = clean_val(safe_get(row, 12)) + clean_val(safe_get(row, 17))
-                daily_data[cur_dt][hc_name]['amt_move'] += dm
-
-            elif curr_mode == "점별":
-                t_online = clean_val(safe_get(row, 25)) 
-                t_cancel = clean_val(safe_get(row, 37)) + clean_val(safe_get(row, 38)) 
-                
-                raw_snapshots[cur_dt][hc_name]['online'] = raw_snapshots[cur_dt][hc_name].get('online', 0) + t_online
-                raw_snapshots[cur_dt][hc_name]['cancel'] = raw_snapshots[cur_dt][hc_name].get('cancel', 0) + t_cancel
+            if hc_name not in raw_snapshots[cur_dt]: raw_snapshots[cur_dt][hc_name] = {'sales':0, 'online':0, 'cancel':0, 'next':0}
+            raw_snapshots[cur_dt][hc_name]['online'] += t_online
+            raw_snapshots[cur_dt][hc_name]['cancel'] += t_cancel
 
     valid_dealers = list(set(hc_to_dealer_master.values()))
     av_dates = sorted(list(set(daily_data.keys()).union(set(raw_snapshots.keys()))))
@@ -370,7 +402,6 @@ def process_vdt_data(all_targets, all_daily_data, selected_date):
     else:
         eff_selected_date = selected_date
 
-    # 🚀 독립 추적기: 각 지표별로 가장 최신에 업데이트된 과거 기록을 핀셋 추출 (결근/누락 방어)
     def get_snap(target_d, hc, min_d=None):
         res = {'sales':0, 'online':0, 'cancel':0, 'next':0}
         for metric in res.keys():
