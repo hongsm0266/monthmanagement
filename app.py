@@ -103,7 +103,7 @@ st.markdown("".join(title_html), unsafe_allow_html=True)
 def clean_str(val): return re.sub(r'\s+', '', str(val))
 def safe_get(row, idx): return str(row[idx]).strip() if len(row) > idx else ""
 
-# 🚀 ValueError 완벽 차단: 기호(-, .)가 들어와도 에러 없이 0으로 부드럽게 치환
+# 🚀 ValueError 완벽 방어막 (기호 에러 시 0.0 반환)
 def clean_val(v):
     if not v or pd.isna(v): return 0.0
     v_str = str(v).replace('%', '').replace(',', '').replace('원', '').replace('건', '').strip()
@@ -111,10 +111,8 @@ def clean_val(v):
     v_str = re.sub(r'[^\d\.-]', '', v_str)
     
     try:
-        # v_str이 비어있거나 단일 하이픈(-)이면 0.0으로 처리, 아니면 실수 변환
         return float(v_str) * m if v_str and v_str != '-' else 0.0
     except ValueError:
-        # 그 외에 파싱 불가한 이상한 텍스트가 와도 뻗지 않도록 방어막 전개
         return 0.0
 
 def get_mapped_dealer(raw_d):
@@ -209,6 +207,7 @@ is_weekly_selected = "▪️" in str(st.session_state.get('wow_curr', ''))
 c_cal1, c_cal2 = st.columns([10, 2])
 with c_cal2:
     st.markdown("<div style='font-size:13px; font-weight:900; color:#1e293b; margin-bottom:4px;'>조회 기준일 선택 📅</div>", unsafe_allow_html=True)
+    # 🚀 오늘 날짜까지 항상 선택 가능하도록 제한 해제
     selected_date = st.date_input(
         "기준일", 
         value=max_date_in_sheet, 
@@ -292,8 +291,10 @@ def process_vdt_data(all_targets, all_daily_data, selected_date):
     daily_data = {}       
     raw_snapshots = {}    
     
+    # 🚀 유령 인원 차단 키워드 & 대리점 이름 필터 완벽 적용
     sub_kw = ['합계', '소계', '총계', 'INT', '한밭', '위탁']
     exact_kw = ['목표', '사번', '비고', '계', '대리점', '이름', 'HC', 'HC명', '영업사원']
+    dealer_names = ["둔산", "목포", "세종", "충주", "광양", "여수", "익산", "충청", "호남"]
     curr_mode = ""
 
     for r_idx, row in enumerate(all_daily_data):
@@ -318,9 +319,11 @@ def process_vdt_data(all_targets, all_daily_data, selected_date):
             if not raw_hc and len(row) > 1: raw_hc = raw_dealer 
             hc_name = clean_str(raw_hc.split('(')[0]) 
             hc_name = re.sub(r'\d+', '', hc_name) 
-            if not hc_name or any(x in hc_name for x in sub_kw) or hc_name in exact_kw: continue
             
-            # 🚀 목표 시트에 없는 유령 인원 자동 흡수 로직
+            # 🚀 대리점 합계 줄 2중 필터링 
+            if not hc_name or any(x in hc_name for x in sub_kw) or hc_name in exact_kw or hc_name in dealer_names: 
+                continue
+            
             if hc_name not in hc_to_dealer_master:
                 hc_to_dealer_master[hc_name] = get_mapped_dealer(raw_dealer)
             if hc_name not in existing_hcs:
@@ -344,7 +347,6 @@ def process_vdt_data(all_targets, all_daily_data, selected_date):
             if cur_dt not in raw_snapshots: raw_snapshots[cur_dt] = {}
             if hc_name not in raw_snapshots[cur_dt]: raw_snapshots[cur_dt][hc_name] = {'sales':0, 'online':0, 'cancel':0, 'next':0}
             
-            # 🚀 덮어쓰기(=)에서 무한 합산(+=)으로 변경하여 누락 방지
             raw_snapshots[cur_dt][hc_name]['sales'] += t_sales
             raw_snapshots[cur_dt][hc_name]['next'] += t_next
 
@@ -354,7 +356,9 @@ def process_vdt_data(all_targets, all_daily_data, selected_date):
             if not raw_hc: raw_hc = safe_get(row, 3)
             hc_name = clean_str(raw_hc.split('(')[0]) 
             hc_name = re.sub(r'\d+', '', hc_name) 
-            if not hc_name or any(x in hc_name for x in sub_kw) or hc_name in exact_kw: continue
+            
+            if not hc_name or any(x in hc_name for x in sub_kw) or hc_name in exact_kw or hc_name in dealer_names: 
+                continue
             
             if hc_name not in hc_to_dealer_master:
                 hc_to_dealer_master[hc_name] = get_mapped_dealer(raw_dealer)
@@ -372,7 +376,9 @@ def process_vdt_data(all_targets, all_daily_data, selected_date):
             if not raw_hc: raw_hc = safe_get(row, 3)
             hc_name = clean_str(raw_hc.split('(')[0]) 
             hc_name = re.sub(r'\d+', '', hc_name) 
-            if not hc_name or any(x in hc_name for x in sub_kw) or hc_name in exact_kw: continue
+            
+            if not hc_name or any(x in hc_name for x in sub_kw) or hc_name in exact_kw or hc_name in dealer_names: 
+                continue
             
             if hc_name not in hc_to_dealer_master:
                 hc_to_dealer_master[hc_name] = get_mapped_dealer(raw_dealer)
