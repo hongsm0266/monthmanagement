@@ -36,7 +36,10 @@ EXCLUDED_HCS = ["장재형", "강지인"]
 def init_connection():
     try:
         creds_dict = json.loads(st.secrets["gcp"]["key"])
-        creds = Credentials.from_service_account_info(creds_dict, scopes=["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"])
+        creds = Credentials.from_service_account_info(
+            creds_dict, 
+            scopes=["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
+        )
         return gspread.authorize(creds)
     except Exception as e:
         st.error(f"구글 API 키 오류: {e}")
@@ -46,51 +49,58 @@ client = init_connection()
 current_date = datetime.now()
 current_month = current_date.month
 
-st.markdown(f"""
-<style>
-    @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&display=swap');
-    html, body, [class*="css"], [class*="st-"], th, td {{ font-family: 'Noto Sans KR', sans-serif !important; }}
-    div[data-testid="stTabs"] button {{ font-size: 15px !important; font-weight: 700 !important; color: #94a3b8 !important; }}
-    div[data-testid="stTabs"] button[aria-selected="true"] {{ color: #1d4ed8 !important; font-weight: 900 !important; border-bottom: 3px solid #1d4ed8 !important; }}
-    div[data-testid="stSelectbox"] div[data-baseweb="select"] > div {{ border: 2px solid #1e293b !important; background-color: #ffffff !important; color: #0f172a !important; font-weight: 900 !important; }}
-    div[data-testid="stSelectbox"] div[data-baseweb="select"] * {{ color: #0f172a !important; font-weight: 900 !important; }}
-    .vdt-table-container {{ width: 100%; max-height: 65vh; overflow: auto; border: 1px solid #cbd5e1; border-radius: 8px; margin-top: 10px; }}
-    .vdt-table-container::-webkit-scrollbar {{ width: 14px; height: 14px; }}
-    .vdt-table-container::-webkit-scrollbar-track {{ background: #f1f5f9; border-radius: 8px; }}
-    .vdt-table-container::-webkit-scrollbar-thumb {{ background: #94a3b8; border-radius: 8px; border: 3px solid #f1f5f9; }}
-    .vdt-table {{ width: 100%; border-collapse: collapse; font-size: 13px; white-space: nowrap; }}
-    .vdt-table tbody tr:hover {{ background-color: #dbeafe !important; font-weight: 900 !important; transition: all 0.1s ease-in-out; }}
-    .vdt-table tbody tr:hover td {{ background-color: transparent !important; color: #0f172a !important; }}
-    .vdt-table thead th {{ height: 34px; position: sticky; z-index: 10; }}
-    .vdt-table thead tr:nth-child(1) th {{ top: 0; }}
-    .vdt-table thead tr:nth-child(2) th {{ top: 33px; }}
-    .vdt-table thead tr:nth-child(3) th {{ top: 66px; }}
-    .vdt-table th {{ background-color: #0f172a; color: white; padding: 6px 8px; text-align: center; border: 1px solid #334155; font-weight: 700; }}
-    .vdt-table td {{ padding: 4px 8px; text-align: right; border: 1px solid #e2e8f0; }}
-    .title-box {{ background: linear-gradient(90deg, #1e3a8a 0%, #3b82f6 100%); color: white; padding: 12px 15px; border-radius: 8px; margin-bottom: 12px; }}
-    h1, h3, h4 {{ font-weight: 900 !important; margin: 0; }}
-    h1 {{ font-size: 16px !important; color: white !important; display:flex; align-items:center; }}
-    h4 {{ font-size: 14px !important; color: #1e293b !important; }}
-    .wow-table {{ width: 100%; border-collapse: collapse; font-size: 14px; margin-bottom: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }}
-    .wow-table th {{ background-color: #1e293b; color: white; padding: 8px; text-align: center; border: 1px solid #334155; font-weight: 900; font-size: 13px;}}
-    .wow-table td {{ padding: 8px; text-align: right; border: 1px solid #cbd5e1; background-color: white; font-size: 14px; font-weight: 700;}}
-    .wow-up {{ color: #dc2626; font-weight: 900; }}
-    .wow-down {{ color: #2563eb; font-weight: 900; }}
-    .wow-same {{ color: #64748b; font-weight: 600; }}
-    div.stButton > button {{ background: #f8fafc !important; color: #020617 !important; font-size: 12px !important; font-weight: 900 !important; border-radius: 6px !important; padding: 4px 6px !important; border: 1px solid #94a3b8 !important; height: auto !important; min-height: 32px; border-bottom: 2px solid #64748b !important; transition: all 0.1s ease !important; }}
-    div.stButton > button[kind="primary"] {{ background: linear-gradient(180deg, #fee2e2 0%, #fecaca 100%) !important; color: #991b1b !important; border: 1px solid #f87171 !important; border-bottom: 2px solid #ef4444 !important; }}
-    #org-buttons + div[data-testid="stHorizontalBlock"] > div:nth-child(1) button {{ background-color: #faf5ff !important; border-color: #e9d5ff !important; color: #9333ea !important; border-bottom: 2px solid #d8b4fe !important; }}
-    #org-buttons + div[data-testid="stHorizontalBlock"] > div:nth-child(1) button[kind="primary"] {{ background: linear-gradient(180deg, #f3e8ff 0%, #e9d5ff 100%) !important; color: #3b0764 !important; border-bottom: 2px solid #7e22ce !important; }}
-    #org-buttons + div[data-testid="stHorizontalBlock"] > div:nth-child(3) button {{ background-color: #f0f9ff !important; border-color: #bae6fd !important; color: #0284c7 !important; border-bottom: 2px solid #7dd3fc !important; }}
-    #org-buttons + div[data-testid="stHorizontalBlock"] > div:nth-child(3) button[kind="primary"] {{ background: linear-gradient(180deg, #e0f2fe 0%, #bae6fd 100%) !important; color: #082f49 !important; border-bottom: 2px solid #0284c7 !important; }}
-    #org-buttons + div[data-testid="stHorizontalBlock"] > div:nth-child(9) button {{ background-color: #f0fdf4 !important; border-color: #bbf7d0 !important; color: #16a34a !important; border-bottom: 2px solid #86efac !important; }}
-    #org-buttons + div[data-testid="stHorizontalBlock"] > div:nth-child(9) button[kind="primary"] {{ background: linear-gradient(180deg, #dcfce7 0%, #bbf7d0 100%) !important; color: #052e16 !important; border-bottom: 2px solid #16a34a !important; }}
-    .chart-btn-group {{ font-size: 11px; font-weight: 800; color: #475569; background: #e2e8f0; border-radius: 4px; padding: 2px 0; text-align: center; margin-bottom: 4px; border: 1px solid #cbd5e1;}}
-    .mode-toggle {{ font-size: 14px; font-weight: 900; color: #0f172a; display:flex; align-items:center; gap:10px;}}
-</style>
-""", unsafe_allow_html=True)
+# 가로로 긴 CSS 코드를 짧게 쪼개서 결합
+css_styles = [
+    "<style>",
+    "@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&display=swap');",
+    "html, body, [class*='css'], [class*='st-'], th, td { font-family: 'Noto Sans KR', sans-serif !important; }",
+    "div[data-testid='stTabs'] button { font-size: 15px !important; font-weight: 700 !important; color: #94a3b8 !important; }",
+    "div[data-testid='stTabs'] button[aria-selected='true'] { color: #1d4ed8 !important; font-weight: 900 !important; border-bottom: 3px solid #1d4ed8 !important; }",
+    "div[data-testid='stSelectbox'] div[data-baseweb='select'] > div { border: 2px solid #1e293b !important; background-color: #ffffff !important; color: #0f172a !important; font-weight: 900 !important; }",
+    "div[data-testid='stSelectbox'] div[data-baseweb='select'] * { color: #0f172a !important; font-weight: 900 !important; }",
+    ".vdt-table-container { width: 100%; max-height: 65vh; overflow: auto; border: 1px solid #cbd5e1; border-radius: 8px; margin-top: 10px; }",
+    ".vdt-table-container::-webkit-scrollbar { width: 14px; height: 14px; }",
+    ".vdt-table-container::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 8px; }",
+    ".vdt-table-container::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 8px; border: 3px solid #f1f5f9; }",
+    ".vdt-table { width: 100%; border-collapse: collapse; font-size: 13px; white-space: nowrap; }",
+    ".vdt-table tbody tr:hover { background-color: #dbeafe !important; font-weight: 900 !important; transition: all 0.1s ease-in-out; }",
+    ".vdt-table tbody tr:hover td { background-color: transparent !important; color: #0f172a !important; }",
+    ".vdt-table thead th { height: 34px; position: sticky; z-index: 10; }",
+    ".vdt-table thead tr:nth-child(1) th { top: 0; }",
+    ".vdt-table thead tr:nth-child(2) th { top: 33px; }",
+    ".vdt-table thead tr:nth-child(3) th { top: 66px; }",
+    ".vdt-table th { background-color: #0f172a; color: white; padding: 6px 8px; text-align: center; border: 1px solid #334155; font-weight: 700; }",
+    ".vdt-table td { padding: 4px 8px; text-align: right; border: 1px solid #e2e8f0; }",
+    ".title-box { background: linear-gradient(90deg, #1e3a8a 0%, #3b82f6 100%); color: white; padding: 12px 15px; border-radius: 8px; margin-bottom: 12px; }",
+    "h1, h3, h4 { font-weight: 900 !important; margin: 0; }",
+    "h1 { font-size: 16px !important; color: white !important; display:flex; align-items:center; }",
+    "h4 { font-size: 14px !important; color: #1e293b !important; }",
+    ".wow-table { width: 100%; border-collapse: collapse; font-size: 14px; margin-bottom: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }",
+    ".wow-table th { background-color: #1e293b; color: white; padding: 8px; text-align: center; border: 1px solid #334155; font-weight: 900; font-size: 13px;}",
+    ".wow-table td { padding: 8px; text-align: right; border: 1px solid #cbd5e1; background-color: white; font-size: 14px; font-weight: 700;}",
+    ".wow-up { color: #dc2626; font-weight: 900; }",
+    ".wow-down { color: #2563eb; font-weight: 900; }",
+    ".wow-same { color: #64748b; font-weight: 600; }",
+    "div.stButton > button { background: #f8fafc !important; color: #020617 !important; font-size: 12px !important; font-weight: 900 !important; border-radius: 6px !important; padding: 4px 6px !important; border: 1px solid #94a3b8 !important; height: auto !important; min-height: 32px; border-bottom: 2px solid #64748b !important; transition: all 0.1s ease !important; }",
+    "div.stButton > button[kind='primary'] { background: linear-gradient(180deg, #fee2e2 0%, #fecaca 100%) !important; color: #991b1b !important; border: 1px solid #f87171 !important; border-bottom: 2px solid #ef4444 !important; }",
+    "#org-buttons + div[data-testid='stHorizontalBlock'] > div:nth-child(1) button { background-color: #faf5ff !important; border-color: #e9d5ff !important; color: #9333ea !important; border-bottom: 2px solid #d8b4fe !important; }",
+    "#org-buttons + div[data-testid='stHorizontalBlock'] > div:nth-child(1) button[kind='primary'] { background: linear-gradient(180deg, #f3e8ff 0%, #e9d5ff 100%) !important; color: #3b0764 !important; border-bottom: 2px solid #7e22ce !important; }",
+    "#org-buttons + div[data-testid='stHorizontalBlock'] > div:nth-child(3) button { background-color: #f0f9ff !important; border-color: #bae6fd !important; color: #0284c7 !important; border-bottom: 2px solid #7dd3fc !important; }",
+    "#org-buttons + div[data-testid='stHorizontalBlock'] > div:nth-child(3) button[kind='primary'] { background: linear-gradient(180deg, #e0f2fe 0%, #bae6fd 100%) !important; color: #082f49 !important; border-bottom: 2px solid #0284c7 !important; }",
+    "#org-buttons + div[data-testid='stHorizontalBlock'] > div:nth-child(9) button { background-color: #f0fdf4 !important; border-color: #bbf7d0 !important; color: #16a34a !important; border-bottom: 2px solid #86efac !important; }",
+    "#org-buttons + div[data-testid='stHorizontalBlock'] > div:nth-child(9) button[kind='primary'] { background: linear-gradient(180deg, #dcfce7 0%, #bbf7d0 100%) !important; color: #052e16 !important; border-bottom: 2px solid #16a34a !important; }",
+    ".chart-btn-group { font-size: 11px; font-weight: 800; color: #475569; background: #e2e8f0; border-radius: 4px; padding: 2px 0; text-align: center; margin-bottom: 4px; border: 1px solid #cbd5e1;}",
+    ".mode-toggle { font-size: 14px; font-weight: 900; color: #0f172a; display:flex; align-items:center; gap:10px;}",
+    "</style>"
+]
+st.markdown("".join(css_styles), unsafe_allow_html=True)
 
-st.markdown(f"<div class='title-box'><h1>📊 충청호남팀 VDT 종합 관리 <span style='font-size:13px; font-weight:normal; color:#bae6fd; margin-left:10px;'>({current_date.strftime('%y년 %m월 %d일')} 기준)</span></h1></div>", unsafe_allow_html=True)
+st.markdown(
+    f"<div class='title-box'><h1>📊 충청호남팀 VDT 종합 관리 "
+    f"<span style='font-size:13px; font-weight:normal; color:#bae6fd; margin-left:10px;'>"
+    f"({current_date.strftime('%y년 %m월 %d일')} 기준)</span></h1></div>", 
+    unsafe_allow_html=True
+)
 
 def clean_str(val): return re.sub(r'\s+', '', str(val))
 def safe_get(row, idx): return str(row[idx]).strip() if len(row) > idx else ""
@@ -193,7 +203,14 @@ is_weekly_selected = "▪️" in str(st.session_state.get('wow_curr', ''))
 c_cal1, c_cal2 = st.columns([10, 2])
 with c_cal2:
     st.markdown("<div style='font-size:13px; font-weight:900; color:#1e293b; margin-bottom:4px;'>조회 기준일 선택 📅</div>", unsafe_allow_html=True)
-    selected_date = st.date_input("기준일", value=max_date_in_sheet, min_value=available_dates[0] if available_dates else None, max_value=max_date_in_sheet, disabled=is_weekly_selected, label_visibility="collapsed")
+    selected_date = st.date_input(
+        "기준일", 
+        value=max_date_in_sheet, 
+        min_value=available_dates[0] if available_dates else None, 
+        max_value=max_date_in_sheet, 
+        disabled=is_weekly_selected, 
+        label_visibility="collapsed"
+    )
     if is_weekly_selected:
         st.markdown("<div style='font-size:11px; color:#ef4444; margin-top:2px; font-weight:bold;'>🔒 주간 실적 조회 중 (달력 잠김)</div>", unsafe_allow_html=True)
 
@@ -490,7 +507,9 @@ def process_vdt_data(all_targets, all_daily_data, selected_date):
     
     for reg, dlrs in REGION_MAP.items():
         for d in dlrs:
-            dw, dm, dmtd = trend_dlr_w.get(d, [new_d() for _ in range(8)]), trend_dlr_m.get(d, {lbl: new_d() for lbl in month_labels}), trend_dlr_mtd.get(d, {lbl: new_d() for lbl in mtd_labels})
+            dw = trend_dlr_w.get(d, [new_d() for _ in range(8)])
+            dm = trend_dlr_m.get(d, {lbl: new_d() for lbl in month_labels})
+            dmtd = trend_dlr_mtd.get(d, {lbl: new_d() for lbl in mtd_labels})
             for i in range(8):
                 for k in keys_to_sum: trend_reg_w[reg][i][k] += dw[i][k]
             for lbl in month_labels:
@@ -518,9 +537,13 @@ def process_vdt_data(all_targets, all_daily_data, selected_date):
                     while curr <= e_dt:
                         if curr in daily_data and hc in daily_data[curr]:
                             d_val = daily_data[curr][hc]
-                            acts[hc][wk_lbl]['amt'] += d_val['amt']; acts[hc][wk_lbl]['est'] += d_val['est']; acts[hc][wk_lbl]['cnt'] += d_val['cnt']
+                            acts[hc][wk_lbl]['amt'] += d_val['amt']
+                            acts[hc][wk_lbl]['est'] += d_val['est']
+                            acts[hc][wk_lbl]['cnt'] += d_val['cnt']
                             if md in valid_dealers:
-                                rdw[md][wk_lbl]['amt'] += d_val['amt']; rdw[md][wk_lbl]['est'] += d_val['est']; rdw[md][wk_lbl]['cnt'] += d_val['cnt']
+                                rdw[md][wk_lbl]['amt'] += d_val['amt']
+                                rdw[md][wk_lbl]['est'] += d_val['est']
+                                rdw[md][wk_lbl]['cnt'] += d_val['cnt']
                         curr += timedelta(days=1)
                 except: pass
                 
@@ -529,9 +552,13 @@ def process_vdt_data(all_targets, all_daily_data, selected_date):
         while curr <= eff_selected_date:
             if curr in daily_data and hc in daily_data[curr]:
                 d_val = daily_data[curr][hc]
-                month_acts[hc]['amt'] += d_val['amt']; month_acts[hc]['est'] += d_val['est']; month_acts[hc]['cnt'] += d_val['cnt']
+                month_acts[hc]['amt'] += d_val['amt']
+                month_acts[hc]['est'] += d_val['est']
+                month_acts[hc]['cnt'] += d_val['cnt']
                 if md in valid_dealers:
-                    rdm[md]['amt'] += d_val['amt']; rdm[md]['est'] += d_val['est']; rdm[md]['cnt'] += d_val['cnt']
+                    rdm[md]['amt'] += d_val['amt']
+                    rdm[md]['est'] += d_val['est']
+                    rdm[md]['cnt'] += d_val['cnt']
             curr += timedelta(days=1)
 
     dealer_active_hcs, dealer_sales_sum_active = {}, {}
@@ -550,9 +577,22 @@ def process_vdt_data(all_targets, all_daily_data, selected_date):
         hc_c = clean_str(hc)
         wt = (tgt / dealer_sales_sum_active.get(d, 1.0)) if hc_c not in EXCLUDED_HCS and dealer_sales_sum_active.get(d, 0) > 0 else 0.0
         final_hc_sales_tgt[hc_c] = dealer_sales_sum.get(d, 0.0) * wt
-        targets[hc_c] = {wk: {'amt': dealer_targets.get(d, {}).get(wk, {}).get('amt', 0) * wt, 'est': dealer_targets.get(d, {}).get(wk, {}).get('est', 0) * wt, 'cnt': dealer_targets.get(d, {}).get(wk, {}).get('cnt', 0) * wt} for wk in week_keys}
+        
+        targets[hc_c] = {}
+        for wk in week_keys:
+            d_amt = dealer_targets.get(d, {}).get(wk, {}).get('amt', 0) * wt
+            d_est = dealer_targets.get(d, {}).get(wk, {}).get('est', 0) * wt
+            d_cnt = dealer_targets.get(d, {}).get(wk, {}).get('cnt', 0) * wt
+            targets[hc_c][wk] = {'amt': d_amt, 'est': d_est, 'cnt': d_cnt}
 
-    col_tuples = [('기본정보', '대리점', '대리점'), ('기본정보', 'HC명', 'HC명'), ('🎯 당월매출', '인별매출(천)', '목표'), ('🎯 당월매출', '인별매출(천)', 'ACT'), ('🎯 당월매출', '인별매출(천)', '달성율(%)'), ('🌟 당월 합계', '계약액(천)', '목표'), ('🌟 당월 합계', '계약액(천)', 'ACT'), ('🌟 당월 합계', '계약액(천)', '달성율(%)'), ('🌟 당월 합계', '견적건', '목표'), ('🌟 당월 합계', '견적건', 'ACT'), ('🌟 당월 합계', '견적건', '달성율(%)'), ('🌟 당월 합계', '계약건', '목표'), ('🌟 당월 합계', '계약건', 'ACT'), ('🌟 당월 합계', '계약건', '달성율(%)')]
+    col_tuples = [
+        ('기본정보', '대리점', '대리점'), ('기본정보', 'HC명', 'HC명'), 
+        ('🎯 당월매출', '인별매출(천)', '목표'), ('🎯 당월매출', '인별매출(천)', 'ACT'), ('🎯 당월매출', '인별매출(천)', '달성율(%)'), 
+        ('🌟 당월 합계', '계약액(천)', '목표'), ('🌟 당월 합계', '계약액(천)', 'ACT'), ('🌟 당월 합계', '계약액(천)', '달성율(%)'), 
+        ('🌟 당월 합계', '견적건', '목표'), ('🌟 당월 합계', '견적건', 'ACT'), ('🌟 당월 합계', '견적건', '달성율(%)'), 
+        ('🌟 당월 합계', '계약건', '목표'), ('🌟 당월 합계', '계약건', 'ACT'), ('🌟 당월 합계', '계약건', '달성율(%)')
+    ]
+    
     for wk in week_keys:
         wl = f"{wk} ({date_headers.get(wk, '')})"
         for k in ['계약액(천)', '견적건', '계약건']:
@@ -560,28 +600,48 @@ def process_vdt_data(all_targets, all_daily_data, selected_date):
         
     columns = pd.MultiIndex.from_tuples(col_tuples, names=['주차', '항목', '구분'])
     rows = []
+    
     for d, hc, _ in hc_info_raw:
         hc_c = clean_str(hc)
         if hc_c in EXCLUDED_HCS: continue
-        tgt, ma, sa = final_hc_sales_tgt.get(hc_c, 0.0), month_acts.get(hc_c, {'amt':0,'est':0,'cnt':0}), latest_sales_dict.get(hc_c, 0.0)
+        tgt = final_hc_sales_tgt.get(hc_c, 0.0)
+        ma = month_acts.get(hc_c, {'amt':0,'est':0,'cnt':0})
+        sa = latest_sales_dict.get(hc_c, 0.0)
         if tgt == 0.0 and ma['amt'] == 0 and ma['est'] == 0 and ma['cnt'] == 0 and sa == 0: continue
         
-        r_d = [d, hc, tgt, sa, 0.0, sum([targets.get(hc_c, {}).get(wk, {}).get('amt', 0) for wk in week_keys]), ma['amt'], 0.0, sum([targets.get(hc_c, {}).get(wk, {}).get('est', 0) for wk in week_keys]), ma['est'], 0.0, sum([targets.get(hc_c, {}).get(wk, {}).get('cnt', 0) for wk in week_keys]), ma['cnt'], 0.0]
+        tgt_amt_sum = sum([targets.get(hc_c, {}).get(wk, {}).get('amt', 0) for wk in week_keys])
+        tgt_est_sum = sum([targets.get(hc_c, {}).get(wk, {}).get('est', 0) for wk in week_keys])
+        tgt_cnt_sum = sum([targets.get(hc_c, {}).get(wk, {}).get('cnt', 0) for wk in week_keys])
+        
+        r_d = [
+            d, hc, tgt, sa, 0.0, 
+            tgt_amt_sum, ma['amt'], 0.0, 
+            tgt_est_sum, ma['est'], 0.0, 
+            tgt_cnt_sum, ma['cnt'], 0.0
+        ]
+        
         for wk in week_keys:
-            t, a = targets.get(hc_c, {}).get(wk, {'amt':0,'est':0,'cnt':0}), acts.get(hc_c, {}).get(wk, {'amt':0,'est':0,'cnt':0})
+            t = targets.get(hc_c, {}).get(wk, {'amt':0,'est':0,'cnt':0})
+            a = acts.get(hc_c, {}).get(wk, {'amt':0,'est':0,'cnt':0})
             r_d.extend([t['amt'], a['amt'], 0.0, t['est'], a['est'], 0.0, t['cnt'], a['cnt'], 0.0])
         rows.append(r_d)
 
     df = pd.DataFrame(rows, columns=columns)
     for c in df.columns[2:]:
-        if c[2] == '달성율(%)': df[c] = np.where(df[(c[0], c[1], '목표')] > 0, (df[(c[0], c[1], 'ACT')] / df[(c[0], c[1], '목표')] * 100).round(0), 0)
+        if c[2] == '달성율(%)': 
+            df[c] = np.where(df[(c[0], c[1], '목표')] > 0, (df[(c[0], c[1], 'ACT')] / df[(c[0], c[1], '목표')] * 100).round(0), 0)
     
     tp = {'W': {'hc': trend_hc_w, 'dlr': trend_dlr_w, 'tot': trend_tot_w, 'reg': trend_reg_w}, 'M': {'hc': trend_hc_m, 'dlr': trend_dlr_m, 'tot': trend_tot_m, 'reg': trend_reg_m}, 'MTD': {'hc': trend_hc_mtd, 'dlr': trend_dlr_mtd, 'tot': trend_tot_mtd, 'reg': trend_reg_mtd}}
     ctw = date_to_target_week.get((eff_selected_date.month, eff_selected_date.day), week_keys[-1] if week_keys else '1주차')
     return df, date_headers, hc_to_dealer_master, rdm, rdw, week_keys, tp, ctw, month_labels, mtd_labels
 
+# ==============================================================================
+# 렌더링 메인 (Rendering Main)
+# ==============================================================================
+
 if all_daily_data:
-    df_raw, date_headers, hc_to_dealer_master, rdm, rdw, week_keys_list, trend_pack, CURRENT_TABLE_WEEK, month_labels, mtd_labels = process_vdt_data(all_targets, all_daily_data, selected_date)
+    (df_raw, date_headers, hc_to_dealer_master, rdm, rdw, 
+     week_keys_list, trend_pack, CURRENT_TABLE_WEEK, month_labels, mtd_labels) = process_vdt_data(all_targets, all_daily_data, selected_date)
 
     def calc_subtotals(df, rdm, rdw):
         if df.empty: return df
@@ -604,7 +664,8 @@ if all_daily_data:
                         stot[(w, '견적건', 'ACT')] = wd['est']
                         stot[(w, '계약건', 'ACT')] = wd['cnt']
             for c in df.columns[2:]:
-                if c[2] == '달성율(%)': stot[c] = round((stot[(c[0],c[1],'ACT')] / stot[(c[0],c[1],'목표')] * 100), 0) if stot[(c[0],c[1],'목표')] > 0 else 0.0
+                if c[2] == '달성율(%)': 
+                    stot[c] = round((stot[(c[0],c[1],'ACT')] / stot[(c[0],c[1],'목표')] * 100), 0) if stot[(c[0],c[1],'목표')] > 0 else 0.0
             rr.append(pd.Series(stot))
 
         gt = df.select_dtypes(include=[np.number]).sum()
@@ -624,7 +685,8 @@ if all_daily_data:
                     gt[(w, '계약건', 'ACT')] = sum([rdw.get(d, {}).get(wk, {}).get('cnt', 0) for d in df[d_c].unique()])
 
         for c in df.columns[2:]:
-            if c[2] == '달성율(%)': gt[c] = round((gt[(c[0],c[1],'ACT')] / gt[(c[0],c[1],'목표')] * 100), 0) if gt[(c[0],c[1],'목표')] > 0 else 0.0
+            if c[2] == '달성율(%)': 
+                gt[c] = round((gt[(c[0],c[1],'ACT')] / gt[(c[0],c[1],'목표')] * 100), 0) if gt[(c[0],c[1],'목표')] > 0 else 0.0
         rr.append(pd.Series(gt))
         return pd.DataFrame(rr)
 
@@ -752,48 +814,55 @@ if all_daily_data:
         disp_diff_s = "<td style='text-align:center; color:#94a3b8; background-color:#f1f5f9;'>-</td>" if (curr_is_week or prev_is_week) else td_cell(ts, ps)
         disp_diff_o = "<td style='text-align:center; color:#94a3b8; background-color:#f1f5f9;'>-</td>" if (curr_is_week or prev_is_week) else td_cell(to, po)
 
-        html_wow = '''
-        <table class="wow-table" style="width: 100%; border: 2px solid #94a3b8; border-radius: 8px; overflow: hidden; margin-top: 5px;">
-            <thead><tr style="background-color: #1e293b; color: white;">
-            <th style="padding: 10px; font-size: 13px; border-right: 2px solid #94a3b8; width:14%;">조직<br><span style="font-size:11px; color:#cbd5e1;">({CT})</span></th>
-            <th style="padding: 10px;">💰 총 계약액<br>(천원)</th><th style="padding: 10px;">💰 총 매출액<br>(천원)</th><th style="padding: 10px;">💻 온라인매출<br>(천원)</th>
-            <th style="padding: 10px;">📝 견적건<br>(건)</th><th style="padding: 10px;">🤝 계약건<br>(건)</th>
-            <th style="padding: 10px; background-color:#334155;">🚶 워크인 계약액<br>(천원)</th><th style="padding: 10px; background-color:#334155;">🏠 입주 계약액<br>(천원)</th>
-            <th style="padding: 10px;">📊 계약률<br>(%)</th><th style="padding: 10px;">💸 객단가<br>(만원)</th><th style="padding: 10px;">📉 총 취소액<br>(천원)</th></tr></thead><tbody>
-            <tr style='background-color: #f8fafc;'><td style='text-align:center; font-weight:900; border-right:2px solid #94a3b8; color:#64748b;'>{SEL_PREV}</td>
-            {TD_PA} {DISP_PS} {DISP_PO} {TD_PE} {TD_PC} {TD_PW} {TD_PM} {TD_PR} {TD_PU} {TD_PCAN} </tr>
-            <tr style='background-color: white;'><td style='text-align:center; font-weight:900; color:#1e3a8a; border-right:2px solid #94a3b8;'>{SEL_CURR}</td>
-            {TD_TA} {DISP_TS} {DISP_TO} {TD_TE} {TD_TC} {TD_TW} {TD_TM} {TD_TR} {TD_TU} {TD_TCAN} </tr>
-            <tr style='background-color: #fef2f2;'><td style='text-align:center; font-weight:900; color:#b91c1c; border-right:2px solid #94a3b8;'>지표 간 증감</td>
-            {DIFF_A} {DIFF_S} {DIFF_O} {DIFF_E} {DIFF_C} {DIFF_W} {DIFF_M} {DIFF_R} {DIFF_U} {DIFF_CAN} </tr></tbody></table>
-        '''
+        html_wow = [
+            '<table class="wow-table" style="width: 100%; border: 2px solid #94a3b8; border-radius: 8px; overflow: hidden; margin-top: 5px;">',
+            '<thead><tr style="background-color: #1e293b; color: white;">',
+            f'<th style="padding: 10px; font-size: 13px; border-right: 2px solid #94a3b8; width:14%;">조직<br><span style="font-size:11px; color:#cbd5e1;">({ct})</span></th>',
+            '<th style="padding: 10px;">💰 총 계약액<br>(천원)</th><th style="padding: 10px;">💰 총 매출액<br>(천원)</th><th style="padding: 10px;">💻 온라인매출<br>(천원)</th>',
+            '<th style="padding: 10px;">📝 견적건<br>(건)</th><th style="padding: 10px;">🤝 계약건<br>(건)</th>',
+            '<th style="padding: 10px; background-color:#334155;">🚶 워크인 계약액<br>(천원)</th><th style="padding: 10px; background-color:#334155;">🏠 입주 계약액<br>(천원)</th>',
+            '<th style="padding: 10px;">📊 계약률<br>(%)</th><th style="padding: 10px;">💸 객단가<br>(만원)</th><th style="padding: 10px;">📉 총 취소액<br>(천원)</th></tr></thead><tbody>',
+            f"<tr style='background-color: #f8fafc;'><td style='text-align:center; font-weight:900; border-right:2px solid #94a3b8; color:#64748b;'>{sel_prev}</td>",
+            td_val(pa), disp_ps, disp_po, td_val(pe), td_val(pc), td_val(pw,bg='#f1f5f9'), td_val(pm,bg='#f1f5f9'), td_val(pr,True), td_val(pu,False,True), td_val(p_can), "</tr>",
+            f"<tr style='background-color: white;'><td style='text-align:center; font-weight:900; color:#1e3a8a; border-right:2px solid #94a3b8;'>{sel_curr}</td>",
+            td_val(ta,is_tgt=True), disp_ts, disp_to, td_val(te,is_tgt=True), td_val(tc,is_tgt=True), td_val(tw,is_tgt=True,bg='#f1f5f9'), td_val(tm,is_tgt=True,bg='#f1f5f9'), td_val(tr,True,is_tgt=True), td_val(tu,False,True,is_tgt=True), td_val(t_can,is_tgt=True), "</tr>",
+            f"<tr style='background-color: #fef2f2;'><td style='text-align:center; font-weight:900; color:#b91c1c; border-right:2px solid #94a3b8;'>지표 간 증감</td>",
+            td_cell(ta,pa), disp_diff_s, disp_diff_o, td_cell(te,pe), td_cell(tc,pc), td_cell(tw,pw), td_cell(tm,pm), td_cell(tr,pr,is_rate=True), td_cell(tu,pu,is_unit=True), td_cell(t_can,p_can), "</tr></tbody></table>"
+        ]
         
-        html_wow = html_wow.replace("{CT}", ct).replace("{SEL_PREV}", str(sel_prev)).replace("{SEL_CURR}", str(sel_curr))
-        html_wow = html_wow.replace("{TD_PA}", td_val(pa)).replace("{DISP_PS}", disp_ps).replace("{DISP_PO}", disp_po).replace("{TD_PE}", td_val(pe)).replace("{TD_PC}", td_val(pc))
-        html_wow = html_wow.replace("{TD_PW}", td_val(pw,bg='#f1f5f9')).replace("{TD_PM}", td_val(pm,bg='#f1f5f9')).replace("{TD_PR}", td_val(pr,True)).replace("{TD_PU}", td_val(pu,False,True)).replace("{TD_PCAN}", td_val(p_can))
-        html_wow = html_wow.replace("{TD_TA}", td_val(ta,is_tgt=True)).replace("{DISP_TS}", disp_ts).replace("{DISP_TO}", disp_to).replace("{TD_TE}", td_val(te,is_tgt=True)).replace("{TD_TC}", td_val(tc,is_tgt=True))
-        html_wow = html_wow.replace("{TD_TW}", td_val(tw,is_tgt=True,bg='#f1f5f9')).replace("{TD_TM}", td_val(tm,is_tgt=True,bg='#f1f5f9')).replace("{TD_TR}", td_val(tr,True,is_tgt=True)).replace("{TD_TU}", td_val(tu,False,True,is_tgt=True)).replace("{TD_TCAN}", td_val(t_can,is_tgt=True))
-        html_wow = html_wow.replace("{DIFF_A}", td_cell(ta,pa)).replace("{DIFF_S}", disp_diff_s).replace("{DIFF_O}", disp_diff_o).replace("{DIFF_E}", td_cell(te,pe)).replace("{DIFF_C}", td_cell(tc,pc))
-        html_wow = html_wow.replace("{DIFF_W}", td_cell(tw,pw)).replace("{DIFF_M}", td_cell(tm,pm)).replace("{DIFF_R}", td_cell(tr,pr,is_rate=True)).replace("{DIFF_U}", td_cell(tu,pu,is_unit=True)).replace("{DIFF_CAN}", td_cell(t_can,p_can))
-        
-        st.markdown(html_wow, unsafe_allow_html=True)
+        st.markdown("".join(html_wow), unsafe_allow_html=True)
         st.markdown("---")
 
         st.markdown("#### 🔎 **실적 조회 (조직 및 인원 선택)**")
         st.markdown('<div id="org-buttons"></div>', unsafe_allow_html=True)
+        
+        # 버튼 영역도 쪼개서 포맷팅
         c_o = st.columns([12, 2, 12, 9, 9, 9, 9, 2, 12, 9, 9, 9, 30])
-        with c_o[0]: st.button("I 전체통합" if vt != "충청호남팀 전체" else "✅ 전체통합", type=btn_type("충청호남팀 전체"), on_click=set_view, args=("충청호남팀 전체",), use_container_width=True)
-        with c_o[1]: st.markdown("<div style='text-align:center; padding-top:5px; color:#cbd5e1; font-weight:bold; font-size:16px;'>|</div>", unsafe_allow_html=True)
-        with c_o[2]: st.button("I 충청통합" if vt != "충청팀 통합" else "✅ 충청통합", type=btn_type("충청팀 통합"), on_click=set_view, args=("충청팀 통합",), use_container_width=True)
-        with c_o[3]: st.button("둔산" if vt != "둔산 대리점" else "✅ 둔산", type=btn_type("둔산 대리점"), on_click=set_view, args=("둔산 대리점",), use_container_width=True)
-        with c_o[4]: st.button("세종" if vt != "세종 대리점" else "✅ 세종", type=btn_type("세종 대리점"), on_click=set_view, args=("세종 대리점",), use_container_width=True)
-        with c_o[5]: st.button("목포" if vt != "목포 대리점" else "✅ 목포", type=btn_type("목포 대리점"), on_click=set_view, args=("목포 대리점",), use_container_width=True)
-        with c_o[6]: st.button("충주" if vt != "충주 대리점" else "✅ 충주", type=btn_type("충주 대리점"), on_click=set_view, args=("충주 대리점",), use_container_width=True)
-        with c_o[7]: st.markdown("<div style='text-align:center; padding-top:5px; color:#cbd5e1; font-weight:bold; font-size:16px;'>|</div>", unsafe_allow_html=True)
-        with c_o[8]: st.button("I 호남통합" if vt != "호남팀 통합" else "✅ 호남통합", type=btn_type("호남팀 통합"), on_click=set_view, args=("호남팀 통합",), use_container_width=True)
-        with c_o[9]: st.button("광양" if vt != "광양 대리점" else "✅ 광양", type=btn_type("광양 대리점"), on_click=set_view, args=("광양 대리점",), use_container_width=True)
-        with c_o[10]: st.button("익산" if vt != "익산 대리점" else "✅ 익산", type=btn_type("익산 대리점"), on_click=set_view, args=("익산 대리점",), use_container_width=True)
-        with c_o[11]: st.button("여수" if vt != "여수 대리점" else "✅ 여수", type=btn_type("여수 대리점"), on_click=set_view, args=("여수 대리점",), use_container_width=True)
+        
+        with c_o[0]: 
+            st.button("I 전체통합" if vt != "충청호남팀 전체" else "✅ 전체통합", type=btn_type("충청호남팀 전체"), on_click=set_view, args=("충청호남팀 전체",), use_container_width=True)
+        with c_o[1]: 
+            st.markdown("<div style='text-align:center; padding-top:5px; color:#cbd5e1; font-weight:bold; font-size:16px;'>|</div>", unsafe_allow_html=True)
+        with c_o[2]: 
+            st.button("I 충청통합" if vt != "충청팀 통합" else "✅ 충청통합", type=btn_type("충청팀 통합"), on_click=set_view, args=("충청팀 통합",), use_container_width=True)
+        with c_o[3]: 
+            st.button("둔산" if vt != "둔산 대리점" else "✅ 둔산", type=btn_type("둔산 대리점"), on_click=set_view, args=("둔산 대리점",), use_container_width=True)
+        with c_o[4]: 
+            st.button("세종" if vt != "세종 대리점" else "✅ 세종", type=btn_type("세종 대리점"), on_click=set_view, args=("세종 대리점",), use_container_width=True)
+        with c_o[5]: 
+            st.button("목포" if vt != "목포 대리점" else "✅ 목포", type=btn_type("목포 대리점"), on_click=set_view, args=("목포 대리점",), use_container_width=True)
+        with c_o[6]: 
+            st.button("충주" if vt != "충주 대리점" else "✅ 충주", type=btn_type("충주 대리점"), on_click=set_view, args=("충주 대리점",), use_container_width=True)
+        with c_o[7]: 
+            st.markdown("<div style='text-align:center; padding-top:5px; color:#cbd5e1; font-weight:bold; font-size:16px;'>|</div>", unsafe_allow_html=True)
+        with c_o[8]: 
+            st.button("I 호남통합" if vt != "호남팀 통합" else "✅ 호남통합", type=btn_type("호남팀 통합"), on_click=set_view, args=("호남팀 통합",), use_container_width=True)
+        with c_o[9]: 
+            st.button("광양" if vt != "광양 대리점" else "✅ 광양", type=btn_type("광양 대리점"), on_click=set_view, args=("광양 대리점",), use_container_width=True)
+        with c_o[10]: 
+            st.button("익산" if vt != "익산 대리점" else "✅ 익산", type=btn_type("익산 대리점"), on_click=set_view, args=("익산 대리점",), use_container_width=True)
+        with c_o[11]: 
+            st.button("여수" if vt != "여수 대리점" else "✅ 여수", type=btn_type("여수 대리점"), on_click=set_view, args=("여수 대리점",), use_container_width=True)
         with c_o[12]:
             hl = ["✨ 인원별 상세 실적 (선택 시 우선 적용)"] + [f"👤 {r[('기본정보','대리점','대리점')]} - {r[('기본정보','HC명','HC명')]}" for _, r in final_df.iterrows() if r[('기본정보','HC명','HC명')] not in ["🌟 총계","합계","상권합계"] and r[('기본정보','HC명','HC명')] not in EXCLUDED_HCS]
             st.selectbox("인원선택", options=hl, key='hc_selector', on_change=on_hc_select, label_visibility="collapsed")
@@ -941,9 +1010,4 @@ if all_daily_data:
                     yaxis4=dict(overlaying='y', visible=False)
                 )
                 fig.update_xaxes(showgrid=True, gridcolor='#f1f5f9', tickfont=dict(size=12, color='black'))
-                st.plotly_chart(fig, use_container_width=True)
-            else: st.info("👆 위 세부 지표 버튼을 클릭하시면 실시간 꺾은선 그래프가 나타납니다.")
-            
-        st.markdown("---")
-
-        tdr = date_headers.get(CURRENT_TABLE_WEE
+                st.plotly_chart(fig, use_container
