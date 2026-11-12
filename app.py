@@ -103,7 +103,6 @@ st.markdown("".join(title_html), unsafe_allow_html=True)
 def clean_str(val): return re.sub(r'\s+', '', str(val))
 def safe_get(row, idx): return str(row[idx]).strip() if len(row) > idx else ""
 
-# 🚀 기호(-, .) 에러 원천 차단 방어막 (순정)
 def clean_val(v):
     if not v or pd.isna(v): return 0.0
     v_str = str(v).replace('%', '').replace(',', '').replace('원', '').replace('건', '').strip()
@@ -309,7 +308,7 @@ def process_vdt_data(all_targets, all_daily_data, selected_date):
             elif "점별" in row_header: curr_mode = "점별"
             continue
             
-        # 🚀 1. 일반 일보 (계약, 매출, 견적, 건수) -> 이름칸은 3열(D열)
+        # 🚀 1. 일반 일보 (이름은 D열/3번 인덱스)
         if curr_mode == "일반" and len(row) > 3:
             raw_dealer = safe_get(row, 1) 
             raw_hc = safe_get(row, 3) 
@@ -341,13 +340,14 @@ def process_vdt_data(all_targets, all_daily_data, selected_date):
             if is_we: daily_data[cur_dt][hc_name]['amt_we'] += t_amt
             else: daily_data[cur_dt][hc_name]['amt_wd'] += t_amt
                 
+            # 🚀 독립 추적: 일반 일보에서는 sales와 next만 업데이트 (빈칸 0원 생성 금지)
             if cur_dt not in raw_snapshots: raw_snapshots[cur_dt] = {}
-            if hc_name not in raw_snapshots[cur_dt]: raw_snapshots[cur_dt][hc_name] = {'sales':0, 'online':0, 'cancel':0, 'next':0}
+            if hc_name not in raw_snapshots[cur_dt]: raw_snapshots[cur_dt][hc_name] = {}
             
-            raw_snapshots[cur_dt][hc_name]['sales'] += t_sales
-            raw_snapshots[cur_dt][hc_name]['next'] += t_next
+            raw_snapshots[cur_dt][hc_name]['sales'] = raw_snapshots[cur_dt][hc_name].get('sales', 0) + t_sales
+            raw_snapshots[cur_dt][hc_name]['next'] = raw_snapshots[cur_dt][hc_name].get('next', 0) + t_next
 
-        # 🚀 2. 입주 일보 (입주계약액) -> 순정 복구: 이름칸은 1열(B열)
+        # 🚀 2. 입주 일보 (이름은 B열/1번 인덱스)
         elif curr_mode == "입주" and len(row) > 1:
             raw_dealer = safe_get(row, 1)
             raw_hc = safe_get(row, 1) 
@@ -368,7 +368,7 @@ def process_vdt_data(all_targets, all_daily_data, selected_date):
             if hc_name not in daily_data[cur_dt]: daily_data[cur_dt][hc_name] = {'amt':0, 'est':0, 'cnt':0, 'amt_we':0, 'amt_wd':0, 'amt_move':0}
             daily_data[cur_dt][hc_name]['amt_move'] += dm
 
-        # 🚀 3. 점별 일보 (온라인/취소) -> 순정 복구: 이름칸은 1열(B열)
+        # 🚀 3. 점별 일보 (이름은 B열/1번 인덱스)
         elif curr_mode == "점별" and len(row) > 1:
             raw_dealer = safe_get(row, 1)
             raw_hc = safe_get(row, 1) 
@@ -387,10 +387,12 @@ def process_vdt_data(all_targets, all_daily_data, selected_date):
             t_online = clean_val(safe_get(row, 25)) 
             t_cancel = clean_val(safe_get(row, 37)) + clean_val(safe_get(row, 38)) 
             
+            # 🚀 독립 추적: 점별 일보에서는 online과 cancel만 업데이트 (빈칸 0원 생성 금지)
             if cur_dt not in raw_snapshots: raw_snapshots[cur_dt] = {}
-            if hc_name not in raw_snapshots[cur_dt]: raw_snapshots[cur_dt][hc_name] = {'sales':0, 'online':0, 'cancel':0, 'next':0}
-            raw_snapshots[cur_dt][hc_name]['online'] += t_online
-            raw_snapshots[cur_dt][hc_name]['cancel'] += t_cancel
+            if hc_name not in raw_snapshots[cur_dt]: raw_snapshots[cur_dt][hc_name] = {}
+            
+            raw_snapshots[cur_dt][hc_name]['online'] = raw_snapshots[cur_dt][hc_name].get('online', 0) + t_online
+            raw_snapshots[cur_dt][hc_name]['cancel'] = raw_snapshots[cur_dt][hc_name].get('cancel', 0) + t_cancel
 
     valid_dealers = list(set(hc_to_dealer_master.values()))
     av_dates = sorted(list(set(daily_data.keys()).union(set(raw_snapshots.keys()))))
@@ -401,6 +403,7 @@ def process_vdt_data(all_targets, all_daily_data, selected_date):
     else:
         eff_selected_date = selected_date
 
+    # 🚀 타임머신 스냅샷 엔진 (지표별 완벽 격리)
     def get_snap(target_d, hc, min_d=None):
         res = {'sales':0, 'online':0, 'cancel':0, 'next':0}
         for metric in res.keys():
