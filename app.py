@@ -328,6 +328,8 @@ def process_vdt_data(all_targets, all_daily_data, selected_date):
             t_amt = clean_val(safe_get(row, 15)) 
             t_sales = clean_val(safe_get(row, 18)) 
             t_next = clean_val(safe_get(row, 24))  
+            # 🚀 익익월매출(M+2, Z열) 25번 인덱스 추출 추가
+            t_next_next = clean_val(safe_get(row, 25))
             
             is_we = cur_dt.weekday() >= 5 if cur_dt != datetime.min.date() else False
             
@@ -344,6 +346,7 @@ def process_vdt_data(all_targets, all_daily_data, selected_date):
             
             raw_snapshots[cur_dt][hc_name]['sales'] = raw_snapshots[cur_dt][hc_name].get('sales', 0) + t_sales
             raw_snapshots[cur_dt][hc_name]['next'] = raw_snapshots[cur_dt][hc_name].get('next', 0) + t_next
+            raw_snapshots[cur_dt][hc_name]['next_next'] = raw_snapshots[cur_dt][hc_name].get('next_next', 0) + t_next_next
 
         elif curr_mode == "입주" and len(row) > 1:
             raw_dealer = safe_get(row, 1)
@@ -398,8 +401,9 @@ def process_vdt_data(all_targets, all_daily_data, selected_date):
     else:
         eff_selected_date = selected_date
 
+    # 🚀 next_next까지 지원하는 스냅샷 엔진
     def get_snap(target_d, hc, min_d=None):
-        res = {'sales':0, 'online':0, 'cancel':0, 'next':0}
+        res = {'sales':0, 'online':0, 'cancel':0, 'next':0, 'next_next':0}
         for metric in res.keys():
             valid = [d for d in raw_snapshots.keys() if d <= target_d and hc in raw_snapshots[d] and metric in raw_snapshots[d][hc]]
             if min_d: valid = [d for d in valid if d >= min_d]
@@ -426,17 +430,29 @@ def process_vdt_data(all_targets, all_daily_data, selected_date):
             while curr <= e_dt:
                 if curr in daily_data and hc in daily_data[curr]:
                     d_val = daily_data[curr][hc]
-                    trend_hc_w[hc][i]['amt'] += d_val['amt']; trend_hc_w[hc][i]['est'] += d_val['est']; trend_hc_w[hc][i]['cnt'] += d_val['cnt']
-                    trend_hc_w[hc][i]['amt_we'] += d_val['amt_we']; trend_hc_w[hc][i]['amt_wd'] += d_val['amt_wd']; trend_hc_w[hc][i]['amt_move'] += d_val['amt_move']
+                    trend_hc_w[hc][i]['amt'] += d_val['amt']
+                    trend_hc_w[hc][i]['est'] += d_val['est']
+                    trend_hc_w[hc][i]['cnt'] += d_val['cnt']
+                    trend_hc_w[hc][i]['amt_we'] += d_val['amt_we']
+                    trend_hc_w[hc][i]['amt_wd'] += d_val['amt_wd']
+                    trend_hc_w[hc][i]['amt_move'] += d_val['amt_move']
                 
-                # 🚀 주간 데이터: 일일 순증분 핀셋 합산기 (월 넘어갈 때 더블카운팅 원천 차단)
+                # 🚀 주간 크로스-먼스 3대 순증분 공식 완벽 이식
                 m_start = curr.replace(day=1)
                 curr_snap = get_snap(curr, hc, min_d=m_start)
+                
                 if curr.day == 1:
-                    trend_hc_w[hc][i]['sales'] += curr_snap['sales']
-                    trend_hc_w[hc][i]['online'] += curr_snap['online']
-                    trend_hc_w[hc][i]['cancel'] += curr_snap['cancel']
-                    trend_hc_w[hc][i]['next_sales'] += curr_snap['next']
+                    prev_m_end = curr - timedelta(days=1)
+                    prev_m_start = prev_m_end.replace(day=1)
+                    prev_month_snap = get_snap(prev_m_end, hc, min_d=prev_m_start)
+                    
+                    # 1. 당월 매출 = 1일 자 S열 - 전월 말일 Y열
+                    trend_hc_w[hc][i]['sales'] += (curr_snap['sales'] - prev_month_snap['next'])
+                    # 2. 온라인 매출 = 1일 자 매출 제외 (0원 처리)
+                    trend_hc_w[hc][i]['online'] += 0
+                    trend_hc_w[hc][i]['cancel'] += 0
+                    # 3. 이월 매출 = 1일 자 Y열 - 전월 말일 Z열(M+2)
+                    trend_hc_w[hc][i]['next_sales'] += (curr_snap['next'] - prev_month_snap['next_next'])
                 else:
                     prev_snap = get_snap(curr - timedelta(days=1), hc, min_d=m_start)
                     trend_hc_w[hc][i]['sales'] += (curr_snap['sales'] - prev_snap['sales'])
@@ -833,7 +849,6 @@ if all_daily_data:
         po_pct = f" <span style='font-size:12px; font-weight:900; color:#0284c7;'>({po/ps*100:.0f}%)</span>" if ps > 0 else " <span style='font-size:12px; font-weight:900; color:#64748b;'>(0%)</span>"
         to_pct = f" <span style='font-size:12px; font-weight:900; color:#0284c7;'>({to/ts*100:.0f}%)</span>" if ts > 0 else " <span style='font-size:12px; font-weight:900; color:#64748b;'>(0%)</span>"
 
-        # 🚀 1. 표(Wow Table) 주간 조회 시 '매출/온라인' 음영 마스킹 완벽 복구!
         curr_is_week = "▪️" in str(sel_curr)
         prev_is_week = "▪️" in str(sel_prev)
 
@@ -939,7 +954,6 @@ if all_daily_data:
                 else:
                     t_amts.append(0); a_amts.append(0)
 
-            # 🚀 6. X축 주차 글씨 크기 14px 확대 및 볼드 처리
             x_lbls = [f"<b>{wk} ({date_headers.get(wk, '')})</b>" for wk in last_4_keys]
 
             fig = go.Figure()
@@ -952,7 +966,7 @@ if all_daily_data:
             
         else:
             la = month_labels if is_m else trend_labels
-            la_chart = [f"<b>{l}</b>" for l in la] # 🚀 X축 라벨 볼드 처리 적용
+            la_chart = [f"<b>{l}</b>" for l in la] 
             
             if vt == "충청호남팀 전체": sd = [trend_pack['M' if is_m else 'W']['tot'][l if is_m else trend_labels.index(l)] for l in la]
             elif vt in ["충청팀 통합", "호남팀 통합"]: sd = [trend_pack['M' if is_m else 'W']['reg'][data_key][l if is_m else trend_labels.index(l)] for l in la]
@@ -965,8 +979,6 @@ if all_daily_data:
                 c1, c2, c3, c4, c5 = st.columns(5)
                 with c1: st.button("✅ 계약액" if st.session_state['t_amt'] else "계약액", on_click=toggle_state, args=('t_amt',), use_container_width=True, type="primary" if st.session_state['t_amt'] else "secondary")
                 with c2: st.button("✅ 매출액(순증분)" if st.session_state['t_sales'] else "매출액(순증분)", on_click=toggle_state, args=('t_sales',), use_container_width=True, type="primary" if st.session_state['t_sales'] else "secondary")
-                
-                # 🚀 3. 이월매출 명칭을 '이월매출(순증분)'으로 변경
                 with c3: st.button("✅ 이월매출(순증분)" if st.session_state['t_next'] else "이월매출(순증분)", on_click=toggle_state, args=('t_next',), use_container_width=True, type="primary" if st.session_state['t_next'] else "secondary")
                 with c4: st.button("✅ 온라인(순증분)" if st.session_state['t_onl'] else "온라인(순증분)", on_click=toggle_state, args=('t_onl',), use_container_width=True, type="primary" if st.session_state['t_onl'] else "secondary")
                 with c5: st.button("✅ 평균(계약)" if st.session_state['t_avg'] else "평균(계약)", on_click=toggle_state, args=('t_avg',), use_container_width=True, type="primary" if st.session_state['t_avg'] else "secondary")
@@ -1002,7 +1014,6 @@ if all_daily_data:
             
             ym_txt, yw_txt, y_onl_txt = [], [], []
             for w, m, a, o, s in zip(y_wk, y_m, y_a, y_onl, y_s):
-                # 🚀 5. 워크인 텍스트 누락 방어막 (총 계약액이 0이어도 무조건 텍스트 생성)
                 if a != 0:
                     ym_txt.append(f"<b>{m:.2f}억</b><br><span style='font-size:11px'>({(m/a*100):.0f}%)</span>")
                     yw_txt.append(f"<b>{w:.2f}억</b><br><span style='font-size:11px'>({(w/a*100):.0f}%)</span>")
@@ -1024,7 +1035,6 @@ if all_daily_data:
                 fig = go.Figure()
                 ms = [10] * (len(la)-1) + [20]
                 
-                # 🚀 X축 렌더링에 la_chart(볼드처리된 텍스트) 일괄 적용 완료!
                 if st.session_state['t_amt']: fig.add_trace(go.Scatter(x=la_chart, y=y_a, mode='lines+markers+text', name='계약액', text=[f"<b>{v:.2f}억</b>" for v in y_a], textposition='top center', textfont=dict(size=15, color='black'), line=dict(color='#0f172a', width=4), marker=dict(size=ms, color=['#0f172a'] * (len(la)-1) + ['#dc2626'], line=dict(width=2, color='white'))))
                 if st.session_state['t_sales']: fig.add_trace(go.Scatter(x=la_chart, y=y_s, mode='lines+markers+text', name='매출액(순증분)', text=[f"<b>{v:.2f}억</b>" for v in y_s], textposition='bottom right', textfont=dict(size=15, color='#0d9488'), line=dict(color='#14b8a6', width=3), marker=dict(size=ms, line=dict(width=2, color='white'))))
                 if st.session_state['t_next']: fig.add_trace(go.Scatter(x=la_chart, y=y_n, mode='lines+markers+text', name='이월매출(순증분)', text=[f"<b>{v:.2f}억</b>" for v in y_n], textposition='top left', textfont=dict(size=15, color='#d97706'), line=dict(color='#f59e0b', width=3), marker=dict(size=ms, line=dict(width=2, color='white'))))
@@ -1055,11 +1065,51 @@ if all_daily_data:
                     yaxis3=dict(overlaying='y', visible=False), 
                     yaxis4=dict(overlaying='y', visible=False)
                 )
-                # 🚀 6. X축 주차 글씨 크기 14px 확대
                 fig.update_xaxes(showgrid=True, gridcolor='#f1f5f9', tickfont=dict(size=14, color='black'))
                 st.plotly_chart(fig, use_container_width=True)
             else: st.info("👆 위 세부 지표 버튼을 클릭하시면 실시간 꺾은선 그래프가 나타납니다.")
             
+        st.markdown("---")
+        
+        st.markdown("#### 🏆 **대리점별 당월 매출 달성률 랭킹**")
+        
+        dealer_rank_data = []
+        for _, r in final_df.iterrows():
+            d_name = r[('기본정보', '대리점', '대리점')]
+            hc_name = r[('기본정보', 'HC명', 'HC명')]
+            
+            if hc_name == "합계" and d_name not in ["🌟 총계", "충청상권", "호남상권"]:
+                tgt = r[('🎯 당월매출', '인별매출(천)', '목표')]
+                act = r[('🎯 당월매출', '인별매출(천)', 'ACT')]
+                rate = r[('🎯 당월매출', '인별매출(천)', '달성율(%)')]
+                dealer_rank_data.append({'Dealer': d_name, 'Target': tgt, 'Actual': act, 'Rate': rate})
+                
+        if dealer_rank_data:
+            df_rank = pd.DataFrame(dealer_rank_data)
+            df_rank = df_rank.sort_values(by='Rate', ascending=True)
+            
+            colors = ['#10b981' if rate >= 100 else '#3b82f6' for rate in df_rank['Rate']]
+            texts = [f"<b>{r:.0f}%</b> ({a/100000:.1f}억 / {t/100000:.1f}억)" if t > 0 else f"<b>{r:.0f}%</b> ({a/100000:.1f}억 / 0억)" for r, a, t in zip(df_rank['Rate'], df_rank['Actual'], df_rank['Target'])]
+            
+            fig_rank = go.Figure(go.Bar(
+                x=df_rank['Rate'],
+                y=df_rank['Dealer'],
+                orientation='h',
+                marker_color=colors,
+                text=texts,
+                textposition='auto',
+                textfont=dict(size=14, color='white')
+            ))
+            
+            fig_rank.update_layout(
+                height=300 + (len(df_rank) * 30),
+                margin=dict(l=20, r=20, t=30, b=20),
+                plot_bgcolor='white',
+                xaxis=dict(showgrid=True, gridcolor='#f1f5f9', title="달성률 (%)"),
+                yaxis=dict(showgrid=False, tickfont=dict(size=14, color='black', weight='bold'))
+            )
+            st.plotly_chart(fig_rank, use_container_width=True)
+        
         st.markdown("---")
 
         tdr = date_headers.get(CURRENT_TABLE_WEEK, "")
