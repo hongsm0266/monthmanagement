@@ -404,14 +404,22 @@ def process_vdt_data(all_targets, all_daily_data, selected_date):
     else:
         eff_selected_date = selected_date
 
+    # 🚀 엑셀 총합 100% 동기화 스냅샷 엔진 (명단에 없으면 0원 처리)
     def get_snap(target_d, hc, min_d=None):
         res = {'sales':0, 'online':0, 'cancel':0, 'next':0, 'next_next':0}
-        for metric in res.keys():
-            valid = [d for d in raw_snapshots.keys() if d <= target_d and hc in raw_snapshots[d] and metric in raw_snapshots[d][hc]]
-            if min_d: valid = [d for d in valid if d >= min_d]
-            if valid:
-                eff_d = max(valid)
-                res[metric] = raw_snapshots[eff_d][hc][metric]
+        
+        valid_dates = [d for d in raw_snapshots.keys() if d <= target_d]
+        if min_d:
+            valid_dates = [d for d in valid_dates if d >= min_d]
+            
+        if not valid_dates:
+            return res
+            
+        eff_team_d = max(valid_dates)
+        
+        if hc in raw_snapshots[eff_team_d]:
+            for metric in res.keys():
+                res[metric] = raw_snapshots[eff_team_d][hc].get(metric, 0)
         return res
 
     def new_d(): return {'amt':0, 'est':0, 'cnt':0, 'amt_wd':0, 'amt_we':0, 'sales':0, 'next_sales':0, 'amt_move':0, 'online':0, 'cancel':0}
@@ -450,7 +458,6 @@ def process_vdt_data(all_targets, all_daily_data, selected_date):
                 trend_hc_w[hc][i]['cancel'] = snap_end['cancel'] - snap_prev['cancel']
                 trend_hc_w[hc][i]['next_sales'] = snap_end['next'] - snap_prev['next']
             else:
-                # 🚀 양끝점 차감 및 월간 격리 완벽 이식
                 m1_end = (s_dt.replace(day=28) + timedelta(days=4)).replace(day=1) - timedelta(days=1)
                 m1_start = s_dt.replace(day=1)
                 m2_start = e_dt.replace(day=1)
@@ -865,7 +872,6 @@ if all_daily_data:
         po_pct = f" <span style='font-size:12px; font-weight:900; color:#0284c7;'>({po/ps*100:.0f}%)</span>" if ps > 0 else " <span style='font-size:12px; font-weight:900; color:#64748b;'>(0%)</span>"
         to_pct = f" <span style='font-size:12px; font-weight:900; color:#0284c7;'>({to/ts*100:.0f}%)</span>" if ts > 0 else " <span style='font-size:12px; font-weight:900; color:#64748b;'>(0%)</span>"
 
-        # 🚀 1. 표(Wow Table) 주간 조회 시 '매출/온라인' 음영 마스킹 완벽 복구
         curr_is_week = "▪️" in str(sel_curr)
         prev_is_week = "▪️" in str(sel_prev)
 
@@ -1031,9 +1037,17 @@ if all_daily_data:
             
             ym_txt, yw_txt, y_onl_txt = [], [], []
             for w, m, a, o, s in zip(y_wk, y_m, y_a, y_onl, y_s):
-                ym_txt.append(f"<b>{m:.2f}억</b><br><span style='font-size:11px'>({(m/a*100):.0f}%)</span>" if a > 0 else f"<b>{m:.2f}억</b>")
-                yw_txt.append(f"<b>{w:.2f}억</b><br><span style='font-size:11px'>({(w/a*100):.0f}%)</span>" if a > 0 else f"<b>{w:.2f}억</b>")
-                y_onl_txt.append(f"<b>{o:.2f}억</b><br><span style='font-size:12px; font-weight:900;'>({(o/s*100):.0f}%)</span>" if s > 0 else f"<b>{o:.2f}억</b>")
+                if a != 0:
+                    ym_txt.append(f"<b>{m:.2f}억</b><br><span style='font-size:11px'>({(m/a*100):.0f}%)</span>")
+                    yw_txt.append(f"<b>{w:.2f}억</b><br><span style='font-size:11px'>({(w/a*100):.0f}%)</span>")
+                else:
+                    ym_txt.append(f"<b>{m:.2f}억</b>")
+                    yw_txt.append(f"<b>{w:.2f}억</b>")
+                    
+                if s > 0:
+                    y_onl_txt.append(f"<b>{o:.2f}억</b><br><span style='font-size:12px; font-weight:900;'>({(o/s*100):.0f}%)</span>")
+                else:
+                    y_onl_txt.append(f"<b>{o:.2f}억</b>")
             
             y_e = [w.get('est', 0) for w in sd]
             y_c = [w.get('cnt', 0) for w in sd]
