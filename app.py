@@ -107,7 +107,6 @@ def clean_val(v):
     if not v or pd.isna(v): return 0.0
     v_str = str(v).replace('%', '').replace(',', '').strip()
     m = 100000000 if '억' in v_str else (10000 if '만' in v_str else 1)
-    
     match = re.search(r'-?\d+(?:\.\d+)?', v_str)
     if match:
         try:
@@ -288,16 +287,12 @@ def process_vdt_data(all_targets, all_daily_data, selected_date):
     existing_hcs = [clean_str(h) for d, h, t in hc_info_raw]
     
     daily_data = {}       
-    raw_snapshots = {}
-    
-    # 🚀 시트별로 날짜가 언제 업데이트됐는지 기록하는 독립 추적기
-    sheet_latest_dates = {'normal': {}, 'online': {}}
+    raw_snapshots = {}    
     
     sub_kw = ['합계', '소계', '총계', 'INT', '한밭', '위탁']
     exact_kw = ['목표', '사번', '비고', '계', '대리점', '이름', 'HC', 'HC명', '영업사원']
     dealer_names = ["둔산", "목포", "세종", "충주", "광양", "여수", "익산", "충청", "호남", "INT", "한밭"]
     curr_mode = ""
-    cur_dt = datetime.min.date()
 
     for r_idx, row in enumerate(all_daily_data):
         row_header = clean_str("".join([safe_get(row, i) for i in range(min(5, len(row)))]))
@@ -313,12 +308,6 @@ def process_vdt_data(all_targets, all_daily_data, selected_date):
             if "일반" in row_header: curr_mode = "일반"
             elif "입주" in row_header: curr_mode = "입주"
             elif "점별" in row_header: curr_mode = "점별"
-            
-            # 🚀 일반일보/점별일보에 오늘 날짜(cur_dt) 기록 추가
-            if curr_mode == "일반" and cur_dt != datetime.min.date():
-                if cur_dt not in sheet_latest_dates['normal']: sheet_latest_dates['normal'][cur_dt] = True
-            elif curr_mode == "점별" and cur_dt != datetime.min.date():
-                if cur_dt not in sheet_latest_dates['online']: sheet_latest_dates['online'][cur_dt] = True
             continue
             
         if curr_mode == "일반" and len(row) > 3:
@@ -413,84 +402,94 @@ def process_vdt_data(all_targets, all_daily_data, selected_date):
     else:
         eff_selected_date = selected_date
 
-    # 🚀 시트별 완벽 격리 + 엑셀 명단 누락자 0원 동기화 (마이너스 구현)
+    # [기존 오리지널 스냅샷 함수 - 표 & 월 누적 계산용으로 100% 보존]
     def get_snap(target_d, hc, min_d=None):
         res = {'sales':0, 'online':0, 'cancel':0, 'next':0, 'next_next':0}
-        
-        valid_normal = [d for d in sheet_latest_dates['normal'].keys() if d <= target_d]
-        valid_online = [d for d in sheet_latest_dates['online'].keys() if d <= target_d]
-        
-        if min_d:
-            valid_normal = [d for d in valid_normal if d >= min_d]
-            valid_online = [d for d in valid_online if d >= min_d]
-            
-        eff_normal_d = max(valid_normal) if valid_normal else None
-        eff_online_d = max(valid_online) if valid_online else None
-        
-        # 일반 일보 날짜에 명단이 있으면 해당 실적, 없으면(결근/퇴사) 가차없이 0원!
-        if eff_normal_d and eff_normal_d in raw_snapshots:
-            if hc in raw_snapshots[eff_normal_d]:
-                res['sales'] = raw_snapshots[eff_normal_d][hc].get('sales', 0)
-                res['next'] = raw_snapshots[eff_normal_d][hc].get('next', 0)
-                res['next_next'] = raw_snapshots[eff_normal_d][hc].get('next_next', 0)
-                
-        # 점별 일보 날짜에 명단이 있으면 온라인 실적, 없으면 0원!
-        if eff_online_d and eff_online_d in raw_snapshots:
-            if hc in raw_snapshots[eff_online_d]:
-                res['online'] = raw_snapshots[eff_online_d][hc].get('online', 0)
-                res['cancel'] = raw_snapshots[eff_online_d][hc].get('cancel', 0)
-                
+        for metric in res.keys():
+            valid = [d for d in raw_snapshots.keys() if d <= target_d and hc in raw_snapshots[d] and metric in raw_snapshots[d][hc]]
+            if min_d: valid = [d for d in valid if d >= min_d]
+            if valid:
+                eff_d = max(valid)
+                res[metric] = raw_snapshots[eff_d][hc][metric]
         return res
 
-    def new_d(): return {'amt':0, 'est':0, 'cnt':0, 'amt_wd':0, 'amt_we':0, 'sales':0, 'next_sales':0, 'amt_move':0, 'online':0, 'cancel':0}
-    
-    month_labels = [f"📊 [월마감] {y%100}년 {m}월" for y, m in sorted(list(set((d.year, d.month) for d in av_dates)))]
-    mtd_labels = ['🌟 [당일기준] 당월 누적', '🌟 [당일기준] 전월 누적', '🌟 [당일기준] 전전월 누적', '🌟 [당일기준] 전년 누적']
-    
-    trend_hc_w = {hc: [new_d() for _ in range(8)] for hc in existing_hcs}
-    trend_hc_m = {hc: {lbl: new_d() for lbl in month_labels} for hc in existing_hcs}
-    trend_hc_mtd = {hc: {lbl: new_d() for lbl in mtd_labels} for hc in existing_hcs}
-    
-    for hc in existing_hcs:
+    # 🚀 [신규 주간 순증분 전용] 날짜별 덩어리(총합) 스냅샷 엔진 (엑셀 S/Y/Z 총합 행과 100% 동기화)
+    def get_group_snap(target_d, target_hcs, min_d=None):
+        res = {'sales':0, 'online':0, 'cancel':0, 'next':0, 'next_next':0}
+        
+        # 해당 일보에서 실제 값이 기록된 가장 최신 보고일 찾기
+        valid_n_dates = [d for d, hcs in raw_snapshots.items() if d <= target_d and any('sales' in m for m in hcs.values())]
+        valid_o_dates = [d for d, hcs in raw_snapshots.items() if d <= target_d and any('online' in m for m in hcs.values())]
+        
+        if min_d:
+            valid_n_dates = [d for d in valid_n_dates if d >= min_d]
+            valid_o_dates = [d for d in valid_o_dates if d >= min_d]
+            
+        eff_n = max(valid_n_dates) if valid_n_dates else None
+        eff_o = max(valid_o_dates) if valid_o_dates else None
+        
+        # 그 날짜 시트에 기록된 인원들의 실적만 덩어리로 합산 (없는 인원은 자동 0원 처리되어 마이너스 완벽 반영)
+        if eff_n:
+            for hc in target_hcs:
+                if hc in raw_snapshots[eff_n]:
+                    res['sales'] += raw_snapshots[eff_n][hc].get('sales', 0)
+                    res['next'] += raw_snapshots[eff_n][hc].get('next', 0)
+                    res['next_next'] += raw_snapshots[eff_n][hc].get('next_next', 0)
+        if eff_o:
+            for hc in target_hcs:
+                if hc in raw_snapshots[eff_o]:
+                    res['online'] += raw_snapshots[eff_o][hc].get('online', 0)
+                    res['cancel'] += raw_snapshots[eff_o][hc].get('cancel', 0)
+        return res
+
+    # 🚀 주간 순증분 3대 공식 계산 헬퍼 (매출 S-Y, 온라인 1일제외, 이월 Y-Z)
+    def calc_weekly_net_increments(target_hcs):
+        w_res = [new_d() for _ in range(8)]
         for i in range(8):
             s_dt = trend_ranges[i][0].date()
             e_dt = trend_ranges[i][1].date()
             
+            # 단순 합산 지표 (계약액, 견적건, 계약건 등)
             curr = s_dt
             while curr <= e_dt:
-                if curr in daily_data and hc in daily_data[curr]:
-                    d_val = daily_data[curr][hc]
-                    trend_hc_w[hc][i]['amt'] += d_val['amt']
-                    trend_hc_w[hc][i]['est'] += d_val['est']
-                    trend_hc_w[hc][i]['cnt'] += d_val['cnt']
-                    trend_hc_w[hc][i]['amt_we'] += d_val['amt_we']
-                    trend_hc_w[hc][i]['amt_wd'] += d_val['amt_wd']
-                    trend_hc_w[hc][i]['amt_move'] += d_val['amt_move']
+                if curr in daily_data:
+                    for hc in target_hcs:
+                        if hc in daily_data[curr]:
+                            d_val = daily_data[curr][hc]
+                            w_res[i]['amt'] += d_val['amt']
+                            w_res[i]['est'] += d_val['est']
+                            w_res[i]['cnt'] += d_val['cnt']
+                            w_res[i]['amt_we'] += d_val['amt_we']
+                            w_res[i]['amt_wd'] += d_val['amt_wd']
+                            w_res[i]['amt_move'] += d_val['amt_move']
                 curr += timedelta(days=1)
                 
+            # 스냅샷 기반 순증분 지표 (덩어리 기준 양끝점 차감)
             if s_dt.month == e_dt.month:
                 m_start = s_dt.replace(day=1)
-                snap_end = get_snap(e_dt, hc, min_d=m_start)
-                snap_prev = get_snap(s_dt - timedelta(days=1), hc, min_d=m_start)
+                snap_end = get_group_snap(e_dt, target_hcs, min_d=m_start)
+                snap_prev = get_group_snap(s_dt - timedelta(days=1), target_hcs, min_d=m_start)
                 
-                trend_hc_w[hc][i]['sales'] = snap_end['sales'] - snap_prev['sales']
-                trend_hc_w[hc][i]['online'] = snap_end['online'] - snap_prev['online']
-                trend_hc_w[hc][i]['cancel'] = snap_end['cancel'] - snap_prev['cancel']
-                trend_hc_w[hc][i]['next_sales'] = snap_end['next'] - snap_prev['next']
+                w_res[i]['sales'] = snap_end['sales'] - snap_prev['sales']
+                w_res[i]['online'] = snap_end['online'] - snap_prev['online']
+                w_res[i]['cancel'] = snap_end['cancel'] - snap_prev['cancel']
+                w_res[i]['next_sales'] = snap_end['next'] - snap_prev['next']
             else:
                 m1_end = (s_dt.replace(day=28) + timedelta(days=4)).replace(day=1) - timedelta(days=1)
                 m1_start = s_dt.replace(day=1)
                 m2_start = e_dt.replace(day=1)
                 
-                snap_m1_end = get_snap(m1_end, hc, min_d=m1_start)
-                snap_m1_prev = get_snap(s_dt - timedelta(days=1), hc, min_d=m1_start)
-                snap_m2_end = get_snap(e_dt, hc, min_d=m2_start)
-                snap_m2_start = get_snap(m2_start, hc, min_d=m2_start)
+                snap_m1_end = get_group_snap(m1_end, target_hcs, min_d=m1_start)
+                snap_m1_prev = get_group_snap(s_dt - timedelta(days=1), target_hcs, min_d=m1_start)
+                snap_m2_end = get_group_snap(e_dt, target_hcs, min_d=m2_start)
+                snap_m2_start = get_group_snap(m2_start, target_hcs, min_d=m2_start)
                 
+                # [공식 1] 당월 매출 = (9.30 S총합 - 9.27 S총합) + (10.4 S총합 - 9.30 Y총합)
                 m1_sales = snap_m1_end['sales'] - snap_m1_prev['sales']
                 m2_sales = snap_m2_end['sales'] - snap_m1_end['next']
-                trend_hc_w[hc][i]['sales'] = m1_sales + m2_sales
+                w_res[i]['sales'] = m1_sales + m2_sales
                 
+                # [공식 2] 온라인/취소 = (9.30 Z총합 - 9.27 Z총합) + (1일이 마지막날이면 0, 아니면 10.4 Z총합 - 10.1 Z총합)
                 m1_online = snap_m1_end['online'] - snap_m1_prev['online']
                 m1_cancel = snap_m1_end['cancel'] - snap_m1_prev['cancel']
                 if e_dt.day == 1:
@@ -498,12 +497,29 @@ def process_vdt_data(all_targets, all_daily_data, selected_date):
                 else:
                     m2_online = snap_m2_end['online'] - snap_m2_start['online']
                     m2_cancel = snap_m2_end['cancel'] - snap_m2_start['cancel']
-                trend_hc_w[hc][i]['online'] = m1_online + m2_online
-                trend_hc_w[hc][i]['cancel'] = m1_cancel + m2_cancel
+                w_res[i]['online'] = m1_online + m2_online
+                w_res[i]['cancel'] = m1_cancel + m2_cancel
                 
+                # [공식 3] 이월매출 = (9.30 Y총합 - 9.27 Y총합) + (10.4 Y총합 - 9.30 Z총합(M+2))
                 m1_next = snap_m1_end['next'] - snap_m1_prev['next']
                 m2_next = snap_m2_end['next'] - snap_m1_end['next_next']
-                trend_hc_w[hc][i]['next_sales'] = m1_next + m2_next
+                w_res[i]['next_sales'] = m1_next + m2_next
+        return w_res
+
+    def new_d(): return {'amt':0, 'est':0, 'cnt':0, 'amt_wd':0, 'amt_we':0, 'sales':0, 'next_sales':0, 'amt_move':0, 'online':0, 'cancel':0}
+    
+    month_labels = [f"📊 [월마감] {y%100}년 {m}월" for y, m in sorted(list(set((d.year, d.month) for d in av_dates)))]
+    mtd_labels = ['🌟 [당일기준] 당월 누적', '🌟 [당일기준] 전월 누적', '🌟 [당일기준] 전전월 누적', '🌟 [당일기준] 전년 누적']
+    
+    # 🚀 1. 주간 추이(W)는 개인별/대리점별/상권별/전체 각각 덩어리로 독립 계산 (오차 0%)
+    trend_hc_w = {hc: calc_weekly_net_increments([hc]) for hc in existing_hcs}
+    trend_dlr_w = {d: calc_weekly_net_increments([hc for hc in existing_hcs if hc_to_dealer_master.get(hc) == d]) for d in valid_dealers}
+    trend_reg_w = {reg: calc_weekly_net_increments([hc for hc in existing_hcs if hc_to_dealer_master.get(hc) in dlrs]) for reg, dlrs in REGION_MAP.items()}
+    trend_tot_w = calc_weekly_net_increments(existing_hcs)
+
+    # 🚀 2. 월간 추이(M, MTD)는 기존 오리지널 로직 100% 유지
+    trend_hc_m = {hc: {lbl: new_d() for lbl in month_labels} for hc in existing_hcs}
+    trend_hc_mtd = {hc: {lbl: new_d() for lbl in mtd_labels} for hc in existing_hcs}
 
     t_mtd = eff_selected_date
     t_prev1 = get_prev_month_date(eff_selected_date, 1)
@@ -561,10 +577,8 @@ def process_vdt_data(all_targets, all_daily_data, selected_date):
                     trend_hc_m[hc][lbl]['amt_move'] += d_val[hc]['amt_move']
                 curr += timedelta(days=1)
 
-    trend_dlr_w = {d: [new_d() for _ in range(8)] for d in valid_dealers}
     trend_dlr_m = {d: {lbl: new_d() for lbl in month_labels} for d in valid_dealers}
     trend_dlr_mtd = {d: {lbl: new_d() for lbl in mtd_labels} for d in valid_dealers}
-    trend_tot_w = [new_d() for _ in range(8)]
     trend_tot_m = {lbl: new_d() for lbl in month_labels}
     trend_tot_mtd = {lbl: new_d() for lbl in mtd_labels}
     
@@ -572,10 +586,6 @@ def process_vdt_data(all_targets, all_daily_data, selected_date):
     for hc in existing_hcs:
         md = hc_to_dealer_master.get(hc, "기타")
         if md in valid_dealers:
-            for i in range(8):
-                for k in keys_to_sum:
-                    trend_dlr_w[md][i][k] += trend_hc_w[hc][i][k]
-                    trend_tot_w[i][k] += trend_hc_w[hc][i][k]
             for lbl in month_labels:
                 for k in keys_to_sum:
                     trend_dlr_m[md][lbl][k] += trend_hc_m[hc][lbl][k]
@@ -585,17 +595,13 @@ def process_vdt_data(all_targets, all_daily_data, selected_date):
                     trend_dlr_mtd[md][lbl][k] += trend_hc_mtd[hc][lbl][k]
                     trend_tot_mtd[lbl][k] += trend_hc_mtd[hc][lbl][k]
 
-    trend_reg_w = {k: [new_d() for _ in range(8)] for k in REGION_MAP.keys()}
     trend_reg_m = {k: {lbl: new_d() for lbl in month_labels} for k in REGION_MAP.keys()}
     trend_reg_mtd = {k: {lbl: new_d() for lbl in mtd_labels} for k in REGION_MAP.keys()}
     
     for reg, dlrs in REGION_MAP.items():
         for d in dlrs:
-            dw = trend_dlr_w.get(d, [new_d() for _ in range(8)])
             dm = trend_dlr_m.get(d, {lbl: new_d() for lbl in month_labels})
             dmtd = trend_dlr_mtd.get(d, {lbl: new_d() for lbl in mtd_labels})
-            for i in range(8):
-                for k in keys_to_sum: trend_reg_w[reg][i][k] += dw[i][k]
             for lbl in month_labels:
                 for k in keys_to_sum: trend_reg_m[reg][lbl][k] += dm[lbl][k]
             for lbl in mtd_labels:
