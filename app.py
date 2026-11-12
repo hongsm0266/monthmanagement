@@ -340,7 +340,7 @@ def process_vdt_data(all_targets, all_daily_data, selected_date):
             else: daily_data[cur_dt][hc_name]['amt_wd'] += t_amt
                 
             if cur_dt not in raw_snapshots: raw_snapshots[cur_dt] = {}
-            if hc_name not in raw_snapshots[cur_dt]: raw_snapshots[cur_dt][hc_name] = {'sales':0, 'online':0, 'cancel':0, 'next':0}
+            if hc_name not in raw_snapshots[cur_dt]: raw_snapshots[cur_dt][hc_name] = {}
             
             raw_snapshots[cur_dt][hc_name]['sales'] = raw_snapshots[cur_dt][hc_name].get('sales', 0) + t_sales
             raw_snapshots[cur_dt][hc_name]['next'] = raw_snapshots[cur_dt][hc_name].get('next', 0) + t_next
@@ -384,7 +384,8 @@ def process_vdt_data(all_targets, all_daily_data, selected_date):
             t_cancel = clean_val(safe_get(row, 37)) + clean_val(safe_get(row, 38)) 
             
             if cur_dt not in raw_snapshots: raw_snapshots[cur_dt] = {}
-            if hc_name not in raw_snapshots[cur_dt]: raw_snapshots[cur_dt][hc_name] = {'sales':0, 'online':0, 'cancel':0, 'next':0}
+            if hc_name not in raw_snapshots[cur_dt]: raw_snapshots[cur_dt][hc_name] = {}
+            
             raw_snapshots[cur_dt][hc_name]['online'] = raw_snapshots[cur_dt][hc_name].get('online', 0) + t_online
             raw_snapshots[cur_dt][hc_name]['cancel'] = raw_snapshots[cur_dt][hc_name].get('cancel', 0) + t_cancel
 
@@ -658,19 +659,20 @@ def process_vdt_data(all_targets, all_daily_data, selected_date):
         rows.append(r_d)
 
     df = pd.DataFrame(rows, columns=columns)
+    
+    # 🚀 달성율(%) 수학적 안전망 (0으로 나누기 방지)
     for c in df.columns[2:]:
         if c[2] == '달성율(%)': 
-            df[c] = np.where(df[(c[0], c[1], '목표')] > 0, (df[(c[0], c[1], 'ACT')] / df[(c[0], c[1], '목표')] * 100).round(0), 0)
+            tgt_col = pd.to_numeric(df[(c[0], c[1], '목표')], errors='coerce').fillna(0)
+            act_col = pd.to_numeric(df[(c[0], c[1], 'ACT')], errors='coerce').fillna(0)
+            df[c] = np.where(tgt_col > 0, (act_col / tgt_col * 100).round(0), 0)
     
     tp = {'W': {'hc': trend_hc_w, 'dlr': trend_dlr_w, 'tot': trend_tot_w, 'reg': trend_reg_w}, 'M': {'hc': trend_hc_m, 'dlr': trend_dlr_m, 'tot': trend_tot_m, 'reg': trend_reg_m}, 'MTD': {'hc': trend_hc_mtd, 'dlr': trend_dlr_mtd, 'tot': trend_tot_mtd, 'reg': trend_reg_mtd}}
     ctw = date_to_target_week.get((eff_selected_date.month, eff_selected_date.day), week_keys[-1] if week_keys else '1주차')
-    
-    # 🚀 반환값에 eff_selected_date 100% 장착!
     return df, date_headers, hc_to_dealer_master, rdm, rdw, week_keys, tp, ctw, month_labels, mtd_labels, eff_selected_date
 
 
 if all_daily_data:
-    # 🚀 받을 때도 eff_selected_date 완벽하게 받도록 11개 세팅 완료
     (df_raw, date_headers, hc_to_dealer_master, rdm, rdw, 
      week_keys_list, trend_pack, CURRENT_TABLE_WEEK, month_labels, mtd_labels, eff_selected_date) = process_vdt_data(all_targets, all_daily_data, selected_date)
 
@@ -694,9 +696,13 @@ if all_daily_data:
                         stot[(w, '계약액(천)', 'ACT')] = wd['amt']
                         stot[(w, '견적건', 'ACT')] = wd['est']
                         stot[(w, '계약건', 'ACT')] = wd['cnt']
+            
+            # 🚀 소계/합계 달성율 수학적 안전망
             for c in df.columns[2:]:
                 if c[2] == '달성율(%)': 
-                    stot[c] = round((stot[(c[0],c[1],'ACT')] / stot[(c[0],c[1],'목표')] * 100), 0) if stot[(c[0],c[1],'목표')] > 0 else 0.0
+                    tgt_val = float(stot.get((c[0],c[1],'목표'), 0) or 0)
+                    act_val = float(stot.get((c[0],c[1],'ACT'), 0) or 0)
+                    stot[c] = round((act_val / tgt_val * 100), 0) if tgt_val > 0 else 0.0
             rr.append(pd.Series(stot))
 
         gt = df.select_dtypes(include=[np.number]).sum()
@@ -715,9 +721,12 @@ if all_daily_data:
                     gt[(w, '견적건', 'ACT')] = sum([rdw.get(d, {}).get(wk, {}).get('est', 0) for d in df[d_c].unique()])
                     gt[(w, '계약건', 'ACT')] = sum([rdw.get(d, {}).get(wk, {}).get('cnt', 0) for d in df[d_c].unique()])
 
+        # 🚀 총계 달성율 수학적 안전망
         for c in df.columns[2:]:
             if c[2] == '달성율(%)': 
-                gt[c] = round((gt[(c[0],c[1],'ACT')] / gt[(c[0],c[1],'목표')] * 100), 0) if gt[(c[0],c[1],'목표')] > 0 else 0.0
+                tgt_val = float(gt.get((c[0],c[1],'목표'), 0) or 0)
+                act_val = float(gt.get((c[0],c[1],'ACT'), 0) or 0)
+                gt[c] = round((act_val / tgt_val * 100), 0) if tgt_val > 0 else 0.0
         rr.append(pd.Series(gt))
         return pd.DataFrame(rr)
 
@@ -833,17 +842,15 @@ if all_daily_data:
         po_pct = f" <span style='font-size:12px; font-weight:900; color:#0284c7;'>({po/ps*100:.0f}%)</span>" if ps > 0 else " <span style='font-size:12px; font-weight:900; color:#64748b;'>(0%)</span>"
         to_pct = f" <span style='font-size:12px; font-weight:900; color:#0284c7;'>({to/ts*100:.0f}%)</span>" if ts > 0 else " <span style='font-size:12px; font-weight:900; color:#64748b;'>(0%)</span>"
 
-        curr_is_week = "▪️" in str(sel_curr)
-        prev_is_week = "▪️" in str(sel_prev)
-
-        disp_ps = "<td style='text-align:center; color:#94a3b8; background-color:#f1f5f9;'>-</td>" if prev_is_week else td_val(ps)
-        disp_po = "<td style='text-align:center; color:#94a3b8; background-color:#f1f5f9;'>-</td>" if prev_is_week else td_val_str(f"{po:,.0f}{po_pct}")
+        # 🚀 주간 조회 시 누적실적 화면 가림(-) 원천 차단 (전부 보여주기)
+        disp_ps = td_val(ps)
+        disp_po = td_val_str(f"{po:,.0f}{po_pct}")
         
-        disp_ts = "<td style='text-align:center; color:#94a3b8; background-color:#f1f5f9;'>-</td>" if curr_is_week else td_val(ts, is_tgt=True)
-        disp_to = "<td style='text-align:center; color:#94a3b8; background-color:#f1f5f9;'>-</td>" if curr_is_week else td_val_str(f"{to:,.0f}{to_pct}", is_tgt=True)
+        disp_ts = td_val(ts, is_tgt=True)
+        disp_to = td_val_str(f"{to:,.0f}{to_pct}", is_tgt=True)
         
-        disp_diff_s = "<td style='text-align:center; color:#94a3b8; background-color:#f1f5f9;'>-</td>" if (curr_is_week or prev_is_week) else td_cell(ts, ps)
-        disp_diff_o = "<td style='text-align:center; color:#94a3b8; background-color:#f1f5f9;'>-</td>" if (curr_is_week or prev_is_week) else td_cell(to, po)
+        disp_diff_s = td_cell(ts, ps)
+        disp_diff_o = td_cell(to, po)
 
         html_wow = '''
         <table class="wow-table" style="width: 100%; border: 2px solid #94a3b8; border-radius: 8px; overflow: hidden; margin-top: 5px;">
