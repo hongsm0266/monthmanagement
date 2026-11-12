@@ -103,6 +103,7 @@ st.markdown("".join(title_html), unsafe_allow_html=True)
 def clean_str(val): return re.sub(r'\s+', '', str(val))
 def safe_get(row, idx): return str(row[idx]).strip() if len(row) > idx else ""
 
+# 🚀 기호(-, .) 에러 원천 차단 방어막 (순정)
 def clean_val(v):
     if not v or pd.isna(v): return 0.0
     v_str = str(v).replace('%', '').replace(',', '').replace('원', '').replace('건', '').strip()
@@ -308,7 +309,7 @@ def process_vdt_data(all_targets, all_daily_data, selected_date):
             elif "점별" in row_header: curr_mode = "점별"
             continue
             
-        # 🚀 일반 일보 데이터 추출
+        # 🚀 1. 일반 일보 (계약, 매출, 견적, 건수) -> 이름칸은 3열(D열)
         if curr_mode == "일반" and len(row) > 3:
             raw_dealer = safe_get(row, 1) 
             raw_hc = safe_get(row, 3) 
@@ -316,7 +317,7 @@ def process_vdt_data(all_targets, all_daily_data, selected_date):
             hc_name = clean_str(raw_hc.split('(')[0]) 
             hc_name = re.sub(r'\d+', '', hc_name) 
             
-            is_dealer = get_mapped_dealer(hc_name) in dealer_names
+            is_dealer = get_mapped_dealer(hc_name) in dealer_names or hc_name in dealer_names
             if not hc_name or any(x in hc_name for x in sub_kw) or hc_name in exact_kw or is_dealer:
                 continue
                 
@@ -346,15 +347,14 @@ def process_vdt_data(all_targets, all_daily_data, selected_date):
             raw_snapshots[cur_dt][hc_name]['sales'] += t_sales
             raw_snapshots[cur_dt][hc_name]['next'] += t_next
 
-        # 🚀 입주 일보 데이터 추출 (버그 수정: row, 3으로 복구 완료)
-        elif curr_mode == "입주" and len(row) > 3:
+        # 🚀 2. 입주 일보 (입주계약액) -> 순정 복구: 이름칸은 1열(B열)
+        elif curr_mode == "입주" and len(row) > 1:
             raw_dealer = safe_get(row, 1)
-            raw_hc = safe_get(row, 3) 
-            if not raw_hc: raw_hc = raw_dealer 
+            raw_hc = safe_get(row, 1) 
             hc_name = clean_str(raw_hc.split('(')[0]) 
             hc_name = re.sub(r'\d+', '', hc_name) 
             
-            is_dealer = get_mapped_dealer(hc_name) in dealer_names
+            is_dealer = get_mapped_dealer(hc_name) in dealer_names or hc_name in dealer_names
             if not hc_name or any(x in hc_name for x in sub_kw) or hc_name in exact_kw or is_dealer:
                 continue
             
@@ -368,15 +368,14 @@ def process_vdt_data(all_targets, all_daily_data, selected_date):
             if hc_name not in daily_data[cur_dt]: daily_data[cur_dt][hc_name] = {'amt':0, 'est':0, 'cnt':0, 'amt_we':0, 'amt_wd':0, 'amt_move':0}
             daily_data[cur_dt][hc_name]['amt_move'] += dm
 
-        # 🚀 점별(온라인/취소) 데이터 추출 (버그 수정: row, 3으로 복구 완료)
-        elif curr_mode == "점별" and len(row) > 3:
+        # 🚀 3. 점별 일보 (온라인/취소) -> 순정 복구: 이름칸은 1열(B열)
+        elif curr_mode == "점별" and len(row) > 1:
             raw_dealer = safe_get(row, 1)
-            raw_hc = safe_get(row, 3) 
-            if not raw_hc: raw_hc = raw_dealer 
+            raw_hc = safe_get(row, 1) 
             hc_name = clean_str(raw_hc.split('(')[0]) 
             hc_name = re.sub(r'\d+', '', hc_name) 
             
-            is_dealer = get_mapped_dealer(hc_name) in dealer_names
+            is_dealer = get_mapped_dealer(hc_name) in dealer_names or hc_name in dealer_names
             if not hc_name or any(x in hc_name for x in sub_kw) or hc_name in exact_kw or is_dealer:
                 continue
             
