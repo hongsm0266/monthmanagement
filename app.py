@@ -119,7 +119,11 @@ def clean_val(v):
 
 def get_mapped_dealer(raw_d):
     c_d = clean_str(raw_d)
+    if not c_d: return ""
     if any(k in c_d for k in ["한밭", "INT충청", "701347", "세종2"]): return "세종"
+    for d_base in ["둔산", "목포", "세종", "충주", "광양", "여수", "익산"]:
+        if c_d == d_base or c_d == f"{d_base}점":
+            return d_base
     return raw_d.strip()
 
 REGION_MAP = {"충청상권": ["둔산", "목포", "세종", "충주"], "호남상권": ["광양", "여수", "익산"]}
@@ -293,9 +297,10 @@ def process_vdt_data(all_targets, all_daily_data, selected_date):
     daily_raw_totals = {} 
     
     sub_kw = ['합계', '소계', '총계', 'INT', '한밭', '위탁']
-    exact_kw = ['목표', '사번', '비고', '계', '대리점', '이름', 'HC', 'HC명', '영업사원']
+    exact_kw = ['목표', '사번', '비고', '계', '대리점', '대리점명', '이름', 'HC', 'HC명', '영업사원']
     dealer_names = ["둔산", "목포", "세종", "충주", "광양", "여수", "익산", "충청", "호남", "INT", "한밭"]
     curr_mode = ""
+    last_valid_dealer = ""
 
     for r_idx, row in enumerate(all_daily_data):
         row_header = clean_str("".join([safe_get(row, i) for i in range(min(5, len(row)))]))
@@ -311,10 +316,17 @@ def process_vdt_data(all_targets, all_daily_data, selected_date):
             if "일반" in row_header: curr_mode = "일반"
             elif "입주" in row_header: curr_mode = "입주"
             elif "점별" in row_header: curr_mode = "점별"
+            last_valid_dealer = ""
             continue
             
         if curr_mode == "일반" and len(row) > 3:
             raw_dealer = safe_get(row, 1) 
+            # 병합 셀 대응: 대리점명 행에서 대리점을 먼저 기억해 하위 사원 행까지 유지
+            if raw_dealer:
+                cand_d = get_mapped_dealer(raw_dealer)
+                if cand_d and not any(x in cand_d for x in sub_kw) and cand_d not in exact_kw:
+                    last_valid_dealer = cand_d
+
             raw_hc = safe_get(row, 3) 
             if not raw_hc and len(row) > 1: raw_hc = raw_dealer 
             hc_name = clean_str(raw_hc.split('(')[0]) 
@@ -324,8 +336,9 @@ def process_vdt_data(all_targets, all_daily_data, selected_date):
             if not hc_name or any(x in hc_name for x in sub_kw) or hc_name in exact_kw or is_dealer:
                 continue
                 
-            mapped_d = get_mapped_dealer(raw_dealer)
-            if hc_name not in hc_to_dealer_master:
+            cur_dealer = last_valid_dealer if last_valid_dealer else get_mapped_dealer(raw_dealer)
+            mapped_d = hc_to_dealer_master.get(hc_name) or cur_dealer
+            if hc_name not in hc_to_dealer_master and mapped_d:
                 hc_to_dealer_master[hc_name] = mapped_d
             if hc_name not in existing_hcs:
                 existing_hcs.append(hc_name)
@@ -333,8 +346,14 @@ def process_vdt_data(all_targets, all_daily_data, selected_date):
             t_est, t_cnt = clean_val(safe_get(row, 4)), clean_val(safe_get(row, 5))
             t_amt = clean_val(safe_get(row, 15)) 
             t_sales = clean_val(safe_get(row, 18)) 
-            t_next = clean_val(safe_get(row, 23))  
-            t_next_next = clean_val(safe_get(row, 24))
+            
+            # 10월 2일 일반일보부터 T열(온라인) 추가로 M+1, M+2 열이 1칸씩 우측 이동 (X,Y -> Y,Z)
+            if cur_dt != datetime.min.date() and cur_dt >= datetime(cur_dt.year, 10, 2).date():
+                t_next = clean_val(safe_get(row, 24))       # Y열 (M+1 이월매출)
+                t_next_next = clean_val(safe_get(row, 25))  # Z열 (M+2 익익월매출)
+            else:
+                t_next = clean_val(safe_get(row, 23))       # X열 (M+1 이월매출, ~10/1)
+                t_next_next = clean_val(safe_get(row, 24))  # Y열 (M+2 익익월매출, ~10/1)
             
             is_we = cur_dt.weekday() >= 5 if cur_dt != datetime.min.date() else False
             
@@ -392,8 +411,8 @@ def process_vdt_data(all_targets, all_daily_data, selected_date):
             if not hc_name or any(x in hc_name for x in sub_kw) or hc_name in exact_kw or is_dealer:
                 continue
             
-            mapped_d = hc_to_dealer_master.get(hc_name, get_mapped_dealer(raw_dealer))
-            if hc_name not in hc_to_dealer_master:
+            mapped_d = hc_to_dealer_master.get(hc_name) or get_mapped_dealer(raw_dealer)
+            if hc_name not in hc_to_dealer_master and mapped_d:
                 hc_to_dealer_master[hc_name] = mapped_d
             if hc_name not in existing_hcs:
                 existing_hcs.append(hc_name)
