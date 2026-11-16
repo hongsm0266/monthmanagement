@@ -18,7 +18,8 @@ st.set_page_config(page_title="충청호남팀 영업사원 주차별 VDT 목표
 SHEET_URL = "https://docs.google.com/spreadsheets/d/1yZdc4BL5CHLwBQ2QGp8zD5_ov7LDKsEcnrONdQvDyHI/edit?gid=1748736055#gid=1748736055"
 
 default_states = {
-    'view_target': "충청호남팀 전체", 'hc_selector': "✨ 인원별 상세 실적 (선택 시 우선 적용)", 
+    'view_target': "충청호남팀 전체", 'hc_selector': "✨ 인원별 상세 실적 (선택하세요)", 
+    'hc_dealer_filter': "전체 대리점",
     'view_mode': "주간 추이 (최근 8주)", 't_amt': True, 't_sales': False, 't_next': False,
     't_avg': False, 't_wd': False, 't_we': False, 't_walk': False, 't_move': False,
     't_est': False, 't_cnt': False, 't_rate': False, 't_unit': False, 
@@ -375,7 +376,6 @@ def process_vdt_data(all_targets, all_daily_data, selected_date):
                 existing_hcs.append(hc_name)
             
             dm = clean_val(safe_get(row, 12)) + clean_val(safe_get(row, 17))
-            # 입주일보 D열(인덱스 3) 입주 계약건 추출
             cm = clean_val(safe_get(row, 3))
             if cur_dt not in daily_data: daily_data[cur_dt] = {}
             if hc_name not in daily_data[cur_dt]: daily_data[cur_dt][hc_name] = {'amt':0, 'est':0, 'cnt':0, 'amt_we':0, 'amt_wd':0, 'amt_move':0, 'cnt_move':0}
@@ -478,7 +478,6 @@ def process_vdt_data(all_targets, all_daily_data, selected_date):
 
     def new_d(): return {'amt':0, 'est':0, 'cnt':0, 'amt_wd':0, 'amt_we':0, 'sales':0, 'next_sales':0, 'amt_move':0, 'cnt_move':0, 'online':0, 'cancel':0}
 
-    # 임의의 연속 구간 [r_start .. r_end]의 순증분 및 합산 지표 계산 헬퍼
     def calc_range_metrics(r_start, r_end, target_hcs, target_dealers=None, is_single_hc=False):
         item = new_d()
         curr = r_start
@@ -536,7 +535,6 @@ def process_vdt_data(all_targets, all_daily_data, selected_date):
             item['next_sales'] = m1_next + m2_next
         return item
 
-    # 주중(월~금) / 주말(토~일) 연속 날짜 블록 추출기
     def get_day_filter_blocks(start_d, end_d, is_weekend):
         blocks = []
         cur = start_d
@@ -573,7 +571,6 @@ def process_vdt_data(all_targets, all_daily_data, selected_date):
     month_labels = [f"📊 [월마감] {y%100}년 {m}월" for y, m in sorted_ym]
     mtd_labels = ['🌟 [당일기준] 당월 누적', '🌟 [당일기준] 전월 누적', '🌟 [당일기준] 전전월 누적', '🌟 [당일기준] 전년 누적']
     
-    # 1. 주간 추이(W, W_WD, W_WE)
     trend_hc_w = {hc: calc_weekly_net_increments([hc], is_single_hc=True) for hc in existing_hcs}
     trend_dlr_w = {d: calc_weekly_net_increments([hc for hc in existing_hcs if hc_to_dealer_master.get(hc) == d], target_dealers=[d]) for d in valid_dealers}
     trend_reg_w = {reg: calc_weekly_net_increments([hc for hc in existing_hcs if hc_to_dealer_master.get(hc) in dlrs], target_dealers=dlrs) for reg, dlrs in REGION_MAP.items()}
@@ -589,7 +586,6 @@ def process_vdt_data(all_targets, all_daily_data, selected_date):
     trend_reg_w_we = {reg: calc_weekly_net_increments([hc for hc in existing_hcs if hc_to_dealer_master.get(hc) in dlrs], target_dealers=dlrs, day_filter='WE') for reg, dlrs in REGION_MAP.items()}
     trend_tot_w_we = calc_weekly_net_increments(existing_hcs, target_dealers=None, day_filter='WE')
 
-    # 2. 월간 추이(M, MTD - 기존 로직 100% 유지)
     trend_hc_m = {hc: {lbl: new_d() for lbl in month_labels} for hc in existing_hcs}
     trend_hc_mtd = {hc: {lbl: new_d() for lbl in mtd_labels} for hc in existing_hcs}
 
@@ -681,7 +677,6 @@ def process_vdt_data(all_targets, all_daily_data, selected_date):
             for lbl in mtd_labels:
                 for k in keys_to_sum: trend_reg_mtd[reg][lbl][k] += dmtd[lbl][k]
 
-    # 3. 월간 누적 추이 전용 주중(M_WD) / 주말(M_WE) 필터 계산
     def calc_monthly_filtered(target_hcs, target_dealers=None, is_single_hc=False, day_filter='WD'):
         m_res = {lbl: new_d() for lbl in month_labels}
         for y, m in sorted_ym:
@@ -905,15 +900,107 @@ if all_daily_data:
         
         def set_view(target):
             st.session_state['view_target'] = target
-            st.session_state['hc_selector'] = "✨ 인원별 상세 실적 (선택 시 우선 적용)"
+            st.session_state['hc_selector'] = "✨ 인원별 상세 실적 (선택하세요)"
 
         def on_hc_select():
-            if st.session_state['hc_selector'] != "✨ 인원별 상세 실적 (선택 시 우선 적용)":
+            if st.session_state['hc_selector'] != "✨ 인원별 상세 실적 (선택하세요)":
                 st.session_state['view_target'] = st.session_state['hc_selector']
 
+        def sync_prev_from_org(): st.session_state['wow_prev'] = st.session_state['wow_prev_org']
+        def sync_curr_from_org(): st.session_state['wow_curr'] = st.session_state['wow_curr_org']
+        def sync_prev_from_hc(): st.session_state['wow_prev'] = st.session_state['wow_prev_hc']
+        def sync_curr_from_hc(): st.session_state['wow_curr'] = st.session_state['wow_curr_hc']
+
         def btn_type(t): return "primary" if st.session_state.get('view_target') == t else "secondary"
-            
+
+        st.markdown("#### 💡 **주/월 종합지표 비교 (데이터 비교 선택)**")
+
+        if st.session_state.get('wow_curr') not in curr_options:
+            st.session_state['wow_curr'] = curr_options[0]
+        sel_curr = st.session_state['wow_curr']
+
+        if sel_curr == '🌟 [당일기준] 당월 누적':
+            prev_options = ['🌟 [당일기준] 전월 누적', '🌟 [당일기준] 전전월 누적', '🌟 [당일기준] 전년 누적']
+        else:
+            prev_options = all_normal_options
+
+        if st.session_state.get('wow_prev') not in prev_options:
+            st.session_state['wow_prev'] = prev_options[0]
+        sel_prev = st.session_state['wow_prev']
+
         vt = st.session_state['view_target']
+
+        tab_org, tab_hc = st.tabs(["🏢 조직별 비교 (전체·상권·대리점)", "👤 인원별 비교 (영업사원)"])
+
+        with tab_org:
+            st.markdown('<div id="org-buttons"></div>', unsafe_allow_html=True)
+            c_o = st.columns([12, 2, 12, 9, 9, 9, 9, 2, 12, 9, 9, 9])
+            with c_o[0]: 
+                st.button("I 전체통합" if vt != "충청호남팀 전체" else "✅ 전체통합", key="btn_org_all", type=btn_type("충청호남팀 전체"), on_click=set_view, args=("충청호남팀 전체",), use_container_width=True)
+            with c_o[1]: 
+                st.markdown("<div style='text-align:center; padding-top:5px; color:#cbd5e1; font-weight:bold; font-size:16px;'>|</div>", unsafe_allow_html=True)
+            with c_o[2]: 
+                st.button("I 충청통합" if vt != "충청팀 통합" else "✅ 충청통합", key="btn_org_cc", type=btn_type("충청팀 통합"), on_click=set_view, args=("충청팀 통합",), use_container_width=True)
+            with c_o[3]: 
+                st.button("둔산" if vt != "둔산 대리점" else "✅ 둔산", key="btn_org_ds", type=btn_type("둔산 대리점"), on_click=set_view, args=("둔산 대리점",), use_container_width=True)
+            with c_o[4]: 
+                st.button("세종" if vt != "세종 대리점" else "✅ 세종", key="btn_org_sj", type=btn_type("세종 대리점"), on_click=set_view, args=("세종 대리점",), use_container_width=True)
+            with c_o[5]: 
+                st.button("목포" if vt != "목포 대리점" else "✅ 목포", key="btn_org_mp", type=btn_type("목포 대리점"), on_click=set_view, args=("목포 대리점",), use_container_width=True)
+            with c_o[6]: 
+                st.button("충주" if vt != "충주 대리점" else "✅ 충주", key="btn_org_cj", type=btn_type("충주 대리점"), on_click=set_view, args=("충주 대리점",), use_container_width=True)
+            with c_o[7]: 
+                st.markdown("<div style='text-align:center; padding-top:5px; color:#cbd5e1; font-weight:bold; font-size:16px;'>|</div>", unsafe_allow_html=True)
+            with c_o[8]: 
+                st.button("I 호남통합" if vt != "호남팀 통합" else "✅ 호남통합", key="btn_org_hn", type=btn_type("호남팀 통합"), on_click=set_view, args=("호남팀 통합",), use_container_width=True)
+            with c_o[9]: 
+                st.button("광양" if vt != "광양 대리점" else "✅ 광양", key="btn_org_gy", type=btn_type("광양 대리점"), on_click=set_view, args=("광양 대리점",), use_container_width=True)
+            with c_o[10]: 
+                st.button("익산" if vt != "익산 대리점" else "✅ 익산", key="btn_org_is", type=btn_type("익산 대리점"), on_click=set_view, args=("익산 대리점",), use_container_width=True)
+            with c_o[11]: 
+                st.button("여수" if vt != "여수 대리점" else "✅ 여수", key="btn_org_ys", type=btn_type("여수 대리점"), on_click=set_view, args=("여수 대리점",), use_container_width=True)
+
+            oc1, oc2, oc3 = st.columns([2.2, 4.9, 4.9])
+            with oc1:
+                st.markdown("<div style='text-align:center; padding-top:28px; font-weight:900; color:#1e293b; font-size:14px;'>📅 기간 비교 선택 ➡️</div>", unsafe_allow_html=True)
+            with oc2:
+                st.markdown("<div style='font-size:14px; font-weight:900; color:#64748b; margin-bottom:4px;'>⬅️ (비교 대상)</div>", unsafe_allow_html=True)
+                st.selectbox("비교 기준(조직)", options=prev_options, index=prev_options.index(sel_prev), key="wow_prev_org", on_change=sync_prev_from_org, label_visibility="collapsed")
+            with oc3:
+                st.markdown("<div style='font-size:14px; font-weight:900; color:#dc2626; margin-bottom:4px;'>➡️ (조회 기준)</div>", unsafe_allow_html=True)
+                st.selectbox("조회 기준(조직)", options=curr_options, index=curr_options.index(sel_curr), key="wow_curr_org", on_change=sync_curr_from_org, label_visibility="collapsed")
+
+        with tab_hc:
+            all_hc_rows = [(r[('기본정보','대리점','대리점')], r[('기본정보','HC명','HC명')]) for _, r in final_df.iterrows() if r[('기본정보','HC명','HC명')] not in ["🌟 총계","합계","상권합계"] and r[('기본정보','HC명','HC명')] not in EXCLUDED_HCS]
+            dealer_filter_opts = ["전체 대리점", "둔산", "세종", "목포", "충주", "광양", "익산", "여수"]
+            
+            hc_top1, hc_top2 = st.columns([3.5, 8.5])
+            with hc_top1:
+                st.markdown("<div style='font-size:13px; font-weight:900; color:#1e293b; margin-bottom:4px;'>🏢 소속 대리점 필터</div>", unsafe_allow_html=True)
+                sel_d_filter = st.selectbox("소속 대리점", options=dealer_filter_opts, key="hc_dealer_filter", label_visibility="collapsed")
+            with hc_top2:
+                st.markdown("<div style='font-size:13px; font-weight:900; color:#1d4ed8; margin-bottom:4px;'>👤 영업사원 선택 (선택 시 즉시 지표 및 그래프 전환)</div>", unsafe_allow_html=True)
+                filtered_hl = ["✨ 인원별 상세 실적 (선택하세요)"] + [
+                    f"👤 {d_nm} - {h_nm}" for d_nm, h_nm in all_hc_rows 
+                    if sel_d_filter == "전체 대리점" or d_nm == sel_d_filter
+                ]
+                if st.session_state.get('hc_selector') not in filtered_hl:
+                    st.session_state['hc_selector'] = filtered_hl[0]
+                st.selectbox("인원선택", options=filtered_hl, key='hc_selector', on_change=on_hc_select, label_visibility="collapsed")
+
+            hc_b1, hc_b2, hc_b3 = st.columns([2.2, 4.9, 4.9])
+            with hc_b1:
+                st.markdown("<div style='text-align:center; padding-top:28px; font-weight:900; color:#1e293b; font-size:14px;'>📅 기간 비교 선택 ➡️</div>", unsafe_allow_html=True)
+            with hc_b2:
+                st.markdown("<div style='font-size:14px; font-weight:900; color:#64748b; margin-bottom:4px;'>⬅️ (비교 대상)</div>", unsafe_allow_html=True)
+                st.selectbox("비교 기준(인원)", options=prev_options, index=prev_options.index(sel_prev), key="wow_prev_hc", on_change=sync_prev_from_hc, label_visibility="collapsed")
+            with hc_b3:
+                st.markdown("<div style='font-size:14px; font-weight:900; color:#dc2626; margin-bottom:4px;'>➡️ (조회 기준)</div>", unsafe_allow_html=True)
+                st.selectbox("조회 기준(인원)", options=curr_options, index=curr_options.index(sel_curr), key="wow_curr_hc", on_change=sync_curr_from_hc, label_visibility="collapsed")
+
+        vt = st.session_state['view_target']
+        sel_prev = st.session_state['wow_prev']
+        sel_curr = st.session_state['wow_curr']
         
         def get_period_data(label, hc_or_dlr_key):
             if label in trend_labels:
@@ -944,29 +1031,6 @@ if all_daily_data:
         else: 
             thc = vt.replace("👤 ", "").split(" - ")[1]
             ct, data_key = f"{thc} 님", thc
-
-        st.markdown("#### 💡 **주/월 종합지표 비교**")
-        
-        c1, c2, c3 = st.columns([2.5, 4.5, 4.5])
-        with c1: 
-            st.markdown("<div style='text-align:center; padding-top:28px; font-weight:900; color:#1e293b; font-size:14px;'>데이터 비교 선택 ➡️</div>", unsafe_allow_html=True)
-        with c3: 
-            st.markdown("<div style='font-size:15px; font-weight:900; color:#dc2626; margin-bottom:4px;'>➡️ (조회 기준)</div>", unsafe_allow_html=True)
-            sel_curr = st.selectbox("조회 기준", options=curr_options, index=curr_options.index(st.session_state.get('wow_curr', curr_options[0])) if st.session_state.get('wow_curr') in curr_options else 0, label_visibility="collapsed")
-            st.session_state['wow_curr'] = sel_curr
-
-        if sel_curr == '🌟 [당일기준] 당월 누적':
-            prev_options = ['🌟 [당일기준] 전월 누적', '🌟 [당일기준] 전전월 누적', '🌟 [당일기준] 전년 누적']
-        else:
-            prev_options = all_normal_options
-
-        if st.session_state.get('wow_prev') not in prev_options:
-            st.session_state['wow_prev'] = prev_options[0]
-
-        with c2: 
-            st.markdown("<div style='font-size:15px; font-weight:900; color:#64748b; margin-bottom:4px;'>⬅️ (비교 대상)</div>", unsafe_allow_html=True)
-            sel_prev = st.selectbox("비교 기준", options=prev_options, index=prev_options.index(st.session_state['wow_prev']), label_visibility="collapsed")
-            st.session_state['wow_prev'] = sel_prev
             
         def td_cell(val, p_val, is_unit=False, is_rate=False):
             delta = val - p_val
@@ -1025,9 +1089,9 @@ if all_daily_data:
         disp_diff_o = "<td style='text-align:center; color:#94a3b8; background-color:#f1f5f9;'>-</td>" if (curr_is_week or prev_is_week) else td_cell(to, po)
 
         html_wow = '''
-        <table class="wow-table" style="width: 100%; border: 2px solid #94a3b8; border-radius: 8px; overflow: hidden; margin-top: 5px;">
+        <table class="wow-table" style="width: 100%; border: 2px solid #94a3b8; border-radius: 8px; overflow: hidden; margin-top: 8px;">
             <thead><tr style="background-color: #1e293b; color: white;">
-            <th style="padding: 10px; font-size: 13px; border-right: 2px solid #94a3b8; width:14%;">조직<br><span style="font-size:11px; color:#cbd5e1;">({CT})</span></th>
+            <th style="padding: 10px; font-size: 13px; border-right: 2px solid #94a3b8; width:14%;">선택 대상<br><span style="font-size:12px; color:#fde047;">({CT})</span></th>
             <th style="padding: 10px;">💰 총 계약액<br>(천원)</th><th style="padding: 10px;">💰 총 매출액<br>(천원)</th><th style="padding: 10px;">💻 온라인매출<br>(천원)</th>
             <th style="padding: 10px;">📝 견적건<br>(건)</th><th style="padding: 10px;">🤝 계약건<br>(건)</th>
             <th style="padding: 10px; background-color:#334155;">🚶 워크인 계약액<br>(천원)</th><th style="padding: 10px; background-color:#334155;">🏠 입주 계약액<br>(천원)</th>
@@ -1049,40 +1113,6 @@ if all_daily_data:
         html_wow = html_wow.replace("{DIFF_W}", td_cell(tw,pw)).replace("{DIFF_M}", td_cell(tm,pm)).replace("{DIFF_R}", td_cell(tr,pr,is_rate=True)).replace("{DIFF_U}", td_cell(tu,pu,is_unit=True)).replace("{DIFF_CAN}", td_cell(t_can,p_can))
         
         st.markdown(html_wow, unsafe_allow_html=True)
-        st.markdown("---")
-
-        st.markdown("#### 🔎 **실적 조회 (조직 및 인원 선택)**")
-        st.markdown('<div id="org-buttons"></div>', unsafe_allow_html=True)
-        
-        c_o = st.columns([12, 2, 12, 9, 9, 9, 9, 2, 12, 9, 9, 9, 30])
-        
-        with c_o[0]: 
-            st.button("I 전체통합" if vt != "충청호남팀 전체" else "✅ 전체통합", type=btn_type("충청호남팀 전체"), on_click=set_view, args=("충청호남팀 전체",), use_container_width=True)
-        with c_o[1]: 
-            st.markdown("<div style='text-align:center; padding-top:5px; color:#cbd5e1; font-weight:bold; font-size:16px;'>|</div>", unsafe_allow_html=True)
-        with c_o[2]: 
-            st.button("I 충청통합" if vt != "충청팀 통합" else "✅ 충청통합", type=btn_type("충청팀 통합"), on_click=set_view, args=("충청팀 통합",), use_container_width=True)
-        with c_o[3]: 
-            st.button("둔산" if vt != "둔산 대리점" else "✅ 둔산", type=btn_type("둔산 대리점"), on_click=set_view, args=("둔산 대리점",), use_container_width=True)
-        with c_o[4]: 
-            st.button("세종" if vt != "세종 대리점" else "✅ 세종", type=btn_type("세종 대리점"), on_click=set_view, args=("세종 대리점",), use_container_width=True)
-        with c_o[5]: 
-            st.button("목포" if vt != "목포 대리점" else "✅ 목포", type=btn_type("목포 대리점"), on_click=set_view, args=("목포 대리점",), use_container_width=True)
-        with c_o[6]: 
-            st.button("충주" if vt != "충주 대리점" else "✅ 충주", type=btn_type("충주 대리점"), on_click=set_view, args=("충주 대리점",), use_container_width=True)
-        with c_o[7]: 
-            st.markdown("<div style='text-align:center; padding-top:5px; color:#cbd5e1; font-weight:bold; font-size:16px;'>|</div>", unsafe_allow_html=True)
-        with c_o[8]: 
-            st.button("I 호남통합" if vt != "호남팀 통합" else "✅ 호남통합", type=btn_type("호남팀 통합"), on_click=set_view, args=("호남팀 통합",), use_container_width=True)
-        with c_o[9]: 
-            st.button("광양" if vt != "광양 대리점" else "✅ 광양", type=btn_type("광양 대리점"), on_click=set_view, args=("광양 대리점",), use_container_width=True)
-        with c_o[10]: 
-            st.button("익산" if vt != "익산 대리점" else "✅ 익산", type=btn_type("익산 대리점"), on_click=set_view, args=("익산 대리점",), use_container_width=True)
-        with c_o[11]: 
-            st.button("여수" if vt != "여수 대리점" else "✅ 여수", type=btn_type("여수 대리점"), on_click=set_view, args=("여수 대리점",), use_container_width=True)
-        with c_o[12]:
-            hl = ["✨ 인원별 상세 실적 (선택 시 우선 적용)"] + [f"👤 {r[('기본정보','대리점','대리점')]} - {r[('기본정보','HC명','HC명')]}" for _, r in final_df.iterrows() if r[('기본정보','HC명','HC명')] not in ["🌟 총계","합계","상권합계"] and r[('기본정보','HC명','HC명')] not in EXCLUDED_HCS]
-            st.selectbox("인원선택", options=hl, key='hc_selector', on_change=on_hc_select, label_visibility="collapsed")
         st.markdown("---")
                 
         def toggle_state(key): st.session_state[key] = not st.session_state[key]
@@ -1146,7 +1176,6 @@ if all_daily_data:
             la = month_labels if is_m else trend_labels
             la_chart = [f"<b>{l}</b>" for l in la] 
             
-            # 최상위 주중/주말 필터 적용에 따른 데이터 소스 선택
             if st.session_state['t_wd']:
                 pack_key = 'M_WD' if is_m else 'W_WD'
             elif st.session_state['t_we']:
@@ -1198,7 +1227,6 @@ if all_daily_data:
             
             y_e = [w.get('est', 0) for w in sd]
             y_c = [w.get('cnt', 0) for w in sd]
-            # 입주 계약건(입주일보 D열) & 워크인 계약건(일반일보 E열 - 입주일보 D열)
             y_cm = [w.get('cnt_move', 0) for w in sd]
             y_cwk = [e - cm for e, cm in zip(y_e, y_cm)]
             
@@ -1262,7 +1290,6 @@ if all_daily_data:
                     active_y_vals.extend(y_can)
                     fig.add_trace(go.Scatter(x=la_chart, y=y_can, mode='lines+markers+text', name='취소액', text=[f"<b>{v:.2f}억</b>" for v in y_can], textposition='bottom left', cliponaxis=False, textfont=dict(size=14, color='#9f1239'), line=dict(color='#e11d48', width=3, dash='dot'), marker=dict(size=ms, line=dict(width=2, color='white'))))
                 
-                # 상단/하단 텍스트 깨짐 및 짤림 방지를 위한 여유 Y축 범위 자동 산출
                 yaxis_cfg = dict(title="", tickformat=".1f", ticksuffix="억", gridcolor='#f1f5f9')
                 if active_y_vals:
                     max_y = max(active_y_vals)
