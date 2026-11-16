@@ -24,7 +24,7 @@ default_states = {
     't_avg': False, 't_wd': False, 't_we': False, 't_walk': False, 't_move': False,
     't_est': False, 't_cnt': False, 't_rate': False, 't_unit': False, 
     't_onl': False, 't_can': False,
-    'wow_prev': '🌟 [당일기준] 전월 누적', 'wow_curr': '🌟 [당일기준] 당월 누적'
+    'wow_prev': '전월동일누적분', 'wow_curr': ''
 }
 for key, value in default_states.items():
     if key not in st.session_state:
@@ -205,9 +205,6 @@ for row in all_daily_data:
 available_dates = sorted(list(available_dates_set))
 max_date_in_sheet = available_dates[-1] if available_dates else current_date.date()
 
-all_normal_options = list(reversed(trend_labels))
-curr_options = ['🌟 [당일기준] 당월 누적', '🌟 [당일기준] 전월 누적', '🌟 [당일기준] 전전월 누적', '🌟 [당일기준] 전년 누적'] + all_normal_options
-
 is_weekly_selected = "▪️" in str(st.session_state.get('wow_curr', ''))
 
 c_cal1, c_cal2 = st.columns([10, 2])
@@ -224,7 +221,20 @@ with c_cal2:
     if is_weekly_selected:
         st.markdown("<div style='font-size:11px; color:#ef4444; margin-top:2px; font-weight:bold;'>🔒 주간 실적 조회 중 (달력 잠김)</div>", unsafe_allow_html=True)
 
-def process_vdt_data(all_targets, all_daily_data, selected_date):
+# 선택한 조회 기준일에 따라 동적 카테고리 라벨 자동 생성
+curr_mtd_label = f"[{selected_date.month}/{selected_date.day}일]당월누적"
+prev1_mtd_label = "전월동일누적분"
+prev2_mtd_label = "전전월동일누적분"
+prevy_mtd_label = "전년동일누적분"
+mtd_labels = [curr_mtd_label, prev1_mtd_label, prev2_mtd_label, prevy_mtd_label]
+
+all_normal_options = list(reversed(trend_labels))
+curr_options = mtd_labels + all_normal_options
+
+if not st.session_state.get('wow_curr') or str(st.session_state.get('wow_curr')).endswith("당월누적"):
+    st.session_state['wow_curr'] = curr_mtd_label
+
+def process_vdt_data(all_targets, all_daily_data, selected_date, mtd_labels):
     hc_to_dealer_master, hc_info_dict, dealer_sales_sum = {}, {}, {}
     for row in all_targets[15:]:
         if len(row) > 17:
@@ -321,7 +331,6 @@ def process_vdt_data(all_targets, all_daily_data, selected_date):
             
         if curr_mode == "일반" and len(row) > 3:
             raw_dealer = safe_get(row, 1) 
-            # 병합 셀 대응: 대리점명 행에서 대리점을 먼저 기억해 하위 사원 행까지 유지
             if raw_dealer:
                 cand_d = get_mapped_dealer(raw_dealer)
                 if cand_d and not any(x in cand_d for x in sub_kw) and cand_d not in exact_kw:
@@ -347,13 +356,12 @@ def process_vdt_data(all_targets, all_daily_data, selected_date):
             t_amt = clean_val(safe_get(row, 15)) 
             t_sales = clean_val(safe_get(row, 18)) 
             
-            # 10월 2일 일반일보부터 T열(온라인) 추가로 M+1, M+2 열이 1칸씩 우측 이동 (X,Y -> Y,Z)
             if cur_dt != datetime.min.date() and cur_dt >= datetime(cur_dt.year, 10, 2).date():
-                t_next = clean_val(safe_get(row, 24))       # Y열 (M+1 이월매출)
-                t_next_next = clean_val(safe_get(row, 25))  # Z열 (M+2 익익월매출)
+                t_next = clean_val(safe_get(row, 24))       
+                t_next_next = clean_val(safe_get(row, 25))  
             else:
-                t_next = clean_val(safe_get(row, 23))       # X열 (M+1 이월매출, ~10/1)
-                t_next_next = clean_val(safe_get(row, 24))  # Y열 (M+2 익익월매출, ~10/1)
+                t_next = clean_val(safe_get(row, 23))       
+                t_next_next = clean_val(safe_get(row, 24))  
             
             is_we = cur_dt.weekday() >= 5 if cur_dt != datetime.min.date() else False
             
@@ -588,7 +596,6 @@ def process_vdt_data(all_targets, all_daily_data, selected_date):
     
     sorted_ym = sorted(list(set((d.year, d.month) for d in av_dates)))
     month_labels = [f"📊 [월마감] {y%100}년 {m}월" for y, m in sorted_ym]
-    mtd_labels = ['🌟 [당일기준] 당월 누적', '🌟 [당일기준] 전월 누적', '🌟 [당일기준] 전전월 누적', '🌟 [당일기준] 전년 누적']
     
     trend_hc_w = {hc: calc_weekly_net_increments([hc], is_single_hc=True) for hc in existing_hcs}
     trend_dlr_w = {d: calc_weekly_net_increments([hc for hc in existing_hcs if hc_to_dealer_master.get(hc) == d], target_dealers=[d]) for d in valid_dealers}
@@ -615,8 +622,8 @@ def process_vdt_data(all_targets, all_daily_data, selected_date):
     except: t_prev_y = datetime(eff_selected_date.year - 1, eff_selected_date.month, eff_selected_date.day - 1).date()
     
     mtd_target_dates = {
-        '🌟 [당일기준] 당월 누적': t_mtd, '🌟 [당일기준] 전월 누적': t_prev1,
-        '🌟 [당일기준] 전전월 누적': t_prev2, '🌟 [당일기준] 전년 누적': t_prev_y
+        mtd_labels[0]: t_mtd, mtd_labels[1]: t_prev1,
+        mtd_labels[2]: t_prev2, mtd_labels[3]: t_prev_y
     }
     
     for hc in existing_hcs:
@@ -855,12 +862,12 @@ def process_vdt_data(all_targets, all_daily_data, selected_date):
         'MTD': {'hc': trend_hc_mtd, 'dlr': trend_dlr_mtd, 'tot': trend_tot_mtd, 'reg': trend_reg_mtd}
     }
     ctw = date_to_target_week.get((eff_selected_date.month, eff_selected_date.day), week_keys[-1] if week_keys else '1주차')
-    return df, date_headers, hc_to_dealer_master, rdm, rdw, week_keys, tp, ctw, month_labels, mtd_labels, eff_selected_date
+    return df, date_headers, hc_to_dealer_master, rdm, rdw, week_keys, tp, ctw, month_labels, eff_selected_date
 
 
 if all_daily_data:
     (df_raw, date_headers, hc_to_dealer_master, rdm, rdw, 
-     week_keys_list, trend_pack, CURRENT_TABLE_WEEK, month_labels, mtd_labels, eff_selected_date) = process_vdt_data(all_targets, all_daily_data, selected_date)
+     week_keys_list, trend_pack, CURRENT_TABLE_WEEK, month_labels, eff_selected_date) = process_vdt_data(all_targets, all_daily_data, selected_date, mtd_labels)
 
     def calc_subtotals(df, rdm, rdw):
         if df.empty: return df
@@ -938,14 +945,19 @@ if all_daily_data:
             st.session_state['wow_curr'] = curr_options[0]
         sel_curr = st.session_state['wow_curr']
 
-        if sel_curr == '🌟 [당일기준] 당월 누적':
-            prev_options = ['🌟 [당일기준] 전월 누적', '🌟 [당일기준] 전전월 누적', '🌟 [당일기준] 전년 누적']
+        if sel_curr == curr_mtd_label:
+            prev_options = [prev1_mtd_label, prev2_mtd_label, prevy_mtd_label]
         else:
             prev_options = all_normal_options
 
         if st.session_state.get('wow_prev') not in prev_options:
             st.session_state['wow_prev'] = prev_options[0]
         sel_prev = st.session_state['wow_prev']
+
+        st.session_state['wow_curr_org'] = sel_curr
+        st.session_state['wow_curr_hc'] = sel_curr
+        st.session_state['wow_prev_org'] = sel_prev
+        st.session_state['wow_prev_hc'] = sel_prev
 
         vt = st.session_state['view_target']
 
@@ -1212,7 +1224,7 @@ if all_daily_data:
                 st.markdown("<div class='chart-btn-group'>💰 재무 지표</div>", unsafe_allow_html=True)
                 c1, c2, c3, c4, c5 = st.columns(5)
                 with c1: st.button("✅ 계약액" if st.session_state['t_amt'] else "계약액", on_click=toggle_state, args=('t_amt',), use_container_width=True, type="primary" if st.session_state['t_amt'] else "secondary")
-                with c2: st.button("✅ 매출액(순증분)" if st.session_state['t_sales'] else "매출액(순증분)", on_click=toggle_state, args=('t_sales',), use_container_width=True, type="primary" if st.session_state['t_sales'] else "secondary")
+                with c2: st.button("✅ 당월매출순증분" if st.session_state['t_sales'] else "당월매출순증분", on_click=toggle_state, args=('t_sales',), use_container_width=True, type="primary" if st.session_state['t_sales'] else "secondary")
                 with c3: st.button("✅ 이월매출(순증분)" if st.session_state['t_next'] else "이월매출(순증분)", on_click=toggle_state, args=('t_next',), use_container_width=True, type="primary" if st.session_state['t_next'] else "secondary")
                 with c4: st.button("✅ 온라인(순증분)" if st.session_state['t_onl'] else "온라인(순증분)", on_click=toggle_state, args=('t_onl',), use_container_width=True, type="primary" if st.session_state['t_onl'] else "secondary")
                 with c5: st.button("✅ 평균(계약)" if st.session_state['t_avg'] else "평균(계약)", on_click=toggle_state, args=('t_avg',), use_container_width=True, type="primary" if st.session_state['t_avg'] else "secondary")
@@ -1276,7 +1288,7 @@ if all_daily_data:
                     fig.add_trace(go.Scatter(x=la_chart, y=y_a, mode='lines+markers+text', name='계약액', text=[f"<b>{v:.2f}억</b>" for v in y_a], textposition='top center', cliponaxis=False, textfont=dict(size=15, color='black'), line=dict(color='#0f172a', width=4), marker=dict(size=ms, color=['#0f172a'] * (len(la)-1) + ['#dc2626'], line=dict(width=2, color='white'))))
                 if st.session_state['t_sales']:
                     active_y_vals.extend(y_s)
-                    fig.add_trace(go.Scatter(x=la_chart, y=y_s, mode='lines+markers+text', name='매출액(순증분)', text=[f"<b>{v:.2f}억</b>" for v in y_s], textposition='bottom right', cliponaxis=False, textfont=dict(size=15, color='#0d9488'), line=dict(color='#14b8a6', width=3), marker=dict(size=ms, line=dict(width=2, color='white'))))
+                    fig.add_trace(go.Scatter(x=la_chart, y=y_s, mode='lines+markers+text', name='당월매출순증분', text=[f"<b>{v:.2f}억</b>" for v in y_s], textposition='bottom right', cliponaxis=False, textfont=dict(size=15, color='#0d9488'), line=dict(color='#14b8a6', width=3), marker=dict(size=ms, line=dict(width=2, color='white'))))
                 if st.session_state['t_next']:
                     active_y_vals.extend(y_n)
                     fig.add_trace(go.Scatter(x=la_chart, y=y_n, mode='lines+markers+text', name='이월매출(순증분)', text=[f"<b>{v:.2f}억</b>" for v in y_n], textposition='top left', cliponaxis=False, textfont=dict(size=15, color='#d97706'), line=dict(color='#f59e0b', width=3), marker=dict(size=ms, line=dict(width=2, color='white'))))
